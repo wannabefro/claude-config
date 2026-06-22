@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linear Ticket Triage"
+  short_description: "Decide whether a Linear ticket needs work"
+  default_prompt: "Use $linear-ticket-triage to triage this Linear ticket and decide whether it needs work."

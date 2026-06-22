@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 14,
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "ENABLE_TOOL_SEARCH": "auto:5",
+    "MCP_TIMEOUT": "60000"
+  },
+  "permissions": {
+    "allow": [
+      "Edit",
+      "WebFetch",
+      "WebSearch",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(echo *)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(whoami)",
+      "Bash(env)",
+      "Bash(date)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(diff *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(tr *)",
+      "Bash(cut *)",
+      "Bash(tee *)",
+      "Bash(xargs *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(ag *)",
+      "Bash(fd *)",
+      "Bash(tree *)",
+      "Bash(realpath *)",
+      "Bash(dirname *)",
+      "Bash(basename *)",
+      "Bash(cp *)",
+      "Bash(touch *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(bun *)",
+      "Bash(tsc *)",
+      "Bash(eslint *)",
+      "Bash(prettier *)",
+      "Bash(jest *)",
+      "Bash(vitest *)",
+      "Bash(tsx *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(uv *)",
+      "Bash(poetry *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(cargo *)",
+      "Bash(rustc *)",
+      "Bash(go *)",
+      "Bash(make *)",
+      "Bash(cmake *)",
+      "Bash(jq *)",
+      "Bash(yq *)",
+      "Bash(tar *)",
+      "Bash(unzip *)",
+      "Bash(zip *)",
+      "Bash(lsof *)",
+      "Bash(ps *)",
+      "Bash(top *)",
+      "Bash(htop *)",
+      "Bash(direnv *)",
+      "mcp__codegraph__codegraph_search",
+      "mcp__codegraph__codegraph_context",
+      "mcp__codegraph__codegraph_callers",
+      "mcp__codegraph__codegraph_callees",
+      "mcp__codegraph__codegraph_impact",
+      "mcp__codegraph__codegraph_node",
+      "mcp__codegraph__codegraph_status",
+      "mcp__codegraph__codegraph_explore",
+      "mcp__codegraph__codegraph_files"
+    ],
+    "deny": [
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/id_rsa*)",
+      "Read(**/id_ed25519*)",
+      "Read(**/id_ecdsa*)",
+      "Read(**/credentials)",
+      "Read(**/credentials.*)",
+      "Read(**/.aws/**)",
+      "Read(**/.ssh/**)",
+      "Read(**/.gnupg/**)",
+      "Read(**/.netrc)",
+      "Read(**/.npmrc)",
+      "mcp__serena__open_dashboard"
+    ],
+    "ask": [
+      "Bash(mkdir *)",
+      "Bash(mv *)",
+      "Bash(chmod *)",
+      "Bash(kill *)",
+      "Bash(pkill *)",
+      "Bash(killall *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(git push *)",
+      "Bash(git clean *)",
+      "Bash(git reset *)"
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "opus",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|Edit|Write|MultiEdit|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/delegate-nudge.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/verify-on-edit-async.sh",
+            "timeout": 45,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/worktree-rebase.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/worktree-codegraph.sh",
+            "timeout": 180,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": []
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/self-consistency-nudge.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/bash-safety.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/commit-precheck.sh"
+          },
+          {
+            "type": "command",
+            "command": "__CLAUDE_HOME__/hooks/rtk-rewrite.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/pr-guardrail-review.sh",
+            "timeout": 15,
+            "if": "Bash(gh pr *)"
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/worktree-fetch.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|Read|NotebookEdit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__CLAUDE_HOME__/hooks/worktree-boundary.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__CLAUDE_HOME__/hooks/context-mode-cache-heal.mjs",
+            "args": []
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __CLAUDE_HOME__/hooks/delegate-prompt-nudge.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash __CLAUDE_HOME__/statusline.sh",
+    "padding": 1
+  },
+  "enabledPlugins": {
+    "chrome-devtools-mcp@claude-plugins-official": true,
+    "codex@openai-codex": true,
+    "compound-engineering@compound-engineering-plugin": true,
+    "context-mode@context-mode": true,
+    "context7@claude-plugins-official": true,
+    "explanatory-output-style@claude-plugins-official": false,
+    "feature-dev@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "impeccable@impeccable": true,
+    "linear@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "sentry@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "slack@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "compound-engineering-plugin": {
+      "source": {
+        "source": "github",
+        "repo": "EveryInc/compound-engineering-plugin"
+      }
+    },
+    "context-mode": {
+      "source": {
+        "source": "github",
+        "repo": "mksglu/context-mode"
+      }
+    },
+    "impeccable": {
+      "source": {
+        "source": "github",
+        "repo": "pbakaus/impeccable"
+      }
+    },
+    "learning-opportunities": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/DrCatHicks/learning-opportunities.git"
+      }
+    },
+    "openai-codex": {
+      "source": {
+        "source": "github",
+        "repo": "openai/codex-plugin-cc"
+      }
+    },
+    "thedotmack": {
+      "source": {
+        "source": "github",
+        "repo": "thedotmack/claude-mem"
+      }
+    }
+  },
+  "outputStyle": "Lean Engineer",
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
+  "autoUpdatesChannel": "latest",
+  "autoDreamEnabled": true,
+  "theme": "auto",
+  "feedbackSurveyState": {
+    "lastShownTime": 1754066759440
+  }
+}

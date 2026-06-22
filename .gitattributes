@@ -1,0 +1,5 @@
+# Keep the committed home path generic. The clean filter rewrites this
+# machine's absolute ~/.claude prefix to __CLAUDE_HOME__ on commit; the smudge
+# filter restores it on checkout. install.sh configures the filter per machine
+# (the filter definition lives in local .git/config, never committed).
+settings.json filter=claudehome

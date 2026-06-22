@@ -1,0 +1,37 @@
+# ~/.claude config repo — ALLOWLIST gitignore.
+# Ignore everything at the root, then un-ignore only the curated config.
+# The root-anchored /* means anything not explicitly re-included stays ignored
+# (transcripts in projects/, the plugins/ cache, *.jsonl, settings.local.json, …).
+/*
+
+# --- curated top-level files ---
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/install.sh
+!/CLAUDE.md
+!/RTK.md
+!/settings.json
+!/statusline.sh
+
+# --- curated directories (subtree rides along once the dir is un-ignored) ---
+!/rules/
+!/hooks/
+!/commands/
+!/agents/
+!/output-styles/
+!/docs/
+!/skills/
+
+# --- nested re-ignores ---
+# Un-ignoring a directory pulls in its WHOLE subtree, so generated/runtime state
+# living under a curated dir must be excluded again explicitly. The /* anchor
+# above does NOT reach these nested paths.
+/docs/plans/
+/docs/brainstorms/
+/hooks/state/
+/hooks/.rtk-hook.sha256
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+**/node_modules/
