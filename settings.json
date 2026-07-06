@@ -329,8 +329,8 @@
     },
     "claude-tier-router": {
       "source": {
-        "source": "directory",
-        "path": "/Users/sam.mctaggart/dev/claude-tier-router"
+        "source": "github",
+        "repo": "wannabefro/claude-tier-router"
       }
     }
   },
