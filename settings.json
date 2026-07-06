@@ -281,7 +281,8 @@
     "coderabbit@sam": true,
     "find-skills@sam": true,
     "gh-stack@sam": true,
-    "open-knowledge@sam": true
+    "open-knowledge@sam": true,
+    "tier-router@claude-tier-router": true
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {
@@ -324,6 +325,12 @@
       "source": {
         "source": "directory",
         "path": "__CLAUDE_HOME__/marketplace"
+      }
+    },
+    "claude-tier-router": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/sam.mctaggart/dev/claude-tier-router"
       }
     }
   },

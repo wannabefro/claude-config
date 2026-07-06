@@ -78,17 +78,44 @@ When a unit of work arrives, route by its shape:
   code-quality) or `ce-code-review` / `/sam-review`. The `implementer`'s report
   format feeds these.
 
-## Enforcement layer (deterministic nudges)
+## Loop drivers are not orchestrators
 
-Delegation is a model decision with no platform enforcement, so two hooks nudge
-the orchestrator (both non-blocking, main-thread only — CC #34692 means hooks
+A recurring or autonomous loop driver (via `/loop`, `looper`, `ScheduleWakeup`,
+a cron, or a long unattended `ce-work`) is a **dispatched writer**, not the
+main-thread orchestrator — so it takes the same tiering rule, and the same
+default. **Pin the driver to Sonnet.** Its per-iteration work is dispatch +
+gate-checking + logging, which is separable and well-specified; an Opus driver
+re-reads full loop context every iteration and multiplies that cost across
+`max_iterations`, which is the worst case for plan-limit consumption. Escalate
+*individual units/gates* to Opus or a cross-family pass (`best-of-n`, a Codex
+judge) only when a step is genuinely guardrail-critical — never promote the
+whole driver to cover one hard step (same reasoning as "never promote the
+implementer to Opus"). Neither `/loop` nor `ScheduleWakeup` takes a model
+override, so the durable place to pin the tier is the **driving agent's `model:`
+frontmatter**; the `looper` skill's Host Model Default bakes this into scaffolds.
+
+## Enforcement layer (deterministic nudges + tier routing)
+
+Delegation is a model decision with no platform enforcement, so hooks
+backstop the orchestrator (main-thread only — CC #34692 means hooks
 don't fire for subagent tool calls, which is intended here):
 
-- `hooks/delegate-nudge.sh` (PostToolUse) — 4 consecutive Read/Grep/Glob →
-  reminder to dispatch a subagent; resets on Edit/Write/MultiEdit/Task.
-- `hooks/delegate-prompt-nudge.sh` (UserPromptSubmit) — investigation-shaped
-  prompt → reminder to delegate the gathering phase; skips system/task
-  notifications.
+- `hooks/delegate-nudge.sh` (PostToolUse, non-blocking) — 4 consecutive
+  Read/Grep/Glob → reminder to dispatch a subagent; resets on
+  Edit/Write/MultiEdit/Task.
+- `hooks/delegate-prompt-nudge.sh` (UserPromptSubmit, non-blocking) —
+  investigation-shaped prompt → reminder to delegate the gathering phase;
+  skips system/task notifications.
+- **`tier-router` plugin** (PreToolUse on Agent/Task) — deterministic model
+  tiering: any dispatch without an explicit `model` gets one injected per
+  `~/.claude/tier-router.json` (default sonnet; haiku for mechanical agents;
+  `fork`/`Plan` skipped), and `implementer`+`opus` is denied — the
+  never-promote rule is now enforced, not just prose. An explicit `model` on
+  the dispatch always wins (deliberate escalation stays available; that's
+  also why routing keys only on `subagent_type`, never prompt content).
+  Injections log to `hooks/state/tier-router.log`. Source:
+  `~/dev/claude-tier-router`. Keep it the only input-modifying hook on
+  Agent/Task — parallel `updatedInput` hooks race.
 
 Heed the nudges; they encode the "3rd consecutive read → Explore" rule as an
 interrupt. Ignore one only when the work is genuinely coupled to the
