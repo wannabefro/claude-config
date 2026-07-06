@@ -1,0 +1,22 @@
+{
+  "name": "sam",
+  "owner": {
+    "name": "Sam McTaggart"
+  },
+  "metadata": {
+    "description": "Personal marketplace: third-party skills installed by reference (tracking latest; add a sha to an entry to pin), never vendored into the config repo."
+  },
+  "plugins": [
+    {
+      "name": "looper",
+      "description": "Design and scaffold bounded agent loops (goal refinement, verification criteria, review council, loop.yaml + RUN_IN_SESSION.md scaffolding).",
+      "source": {
+        "source": "github",
+        "repo": "ksimback/looper"
+      },
+      "strict": false,
+      "skills": ["./"],
+      "commands": ["./commands/looper.md"]
+    }
+  ]
+}

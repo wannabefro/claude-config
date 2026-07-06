@@ -130,7 +130,7 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "opus",
+  "model": "claude-fable-5[1m]",
   "hooks": {
     "PostToolUse": [
       {
@@ -203,8 +203,8 @@
           {
             "type": "command",
             "command": "bash __CLAUDE_HOME__/hooks/pr-guardrail-review.sh",
-            "timeout": 15,
-            "if": "Bash(gh pr *)"
+            "if": "Bash(gh pr *)",
+            "timeout": 15
           }
         ]
       },
@@ -276,7 +276,8 @@
     "skill-creator@claude-plugins-official": true,
     "slack@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "looper@sam": true
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {
@@ -314,12 +315,19 @@
         "source": "github",
         "repo": "thedotmack/claude-mem"
       }
+    },
+    "sam": {
+      "source": {
+        "source": "directory",
+        "path": "__CLAUDE_HOME__/marketplace"
+      }
     }
   },
   "outputStyle": "Lean Engineer",
   "alwaysThinkingEnabled": true,
   "effortLevel": "high",
   "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
   "autoDreamEnabled": true,
   "theme": "auto",
   "feedbackSurveyState": {

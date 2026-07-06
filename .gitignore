@@ -22,6 +22,7 @@
 !/output-styles/
 !/docs/
 !/skills/
+!/marketplace/
 
 # --- nested re-ignores ---
 # Un-ignoring a directory pulls in its WHOLE subtree, so generated/runtime state
