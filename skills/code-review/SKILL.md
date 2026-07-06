@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "AI-powered code review using CodeRabbit. Default code-review skill. Trigger for any explicit review request AND autonomously when the agent thinks a review is needed (code/PR/quality/security)."
+description: "Use for any explicit code-review request AND autonomously when a review is needed (code/PR/quality/security) — the default single-lens review skill, backed by CodeRabbit. For multi-lens or high-stakes reviews escalate to sam-review."
 metadata:
   version: "0.1.0"
 ---

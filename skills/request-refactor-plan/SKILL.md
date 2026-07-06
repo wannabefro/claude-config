@@ -13,6 +13,10 @@ for execution. **Plan only.** Do not modify code in this skill.
 Adapted from mattpocock/skills/request-refactor-plan. Originally filed
 plans as GitHub issues; this version writes to local docs.
 
+Use `improve-codebase-architecture` to *find* refactor candidates; this
+skill plans a refactor the user has already chosen. For general feature
+planning use `ce-plan`.
+
 ## Output
 
 Default path: `docs/refactors/<kebab-slug>.md` from the repo root.

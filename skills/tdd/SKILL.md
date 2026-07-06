@@ -46,10 +46,12 @@ RIGHT (vertical):
 
 When exploring the codebase, use the project's domain glossary so that test names and interface vocabulary match the project's language, and respect ADRs in the area you're touching.
 
-Before writing any code:
+Before writing any code, **read [deep-modules.md](deep-modules.md) and [interface-design.md](interface-design.md)** — they set the module boundaries the tests will lock in. Then:
 
 - [ ] Confirm with user what interface changes are needed
 - [ ] Confirm with user which behaviors to test (prioritize)
+- [ ] **Reuse before you build**: search the codebase for an existing helper/module and the dependency manifest for a library that already does this. Only write new code for the part that's genuinely new.
+- [ ] **Pick the home for new code**: a module matching one responsibility. Never default to appending to whatever file is already open or largest — that's how god files grow.
 - [ ] Identify opportunities for [deep modules](deep-modules.md) (small interface, deep implementation)
 - [ ] Design interfaces for [testability](interface-design.md)
 - [ ] List the behaviors to test (not implementation steps)
@@ -92,6 +94,7 @@ After all tests pass, look for [refactor candidates](refactoring.md):
 
 - [ ] Extract duplication
 - [ ] Deepen modules (move complexity behind simple interfaces)
+- [ ] Split any file the change pushed past ~a few hundred lines or a second responsibility — deep means a small interface, not a giant file
 - [ ] Apply SOLID principles where natural
 - [ ] Consider what new code reveals about existing code
 - [ ] Run tests after each refactor step

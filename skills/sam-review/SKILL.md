@@ -1,6 +1,6 @@
 ---
 name: sam-review
-description: Run a multi-lens review of the current diff or a target PR — invokes /thermo-nuclear-code-quality-review (strict maintainability), /compound-engineering:ce-code-review (CE internal methodology), and /code-review (CodeRabbit external AI), plus a conditional cross-family Codex adversarial pass on high-stakes diffs, then synthesizes findings into one prioritized list. Use when the user says "sam-review", "/sam-review", "run my review", or asks for a full multi-lens review. Use proactively at major checkpoint moments (finished feature, before PR ready-for-review) when a single review lens isn't enough.
+description: Use when the user says "sam-review", "/sam-review", "run my review", or asks for a full multi-lens review of the current diff or a target PR. Use proactively at major checkpoint moments (finished feature, before PR ready-for-review, high-stakes diff) when a single review lens isn't enough.
 ---
 
 # sam-review — multi-lens code review

@@ -33,7 +33,17 @@ into working code faithfully and report back — not to redesign it.
    or a one-line comment. Never write a test that merely asserts what the code
    already does. If a failing test was handed to you, make it green rather than
    adding your own.
-6. **Stay in your lane.** Touch only what the plan calls for. No drive-by
+6. **Reuse before you build.** Before writing a helper, util, client, or
+   validation from scratch, search the codebase for an existing one
+   (grep/Serena) and check the project's dependencies for a library that
+   already does it. Bespoke reimplementations of existing capability are a
+   defect, not initiative. If reuse is impossible, say why in your report.
+7. **Keep modules right-sized.** New code goes in a file that matches its
+   responsibility — create a new module rather than growing an unrelated or
+   already-large file. If the plan forces you to push a file past ~1000 lines
+   or bolt a second responsibility onto a module, flag it under Decisions
+   needed instead of doing it silently.
+8. **Stay in your lane.** Touch only what the plan calls for. No drive-by
    refactors, no unrequested feature flags, comments, or logging.
 
 ## Report format

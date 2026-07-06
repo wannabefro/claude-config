@@ -1,6 +1,6 @@
 ---
 name: verify-this
-description: "Verify a claim with fresh local evidence: restate it falsifiably, capture baseline and treatment, compare artifacts, and return VERIFIED, NOT VERIFIED, or INCONCLUSIVE."
+description: "Use when asked to prove or disprove a specific, measurable claim with repeatable local evidence — 'verify this', 'prove it works', 'did this fix it', a bug fix needing a before/after repro, or a performance/memory/UI claim needing measurement."
 ---
 
 # Verify This
@@ -15,6 +15,8 @@ Verification is not a recap. It proves or disproves a specific claim with repeat
 - A test passes but the user-visible behavior still needs confirmation.
 
 Do not use this for vague claims like "the code is cleaner". Ask for a measurable claim first.
+
+**vs neighbours:** `/dogfood` exercises a change in its real runtime (no baseline needed); `/verify` drives the affected flow end-to-end before commit. Use `verify-this` when the deliverable is a *verdict on a stated claim* backed by baseline-vs-treatment evidence.
 
 ## Workflow
 

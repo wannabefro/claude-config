@@ -7,6 +7,8 @@ description: Use when designing, writing, reviewing, or auditing a recurring or 
 
 ## Overview
 
+This skill supplies the principles and audit contract; `/looper` is the scaffolder that emits a runnable loop. Design/audit here, scaffold there.
+
 An agent loop is only as safe as its weakest bound. The single highest-leverage move is making the **verification check that proves the work is done the same thing that ends the loop** — and putting that check, plus the iteration/budget cap, *outside the model*. An LLM asked "are we done yet?" eventually says yes to end the task; a passing test or an unchanged diff cannot lie. (Ground-truth-anchored stops self-correct ~70% of the time; intrinsic self-assessment degrades — Huang et al., ICLR 2024.)
 
 ## The Loop Contract — fill in all six before running

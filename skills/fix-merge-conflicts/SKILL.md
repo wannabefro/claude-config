@@ -1,6 +1,6 @@
 ---
 name: fix-merge-conflicts
-description: Resolve merge conflicts non-interactively, validate build and tests, and finalize conflict resolution
+description: Use when a merge, rebase, or cherry-pick leaves unresolved conflict markers and the branch needs a reliable non-interactive path back to a buildable, tested state.
 ---
 
 # Fix merge conflicts

@@ -1,6 +1,6 @@
 ---
 name: what-did-i-get-done
-description: Summarize authored commits over a user-specified time period into a concise update
+description: Use when the user asks what they got done or shipped over a specific time period (yesterday, last 3 days, last week) and wants a concise status update.
 ---
 
 # What did I get done
@@ -8,6 +8,8 @@ description: Summarize authored commits over a user-specified time period into a
 ## Trigger
 
 Need a short, high-signal summary of work completed in a specific time range (for example: yesterday, last 3 days, or last week).
+
+For a categorized weekly synthesis (bugfix / tech debt / net-new), use `weekly-review` instead.
 
 ## Workflow
 

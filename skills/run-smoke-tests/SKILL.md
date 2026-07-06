@@ -1,6 +1,6 @@
 ---
 name: run-smoke-tests
-description: Run Playwright smoke tests, debug failures, and verify fixes
+description: Use when the user asks to run or debug smoke tests, a Playwright smoke suite is failing, or a change needs end-to-end smoke verification before merge.
 ---
 
 # Run smoke tests

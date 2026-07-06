@@ -16,6 +16,8 @@ Static checks (type-check, lint, unit tests) verify that code does what you told
 
 The acceptance signal is **"I ran it and saw X"** — never "it should work" or "the tests pass, so."
 
+**vs neighbours:** `/verify-this` is for adjudicating a stated claim with baseline-vs-treatment evidence; `/verify` bootstraps a project-specific verification skill. Dogfood is the general "exercise the change in its real runtime" pass — don't stack all three on one change.
+
 ## Step 1: Classify the change
 
 Pick the row that best matches. If multiple apply (e.g. an API change that also affects the UI), do both.

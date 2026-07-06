@@ -1,6 +1,6 @@
 ---
 name: weekly-review
-description: Produce a weekly synthesis of authored commits with highlights by bugfix, tech debt, and net-new work
+description: Use when the user asks for a weekly review, week-in-review, or categorized recap of their week's shipped work for a status update, retro, or planning.
 ---
 
 # Weekly review
@@ -8,6 +8,8 @@ description: Produce a weekly synthesis of authored commits with highlights by b
 ## Trigger
 
 Need a weekly recap of shipped work for status updates, retros, or planning.
+
+For an arbitrary time window ("yesterday", "last 3 days") or a bare list without the bugfix/tech-debt/net-new classification, use `what-did-i-get-done` instead.
 
 ## Workflow
 

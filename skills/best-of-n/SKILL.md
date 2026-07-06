@@ -1,6 +1,6 @@
 ---
 name: best-of-n
-description: Race two model families on the same spec and pick the better solution. Dispatches the implementer (Sonnet) and Codex (GPT) into separate throwaway git worktrees, diffs the two candidates, and lets you choose the winner. Use manually on a hard or high-stakes task where one model's first attempt isn't enough confidence. Trigger phrases - "best-of-n", "/best-of-n", "race this", "try both models".
+description: Use manually on a hard or high-stakes task where one model family's first attempt isn't enough confidence — races two model families on the same spec and picks the better candidate. Trigger phrases - "best-of-n", "/best-of-n", "race this", "try both models".
 ---
 
 # best-of-n — race two model families, pick the winner
@@ -28,6 +28,11 @@ second independent attempt is worth the cost.
 
 **Skip:** trivial or routine work; anything where one model is obviously enough;
 a directory that isn't a git repo (the worktree mechanism can't run there).
+
+**vs `/self-consistency`:** best-of-n generates the *same work twice* and picks a
+winner; self-consistency generates *three different views* (impl, spec, tests) of
+one piece of work to localize bugs. Racing buys a better candidate; triangulating
+buys higher confidence in one candidate.
 
 ## Arguments
 

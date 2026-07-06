@@ -1,6 +1,6 @@
 ---
 name: self-consistency
-description: Triangulate a piece of work by generating its implementation, spec, and tests independently, then cross-checking the three for disagreements that localize bugs. Use when you want a high-assurance check on a hard or high-stakes change, or when accepting the self-consistency nudge after a high-stakes diff. Trigger phrases - "self-consistency", "/self-consistency", "cross-check this", "triangulate this".
+description: Use when you want a high-assurance cross-check on a hard or high-stakes change, or when accepting the self-consistency nudge after a high-stakes diff. Trigger phrases - "self-consistency", "/self-consistency", "cross-check this", "triangulate this".
 ---
 
 # self-consistency — multi-perspective cross-check
@@ -19,6 +19,10 @@ right if they contradict.
 The isolation is the point. Do not paste the implementation into the spec-deriver
 or test-writer dispatch prompts — a fresh-context subagent only knows what its
 prompt carries, so prompt discipline IS the isolation mechanism.
+
+**vs `/best-of-n`:** best-of-n races two model families on the same spec and picks
+a winner; self-consistency triangulates one piece of work from three independent
+angles. Race for a better candidate; triangulate for confidence in one.
 
 ## When to run
 
