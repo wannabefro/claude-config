@@ -30,10 +30,11 @@ spans tiers:
 - **Haiku** — mechanical, single-file, pattern-is-obvious units (rename,
   boilerplate, rote refactor). Cheaper, no quality loss on rote work.
 - **Sonnet (default)** — well-specified multi-file units.
-- **Never promote the implementer to Opus.** If writing a unit needs
-  Opus-level reasoning, it isn't well-specified enough to hand off — plan it
-  harder so Sonnet can write it, or keep it in the main thread. Opus-writes →
-  Opus-reviews also collapses the independent-lens benefit. For genuinely hard
+- **Never promote the implementer to Opus or above (incl. Fable).** If writing
+  a unit needs that level of reasoning, it isn't well-specified enough to hand
+  off — plan it harder so Sonnet can write it, or keep it in the main thread.
+  Big-model-writes → big-model-reviews also collapses the independent-lens
+  benefit. For genuinely hard
   units, route to a **different family** (Codex via `best-of-n`), not a bigger
   same-family implementer.
 
@@ -109,7 +110,7 @@ don't fire for subagent tool calls, which is intended here):
 - **`tier-router` plugin** (PreToolUse on Agent/Task) — deterministic model
   tiering: any dispatch without an explicit `model` gets one injected per
   `~/.claude/tier-router.json` (default sonnet; haiku for mechanical agents;
-  `fork`/`Plan` skipped), and `implementer`+`opus` is denied — the
+  `fork`/`Plan` skipped), and `implementer`+`opus`/`fable` are denied — the
   never-promote rule is now enforced, not just prose. An explicit `model` on
   the dispatch always wins (deliberate escalation stays available; that's
   also why routing keys only on `subagent_type`, never prompt content).

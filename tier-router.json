@@ -11,7 +11,12 @@
     {
       "agent": "implementer",
       "model": "opus",
-      "reason": "Never promote the implementer to Opus (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via best-of-n."
+      "reason": "Never promote the implementer to Opus or above (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via best-of-n."
+    },
+    {
+      "agent": "implementer",
+      "model": "fable",
+      "reason": "Never promote the implementer to Opus or above (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via best-of-n."
     }
   ],
   "debug": false
