@@ -3,21 +3,24 @@
 #
 # Usage:
 #   git clone <repo> /tmp/claude-setup && /tmp/claude-setup/install.sh
-#   install.sh --check     # prereq report only, no mutations (safe anywhere)
-#   install.sh --force     # allow adopt even if the target tree is dirty
+#   install.sh --check       # prereq report only, no mutations (safe anywhere)
+#   install.sh --force       # allow adopt even if the target tree is dirty
+#   install.sh --target DIR  # install into DIR instead of ~/.claude
+#                            # (also honors CLAUDE_HOME env; default ~/.claude)
 #
 # macOS-first (BSD sed assumed). Idempotent. Never installs external tools —
 # it only reports what's missing. See README.md.
 set -euo pipefail
 
-FORCE=0; CHECK_ONLY=0
-for a in "$@"; do case "$a" in
+FORCE=0; CHECK_ONLY=0; TARGET="${CLAUDE_HOME:-$HOME/.claude}"
+while [ $# -gt 0 ]; do case "$1" in
   --force) FORCE=1 ;; --check) CHECK_ONLY=1 ;;
-  *) echo "unknown arg: $a" >&2; exit 2 ;;
-esac; done
+  --target) shift; TARGET="$1" ;;
+  --target=*) TARGET="${1#*=}" ;;
+  *) echo "unknown arg: $1" >&2; exit 2 ;;
+esac; shift; done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="$HOME/.claude"
 BRANCH="main"
 log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
 
