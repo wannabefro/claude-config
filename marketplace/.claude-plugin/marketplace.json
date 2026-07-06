@@ -17,6 +17,46 @@
       "strict": false,
       "skills": ["./"],
       "commands": ["./commands/looper.md"]
+    },
+    {
+      "name": "coderabbit",
+      "description": "CodeRabbit CLI skills: code-review (default single-lens review) and autofix (apply CodeRabbit PR review-thread feedback with per-change approval).",
+      "source": {
+        "source": "github",
+        "repo": "coderabbitai/skills"
+      },
+      "strict": false,
+      "skills": ["./skills/code-review", "./skills/autofix"]
+    },
+    {
+      "name": "find-skills",
+      "description": "Discover and install agent skills via the vercel-labs skills CLI.",
+      "source": {
+        "source": "github",
+        "repo": "vercel-labs/skills"
+      },
+      "strict": false,
+      "skills": ["./skills/find-skills"]
+    },
+    {
+      "name": "gh-stack",
+      "description": "Manage stacked branches and dependent PRs with the gh-stack GitHub CLI extension.",
+      "source": {
+        "source": "github",
+        "repo": "github/gh-stack"
+      },
+      "strict": false,
+      "skills": ["./skills/gh-stack"]
+    },
+    {
+      "name": "open-knowledge",
+      "description": "OpenKnowledge discovery skill: what OK is and how ok init / OK Desktop set up a project.",
+      "source": {
+        "source": "github",
+        "repo": "inkeep/open-knowledge"
+      },
+      "strict": false,
+      "skills": ["./packages/server/assets/skills/discovery"]
     }
   ]
 }

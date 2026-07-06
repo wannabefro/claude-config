@@ -277,7 +277,11 @@
     "slack@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "looper@sam": true
+    "looper@sam": true,
+    "coderabbit@sam": true,
+    "find-skills@sam": true,
+    "gh-stack@sam": true,
+    "open-knowledge@sam": true
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {
