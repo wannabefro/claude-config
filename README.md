@@ -42,7 +42,7 @@ real `~/.claude` paths. macOS-first.
   not committed). Skills are real files in `skills/` and travel with the clone.
 - **Manual:** MCP server **auth** — none is committed. Re-authenticate:
   context-mode, codegraph, serena, context7, github, linear, slack, sentry,
-  buildkite, chronosphere, chrome-real, playwright (plus any employer-internal
+  chrome-real, playwright (plus any CI/observability or employer-internal
   servers configured in your local settings overlay).
 - **Verify after launch:** `/plugins` and the live MCP list should match
   `settings.json`. If a plugin is missing, check its marketplace entry.

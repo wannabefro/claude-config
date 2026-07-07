@@ -20,8 +20,9 @@ Other commands: `wt list`, `wt switch <name>` (existing worktree), `wt remove`.
 
 ## Branch prefix
 
-worktrunk has **no branch-prefix setting** (cwt auto-prepended `sm/`). Type it:
-`wt switch -c sm/<name>`. The `sm/` is convention, not config.
+worktrunk has **no branch-prefix setting** (cwt auto-prepended one). Type it:
+`wt switch -c <prefix>/<name>`. A prefix (these examples use your initials, e.g.
+`sm/`) is convention, not config — substitute your own.
 
 ## When to spawn teammates
 

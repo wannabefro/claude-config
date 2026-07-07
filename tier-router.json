@@ -3,7 +3,6 @@
   "default": "sonnet",
   "haiku": [
     "statusline-setup",
-    "klaviyo-repos-plugin:repo-discovery-agent",
     "impeccable:impeccable-manual-edit-applier"
   ],
   "skip": ["fork", "Plan"],

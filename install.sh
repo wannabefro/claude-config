@@ -26,13 +26,30 @@ log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
 
 # --- prereq check (report only) ---------------------------------------------
 log "Checking prerequisites (report only — nothing is installed):"
+# Per-tool install hint (macOS/Homebrew-first), printed only when the tool is
+# missing so the report is directly actionable.
+prereq_hint() {
+  case "$1" in
+    git)   echo "xcode-select --install   # or: brew install git" ;;
+    gh)    echo "brew install gh && gh auth login" ;;
+    node)  echo "brew install fnm && fnm install --lts   # or: brew install node" ;;
+    rg)    echo "brew install ripgrep" ;;
+    jq)    echo "brew install jq" ;;
+    codex) echo "npm install -g @openai/codex" ;;
+    rtk)   echo "brew install rtk   # homebrew-core; not 'cargo install rtk' (name clash)" ;;
+    cmux)  echo "download the cmux desktop app (not in a package manager)" ;;
+    wt)    echo "brew install worktrunk   # provides the wt shell function" ;;
+    bd)    echo "see github.com/steveyegge/beads (install script) — optional" ;;
+    *)     echo "see README" ;;
+  esac
+}
 PREREQS="git gh node rg jq codex rtk cmux wt bd"
 missing=""
 for t in $PREREQS; do
   if command -v "$t" >/dev/null 2>&1; then printf '  ✓ %s\n' "$t"
-  else printf '  ✗ %s  (missing)\n' "$t"; missing="$missing $t"; fi
+  else printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"; missing="$missing $t"; fi
 done
-[ -n "$missing" ] && log "Missing:$missing — install these separately (see README)."
+[ -n "$missing" ] && log "Missing:$missing — run the install hints shown above."
 if [ "$CHECK_ONLY" -eq 1 ]; then log "--check done."; exit 0; fi
 
 # --- discover repo url from this checkout -----------------------------------
@@ -105,8 +122,8 @@ cat <<'EOF'
   2. Install any prereqs reported missing above.
   3. Re-authenticate MCP servers (they carry no committed credentials):
      context-mode, codegraph, serena, context7, github, linear, slack,
-     sentry, buildkite, chronosphere, chrome-real, playwright, plus any
-     employer-internal servers from your local settings overlay.
+     sentry, chrome-real, playwright, plus any CI/observability or
+     employer-internal servers configured in your local settings overlay.
   4. Verify rehydration: `claude` then check /plugins and the MCP server list
      against settings.json. GoogleDrive is no longer required for skills.
 EOF

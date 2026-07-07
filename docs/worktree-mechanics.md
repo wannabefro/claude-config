@@ -13,7 +13,7 @@ On-demand reference for the worktrunk + cmux setup. Pulled out of `rules/worktre
 - The launcher pre-trusts each new worktree (`hasTrustDialogAccepted` in
   `~/.claude.json`) so Claude Code's folder-trust prompt doesn't fire — a worktree
   is a checkout of an already-trusted repo. Other prompts/guardrails are unaffected.
-- New shell after install: the `wt` shell function (`~/.zshrc:74`) must be active
+- New shell after install: the `wt` shell function (defined in your `~/.zshrc`) must be active
   for `wt switch`/`merge` to change directory. Restart the shell once after setup.
 - The launcher also seeds `.codegraph` from the main checkout (APFS clonefile +
   detached `codegraph sync`) and, where applicable, resolves the beads DB via
