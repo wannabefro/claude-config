@@ -28,12 +28,19 @@ so it will happily rebuild work that already exists.
 
 Two honest modes, and mixing them is what produces a double review:
 
-- *Default — `ce-work` owns the tail.* It runs `ce-code-review` itself, automatically, on every
-  non-mechanical diff. Nothing to invoke and nothing to remember. Right for ordinary work.
-- *Council tail — you own it.* Invoke `ce-work mode:return-to-caller <plan-path>`; it implements and
-  locally verifies, then returns a structured envelope instead of running its own review. Then run
-  `/council` once on the assembled diff. Worth the extra step when the diff is guardrail-critical or
-  when adversarial cross-examination is the point, since triage keeps a small diff cheap anyway.
+- *Default — you own the tail, `/council` reviews.* Invoke `ce-work mode:return-to-caller
+  <plan-path>`; it implements and locally verifies, then returns a structured envelope instead of
+  running its own review. Then run `/council` once on the assembled diff. Work built by `/build`
+  already arrives in this shape. Haiku triage sizes the seating, so an ordinary diff pays for two
+  lenses and only guardrail surfaces seat all six — which is what makes this affordable as the
+  default rather than the exception.
+- *Hardwired tail — `ce-work` owns it.* A blank `ce-work` runs `ce-code-review` itself on every
+  non-mechanical diff, and that is not a preference the runtime lets you override from outside. Fine
+  for a small or mechanical diff where invoking nothing is the point; just don't then also run
+  `/council`, or you have reviewed the same diff twice.
+
+The default flipped on 2026-07-27. It used to be the second mode, back when council was the expensive
+exception; the triage gate is what changed the economics.
 
 ## Cross-model plan review
 

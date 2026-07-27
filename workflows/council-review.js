@@ -1,7 +1,7 @@
 export const meta = {
   name: 'council-review',
   description: 'Multi-model council: diverse lenses review a diff, cross-examine each other\'s findings, deadlocks escalate to Fable, then a judge synthesises a verdict',
-  whenToUse: 'High-stakes or guardrail-critical diffs — auth, payments, migrations, data mutations, public API. Overkill for routine changes; use /sam-review or ce-code-review there.',
+  whenToUse: 'The default review path for a diff you own — routine or guardrail-critical. Haiku triage sizes the seating, so an ordinary diff pays for two lenses and only auth/payments/migrations/data-mutation/public-API diffs seat the full six. Reach for ce-code-review instead only inside a normal ce-work run, where it is already hardwired.',
   phases: [
     { title: 'Convene', detail: 'five lenses review in parallel on Opus and Sonnet' },
     { title: 'Cross-examine', detail: 'every finding challenged from both tiers' },

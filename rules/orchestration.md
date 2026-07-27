@@ -16,10 +16,16 @@ than it saves.
 - **Sonnet** (default) — well-specified multi-file units.
 - **Never Opus or Fable.** If writing a unit needs that much reasoning it isn't well-specified enough
   to hand off — plan it harder, or keep it in main. For genuinely hard units route to a *different
-  family* (Codex via `best-of-n`), not a bigger same-family implementer. The `tier-router` hook
-  enforces this. Precedence, highest first: `CLAUDE_CODE_SUBAGENT_MODEL` env var → per-dispatch
-  `model` → the definition's `model:` → inherit. That env var would silently outrank the router —
-  leave it unset.
+  family* (`/codex:rescue`), not a bigger same-family implementer. The `tier-router` hook enforces
+  this with a `deny` rule, so a dispatch that tries it is blocked rather than quietly downgraded.
+
+The effective routing policy is **`~/.claude/tier-router.json`**, which overlays the plugin's shipped
+`policy.json` — and it flips `mode` to `all-except-skip`, so reading the shipped policy alone gives
+the wrong answer. Precedence, highest first: `CLAUDE_CODE_SUBAGENT_MODEL` env var → per-dispatch
+`model` → `skip` list → `route[agent]` → the definition's own `model:` pin → `haiku` list →
+`default`. Two consequences worth holding: a `route` entry **outranks** an agent's own frontmatter
+pin, and the env var would silently outrank the router — leave it unset. Agents that must keep an
+expensive tier are kept in `skip` rather than routed.
 
 `Explore` no longer defaults to Haiku (since 2.1.198 it inherits the main model, capped at Opus), so
 gathering stays cheap only because the router sends it to Sonnet. Drop that route and 120+ dispatches
@@ -27,10 +33,11 @@ land on Opus.
 
 Dispatch quality is the whole game: hand the implementer an **executable definition of done** — a
 failing test or the exact verify command — not a prose paragraph. That turns its self-verification
-into a pass/fail gate. For hard or high-stakes units escalate the *review topology*
-(`subagent-driven-development`'s 2-stage, `best-of-n`, `self-consistency`), not the writer's model.
+into a pass/fail gate. For hard or high-stakes units escalate the *review topology* —
+`subagent-driven-development`'s 2-stage, or `/council`, whose cross-examination pass is the same idea
+with more lenses — not the writer's model.
 
-Never hand-roll a review loop; reuse SDD's 2-stage, `ce-code-review`, or `/sam-review`.
+Never hand-roll a review loop; reuse SDD's 2-stage, `/council`, or `ce-code-review`.
 
 ## Agent teams: parallelism with discussion, not tiering
 

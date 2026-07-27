@@ -10,17 +10,18 @@
     "statusline-setup",
     "impeccable:impeccable-manual-edit-applier"
   ],
-  "skip": ["fork", "Plan", "deep-reasoner", "fable-planner", "fable-debugger"],
+  "_skip_note": "fable-planner and fable-debugger were retired on 2026-07-27 — Opus 5 covers what they were for, and fable-planner drew a correction on 11 of 12 dispatches. Fable itself is NOT gone: it is still the council's escalation seat, addressed there by explicit model, which never touches this route table.",
+  "skip": ["fork", "Plan", "deep-reasoner"],
   "deny": [
     {
       "agent": "implementer",
       "model": "opus",
-      "reason": "Never promote the implementer to Opus or above (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via best-of-n."
+      "reason": "Never promote the implementer to Opus or above (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via /codex:rescue."
     },
     {
       "agent": "implementer",
       "model": "fable",
-      "reason": "Never promote the implementer to Opus or above (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via best-of-n."
+      "reason": "Never promote the implementer to Opus or above (rules/orchestration.md): plan harder so Sonnet can write it, keep it in the main thread, or route to a different family via /codex:rescue."
     }
   ],
   "debug": false

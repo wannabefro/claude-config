@@ -55,10 +55,10 @@ that cost more than the parallelism saves.
 
 ## After it succeeds
 
-Merge in wave order, then review the assembled diff **once** — `ce-code-review` normally, or
-`/sam-review` for a guardrail-critical surface. Do not review per unit: the per-unit gate is the
-`verify_command`, and putting a review inside the loop is what makes parallel building slower than
-serial building.
+Merge in wave order, then run `/council` **once** on the assembled diff. Its triage sizes the seating,
+so an ordinary build pays for two lenses and a guardrail surface seats all six. Do not review per
+unit: the per-unit gate is the `verify_command`, and putting a review inside the loop is what makes
+parallel building slower than serial building.
 
 ## Where this sits
 

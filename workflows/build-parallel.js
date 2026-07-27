@@ -1,7 +1,7 @@
 export const meta = {
   name: 'build-parallel',
   description: 'Decompose work into independently-verifiable units, build them concurrently in isolated worktrees behind executable done-criteria, and report a merge plan',
-  whenToUse: 'Feature work that genuinely splits into independent units. NOT for coupled changes, same-file edits, or broad refactors — those are correctly serial and fanning them out costs more in merge pain than it saves.',
+  whenToUse: 'The default execution path once a plan is approved. Send work here first and let the decomposer decide: it returns decomposable:false for coupled changes, same-file edits and broad refactors, which is a real answer, not a failure — build those serially instead. Only skip it when you already know the work is coupled.',
   phases: [
     { title: 'Decompose', detail: 'Opus splits the work into units with executable done-criteria' },
     { title: 'Build', detail: 'implementers run concurrently in isolated worktrees, by wave' },
