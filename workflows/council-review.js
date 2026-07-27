@@ -146,22 +146,23 @@ const SEATED = wanted ? COUNCIL.filter((m) => wanted.includes(m.key)) : COUNCIL
 const scope = bundlePath ? `
 REVIEW TARGET: ${target}
 
-Everything you need has been assembled for you. Read these files — you have no
-shell and do not need one:
+Everything you need has been assembled for you. You have no shell and do not
+need one.
 
-  ${bundlePath}/00-diffstat.txt          summary of what changed
-  ${bundlePath}/01-the-diff.patch        the full diff under review
-  ${bundlePath}/02-tier-router.sh.txt    the changed file AFTER, line-numbered
-  ${bundlePath}/06-tier-router-BEFORE.sh.txt   the same file BEFORE, for comparison
-  ${bundlePath}/03-tests-run.sh.txt      the test suite, line-numbered
-  ${bundlePath}/04-policy.json           shipped default policy
-  ${bundlePath}/05-new-fixtures.txt      the test fixtures
-  ${bundlePath}/07-README.md.txt         the README, line-numbered (check it against the code)
+**Start by listing the bundle** — Glob \`${bundlePath}/*\` — and read what is
+actually there. Do not assume a manifest; bundles differ per review. The naming
+convention is a numeric prefix in reading order:
 
-Read the AFTER file in full, not just the diff hunks — a hunk read without its
-surrounding code is how false findings get made. Cite line numbers from the
-line-numbered files. If something you need is genuinely absent from the bundle,
-say so rather than guessing.
+  00-*  a diffstat or summary of what changed
+  01-*  the diff itself
+  then, per review: each changed file AFTER (line-numbered), its BEFORE
+  counterpart where one exists, the relevant tests, config, fixtures, and docs.
+
+Read each changed file in FULL, not just the diff hunks — a hunk read without
+its surrounding code is how false findings get made. Where a BEFORE and AFTER
+pair exists, compare them rather than trusting the hunk. Cite line numbers from
+the line-numbered files. If something you need is genuinely absent from the
+bundle, say so rather than guessing.
 ` : `
 REVIEW TARGET: ${target}
 ${repoPath ? `REPOSITORY: ${repoPath}\n` : ''}
