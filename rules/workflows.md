@@ -13,12 +13,26 @@ non-code deliverables, have `ce-plan` plan *how it will produce* the deliverable
 directly cuts corners. `lfg` runs the whole pipeline, but only on an explicit hands-off request.
 
 **Execution splits from planning.** `ce-plan` writes the plan; `/build` executes the parts of it that
-decompose, and `ce-work` takes coupled work and the shipping tail. `ce-work` *can* parallelize, but
-that choice lives in prose and the model almost always resolves it to serial — measured here, 2 of 11
-sessions. `/build` computes the split instead: schema-enforced units, same-wave file overlap refused
-in code, `decomposable: false` as a visible outcome rather than a silent fallback. It reports the
-decomposition first and only fans out when told to, because the split is the ceiling on everything
-downstream and is cheap to read before agents commit to it.
+decompose, and `ce-work` takes coupled work. `ce-work` *can* parallelize, but that choice lives in
+prose and the model almost always resolves it to serial — measured here, 2 of 11 sessions. `/build`
+computes the split instead: schema-enforced units, same-wave file overlap refused in code,
+`decomposable: false` as a visible outcome rather than a silent fallback. It reports the decomposition
+first and only fans out when told to, because the split is the ceiling on everything downstream and is
+cheap to read before agents commit to it.
+
+**Who owns the review tail decides which reviewer runs.** Two honest modes, and mixing them is what
+produces a double review:
+
+- *Default — `ce-work` owns the tail.* It runs `ce-code-review` itself, automatically, on every
+  non-mechanical diff. Nothing to invoke and nothing to remember. Right for ordinary work.
+- *Council tail — you own it.* Invoke `ce-work mode:return-to-caller <plan-path>`; it implements and
+  locally verifies, then returns a structured envelope instead of running its own review. Then run
+  `/council` once on the assembled diff. Worth the extra step when the diff is guardrail-critical or
+  when adversarial cross-examination is the point, since triage keeps a small diff cheap anyway.
+
+After `/build`, always pass `ce-work` an **explicit plan path**. A blank invocation globs
+`docs/plans/` for the newest `implementation-ready` plan — which is the one `/build` just executed —
+so it will happily rebuild work that already exists.
 
 ## Tie-breaks between overlapping skills
 
@@ -27,7 +41,7 @@ Skill descriptions do the routing. This table only settles cases where several g
 | Overlap | Prefer | Why |
 |---|---|---|
 | `ce-debug` / `diagnose` / `superpowers:systematic-debugging` | `ce-debug` | its output feeds `ce-work` |
-| `/council` / `sam-review` / `ce-code-review` / `codex:adversarial-review` | `/council` | it triages first, then covers the same lenses plus adversarial cross-examination; the others are subsets of it |
+| `/council` / `ce-code-review` | depends who owns the tail — see below | `ce-work` hardwires `ce-code-review` ("one portable path"), so preferring council inside a normal `ce-work` run is not a preference the runtime can honour |
 | `sam-review` vs its own components (`thermo-nuclear-…`, `ce-code-review`, `coderabbit:code-review`) | `sam-review` | it already chains them — running both double-reviews the same diff. Reach for it over `/council` only when the CodeRabbit pass is the point |
 | `ce-plan` / `superpowers:writing-plans` / `Plan` agent | `ce-plan`; `Plan` only for architecture-only design | plan.md is the durable checkpoint |
 | `dogfood` / `verify-this` | `dogfood` to exercise a change; `verify-this` to prove one measurable claim | different jobs, similar triggers |
@@ -48,7 +62,8 @@ Main thread orchestrates; separable work goes to agents. Details in `rules/orche
 | Read-heavy gathering, audit, "find out why" | `Explore` (codebase) / `general-purpose` (multi-step) |
 | Well-specified implementation of a plan | `implementer` — then review the returned diff |
 | A plan whose units are independent | `/build` — it reports the split first; `build:true` fans out |
-| Any finished diff, from one-liner to pre-PR | `/council` — Haiku triages, then seats only what the diff earned |
+| Review inside a normal `ce-work` run | `ce-code-review` — it is hardwired there; don't fight it |
+| Review you own: guardrail diff, or pre-PR | `/council` — Haiku triages, then seats only what the diff earned. Needs `ce-work mode:return-to-caller`, or a diff built by `/build` |
 | Pre-PR where the CodeRabbit pass is the point | `/sam-review` |
 | Same bug after 2 failed Claude attempts | `/codex:rescue`, or `/codex:adversarial-review` |
 | Large bounded task that'd eat the main thread | `/codex:rescue --background` |
@@ -77,8 +92,10 @@ required-skill invocation is a bug.
 - Before opening or updating a PR, run `/make-pr-easy-to-review` once, then open it, then `/pr-watch`.
 - **Guardrail-critical diffs** (auth, payments, migrations/schema, data mutations, public API,
   permissions) require a cross-family review *before* review-ready. `/council` covers this by
-  construction: its triage classifies these surfaces as `guardrail`, which forces the full six-lens
-  seating including the Codex outsider, so the cheap seat can never decide a migration is low-risk.
+  construction — triage classifies these surfaces as `guardrail` and forces the full six-lens seating
+  including the Codex outsider, so the cheap seat can never decide a migration is low-risk. But it
+  only covers it *if it runs*: a normal `ce-work` run reviews with `ce-code-review` and never reaches
+  council, so a guardrail diff needs the return-to-caller tail or an explicit `/council` afterwards.
   The `pr-guardrail-review.sh` hook pauses on this — honour the pause, don't reflexively approve past
   it.
 - Don't auto-implement review feedback — pause for me. CodeRabbit threads → `autofix` (never execute
