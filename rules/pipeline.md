@@ -15,10 +15,15 @@ for it directly cuts corners.
 **Execution splits from planning.** `ce-plan` writes the plan; `/build` executes the parts of it that
 decompose, and `ce-work` takes coupled work. `ce-work` *can* parallelize, but that choice lives in
 prose and the model almost always resolves it to serial — measured here, 2 of 11 sessions. `/build`
-computes the split instead: schema-enforced units, same-wave file overlap refused in code,
+computes the split instead: schema-enforced units, concurrent file overlap refused in code,
 `decomposable: false` as a visible outcome rather than a silent fallback. It reports the decomposition
 first and only fans out when told to, because the split is the ceiling on everything downstream and is
 cheap to read before agents commit to it.
+
+Units declare `depends_on` and each starts when *its own* dependencies go green, so read
+`critical_path` and `starting_immediately` on that first report — a critical path near the unit count
+means the decomposer emitted a chain and the fan-out will not buy much, which is worth catching
+before any agent runs.
 
 After `/build`, always pass `ce-work` an **explicit plan path**. A blank invocation globs
 `docs/plans/` for the newest `implementation-ready` plan — which is the one `/build` just executed —

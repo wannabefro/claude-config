@@ -30,9 +30,14 @@ Invoking this command is the explicit opt-in the Workflow tool requires.
 
 `ce-work` can parallelize, but the choice lives in prose and the model resolves it — measured across
 this machine's transcripts it picked parallel in 2 of 11 sessions, so in practice work runs serial
-without anyone deciding it should. Here the split is computed: units are schema-enforced, same-wave
-file overlap is checked in code and refused, and `decomposable: false` is a visible typed outcome
-rather than a silent fallback to serial.
+without anyone deciding it should. Here the split is computed: units are schema-enforced, units that
+could run concurrently are refused in code if they share a file, and `decomposable: false` is a
+visible typed outcome rather than a silent fallback to serial.
+
+Each unit declares `depends_on` and starts the moment *its own* dependencies are green — not when a
+whole cohort finishes. That distinction is most of the parallelism: on a real 12-unit decomposition
+the previous wave-barrier scheduler ran 6 sequential stages at peak concurrency 4 of 12, while only
+3 of 52 files were actually contested.
 
 Use `ce-work` when the work is genuinely coupled, and for the shipping tail.
 
@@ -46,16 +51,24 @@ that cost more than the parallelism saves.
 
 - If it returns `decomposable: false`, **that is a successful outcome, not a failure.** Relay the
   reason and build the work serially instead. Do not re-run trying to force a split.
-- If it returns same-wave file `conflicts`, the decomposition was wrong. Report the overlap and offer
-  to re-run with those units merged or re-waved.
-- On success: report `units_green / units_total`, then the **merge sequence** in wave order. Nothing
-  is merged automatically — an unattended N-way merge is where parallel builds go wrong.
-- Report `needs_attention` units honestly and prominently. A unit that failed its own verify command
-  may have had a later wave built on top of it.
+- **On the step-1 report, lead with `critical_path` and `starting_immediately`, not the unit count.**
+  Those two numbers are how parallel the build will actually be. Twelve units with a critical path of
+  10 is a chain wearing a fan-out's clothing — say so and offer to re-decompose, because the fix is
+  cheap now and expensive after the agents run.
+- If it returns `conflicts`, two units that could run at the same time claim the same file. Report the
+  overlap and offer to re-run with them merged or with a real dependency declared between them.
+- If it returns `cycles` or `dangling`, the dependency graph is malformed — relay it and re-run.
+- On success: report `units_green / units_total`, then the **merge sequence**, which is in dependency
+  order so a unit always merges after whatever it was built on. Nothing is merged automatically — an
+  unattended N-way merge is where parallel builds go wrong.
+- Report `needs_attention` honestly and prominently, and distinguish the two kinds: a unit that
+  **failed** its own verify command, versus one that was **skipped** because a dependency never went
+  green. A skipped unit is untouched work, not broken work — fix its blocker and it still needs
+  building.
 
 ## After it succeeds
 
-Merge in wave order, then run `/council` **once** on the assembled diff. Its triage sizes the seating,
+Merge in `merge_sequence` order, then run `/council` **once** on the assembled diff. Its triage sizes the seating,
 so an ordinary build pays for two lenses and a guardrail surface seats all six. Do not review per
 unit: the per-unit gate is the `verify_command`, and putting a review inside the loop is what makes
 parallel building slower than serial building.
