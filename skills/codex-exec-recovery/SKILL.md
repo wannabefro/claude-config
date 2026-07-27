@@ -46,4 +46,4 @@ timeout <N> codex exec -c model_reasoning_effort=medium "<task — inline any co
 ## Notes
 
 - `rmcp … worker quit with fatal: Auth(AuthorizationRequired)` in the logs is **non-fatal noise**, not the stall cause — don't chase it.
-- An empty Codex pass does **not** satisfy a cross-model review/plan invariant. See the Codex section in `~/.claude/CLAUDE.md` and `rules/workflows.md`.
+- An empty Codex pass does **not** satisfy a cross-model review/plan invariant. See the Codex section in `~/.claude/CLAUDE.md` and `rules/pipeline.md`.

@@ -7,7 +7,7 @@ description: Use when a bug is hard — user says "diagnose this" / "debug this"
 
 A discipline for hard bugs. Skip phases only when explicitly justified.
 
-**vs other debugging skills:** `ce-debug` is the default debugging entry per `rules/workflows.md`; use `diagnose` when explicitly invoked or when constructing the feedback loop IS the hard part (flaky repro, perf regression, no failing test yet). Don't run both.
+**vs other debugging skills:** `ce-debug` is the default debugging entry per `rules/routing.md`; use `diagnose` when explicitly invoked or when constructing the feedback loop IS the hard part (flaky repro, perf regression, no failing test yet). Don't run both.
 
 When exploring the codebase, use the project's domain glossary to get a clear mental model of the relevant modules, and check ADRs in the area you're touching.
 

@@ -6,7 +6,7 @@ argument-hint: "[pr-number-or-url]"
 
 ## Purpose
 
-One-stop check (and optional background loop) for the current task's PR. Handles both CI status polling and unresolved review comment surfacing. Designed to be invoked from `workflows.md` rules at natural checkpoints, and to re-invoke itself via `ScheduleWakeup` while CI is pending.
+One-stop check (and optional background loop) for the current task's PR. Handles both CI status polling and unresolved review comment surfacing. Designed to be invoked from `rules/shipping.md` at natural checkpoints, and to re-invoke itself via `ScheduleWakeup` while CI is pending.
 
 ## Resolve the PR
 

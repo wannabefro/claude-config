@@ -60,6 +60,6 @@ jq -nc --arg m "$msg" '{
     hookEventName: "PreToolUse",
     permissionDecision: "ask",
     permissionDecisionReason: $m,
-    additionalContext: ("Pre-PR guardrail gate: " + $m + " Per workflows.md, the cross-family review is mandatory on guardrail-critical diffs before marking a PR ready.")
+    additionalContext: ("Pre-PR guardrail gate: " + $m + " Per shipping.md, the cross-family review is mandatory on guardrail-critical diffs before marking a PR ready.")
   }
 }'
