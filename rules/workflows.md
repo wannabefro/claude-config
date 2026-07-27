@@ -58,9 +58,29 @@ needed a human.
 
 **The bigger win is not stopping at all.** Corrections in this loop are overwhelmingly *standing
 preferences being restated*, not planning failures — "use gh instead (and remember)", "build locally
-not cloud". Those recur across 5–16 distinct sessions each. Every one that gets written to memory or
-a rule is a correction that stops happening, which lowers the correction rate that governs how far
-the loop can run unattended in the first place. Capture the preference the first time it is stated.
+not cloud". Those recur across 5–16 distinct sessions each. Every one that gets written down is a
+correction that stops happening, which lowers the correction rate that governs how far the loop can
+run unattended in the first place. Capture the preference the first time it is stated — and put it
+in `~/.claude/rules/` if it holds across repos, because `projects/*/memory/` is **per-project** and a
+cross-repo preference filed there is fixed in one repo out of thirteen.
+
+### Reducing attention upfront, where it's safe
+
+Brainstorm and plan are attention-heavy by design (one-question-at-a-time dialogue, scoping
+confirmation gates). Most of that is worth it; some is not. A question is worth Sam's attention only
+if it fails **both** of these:
+
+- **Answerable from the repo.** If the codebase, an existing plan, `CONCEPTS.md`, git history or the
+  rules already settle it, read it — don't ask. The grounding scout exists for exactly this.
+- **Cheap to reverse.** For a decision that is one edit to undo, pick the obvious default, state the
+  pick in one line, and continue. Ask only when being wrong is expensive: schema and migrations,
+  public API shape, auth, money, anything that writes to committed artifacts or third parties.
+
+Then batch what genuinely remains into a single round rather than a serial interrogation — the cost
+of an unanswered question is one round-trip, but the cost of ten serial ones is ten. Irreversible and
+un-inferable decisions still get asked, individually and clearly. Reducing attention is not the same
+as guessing quietly: a default that was picked rather than asked about must be *visible* in the
+output, so a wrong one is cheap to catch.
 
 ## Tie-breaks between overlapping skills
 
@@ -112,6 +132,12 @@ required-skill invocation is a bug.
 
 ## Commits & PRs
 
+- **Remote git goes through `gh`, over https.** `gh auth status` reports the protocol as ssh but the
+  key isn't available, so a bare `git push` fails on "correct access rights". Push the https URL
+  explicitly — `git push https://github.com/<owner>/<repo>.git <branch>` — and gh acts as the
+  credential helper. Don't diagnose ssh when a push fails; go straight to the https form. This lives
+  here rather than in project memory because memory is per-project and this was restated in 11
+  different repos.
 - **Commit proactively at logical checkpoints** — this overrides the base "only when asked". One
   feature/fix/refactor per commit, verified, related edits bundled. Never commit plans, specs, or
   scratch artifacts.
