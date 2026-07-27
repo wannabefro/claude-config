@@ -40,6 +40,31 @@ directive-only; this doc holds the "why" trimmed out of it.
 
 ## Retired skills — evidence
 
+## CodeRabbit's two halves
+
+The plugin ships two skills with very different portability, and conflating them is what makes
+CodeRabbit feel unreliable across machines:
+
+- `autofix` reads CodeRabbit's review threads off an open PR using `gh` alone — verified, no
+  `coderabbit` invocation anywhere in the skill. The GitHub app is account-level, so this works on
+  every machine and needs no local install.
+- `code-review` shells out to a `coderabbit` binary and a per-machine `coderabbit auth login`. It is
+  absent on at least one machine (checked 2026-07-27: not in `/opt/homebrew/bin`, `/usr/local/bin`,
+  or `~/.local/bin`).
+
+`settings.json` is synced, so `"coderabbit@sam": true` enables the plugin everywhere — the plugin's
+presence is uniform while the binary's is not. The skill fails politely (it prints an install
+message) but only after a review has already been routed to it.
+
+Its description claims to be the "default code-review skill" and to trigger autonomously on any
+review request. That would hijack generic review wording on every machine, working or not. The
+description can't be usefully edited — it lives in `plugins/cache/` and a plugin update overwrites
+it — so the precedence is asserted in `rules/routing.md` instead, which survives.
+
+The CLI is left uninstalled deliberately: `/council` never seated CodeRabbit, `sam-review` (the only
+route that made it an "Always" lens) is retired below, and `autofix` covers the PR-thread case
+without it. Installing it would add a per-machine auth step to unblock a path nothing routes to.
+
 **Retired 2026-07-27:** `sam-review`, `self-consistency`, `best-of-n`, `verify-this` went unused
 across 43 measured sessions, and two of them (`sam-review` and `best-of-n`) were the skills the repo's
 own hooks pointed at — so the non-use wasn't for lack of a wired-up trigger, it reflects that the

@@ -23,8 +23,9 @@ Main thread orchestrates; separable work goes to agents. Tiering/dispatch → `r
 | Read-heavy gathering, audit, "find out why" | `Explore` (codebase) / `general-purpose` (multi-step) |
 | Any approved plan | `/build`; `decomposable:false` is a real answer for coupled work |
 | Well-specified unit, or work `/build` called coupled | `implementer` — review the returned diff |
-| Review — default for a diff you own | `/council` |
+| Review — default for a diff you own | `/council` — outranks `coderabbit:code-review` despite its "default review skill" description |
 | Review inside a blank `ce-work` run | `ce-code-review` — hardwired there; don't fight it |
+| CodeRabbit threads on an open PR | `coderabbit:autofix` — `gh`-only, works on every machine |
 | Same bug after 2 failed Claude attempts | `/codex:rescue` |
 | Large bounded task that'd eat the main thread | `/codex:rescue --background` |
 
@@ -32,3 +33,7 @@ Review at checkpoints, not per edit.
 
 **Retired** — do not route to `sam-review`, `self-consistency`, `best-of-n`, `verify-this`; evidence
 in `docs/routing-rationale.md`.
+
+**CodeRabbit's CLI is machine-local; its GitHub app is not.** `coderabbit:code-review` needs a
+`coderabbit` binary that exists on only some machines — never route to it unhanded. `autofix` needs
+only `gh`. Don't offer to install the CLI to unblock a review; use `/council`.
