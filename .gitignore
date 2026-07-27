@@ -10,7 +10,6 @@
 !/README.md
 !/install.sh
 !/CLAUDE.md
-!/RTK.md
 !/settings.json
 !/tier-router.json
 !/statusline.sh
@@ -24,6 +23,7 @@
 !/docs/
 !/skills/
 !/marketplace/
+!/workflows/
 
 # --- nested re-ignores ---
 # Un-ignoring a directory pulls in its WHOLE subtree, so generated/runtime state

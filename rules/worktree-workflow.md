@@ -1,45 +1,27 @@
+---
+description: Worktree workflow via worktrunk (wt) + cmux — everyday commands, branch prefix, session boundaries.
+---
+
 # Worktree Workflow (worktrunk + cmux)
 
-Replaces the old `cwt` tool. Three composable layers:
-
-- **worktrunk (`wt`)** — git-worktree lifecycle (create/list/merge/remove).
-- **cmux** — workspace + agent UI. A worktrunk hook opens each new worktree
-  in a cmux workspace with a `cmux claude-teams + lazygit` layout.
-- **`cmux claude-teams`** (alias `ct`) — the lead launched in every worktree
-  (auto teammate mode on); also runnable standalone in an existing pane.
-
-## Everyday loop
-
 ```bash
-wt switch -c sm/<name>   # new branch + worktree; auto-opens cmux (claude-teams + lazygit)
-# …work in the cmux workspace; review the diff in the lazygit pane…
+wt switch -c <prefix>/<name>   # new branch + worktree; auto-opens cmux (claude-teams + lazygit)
 wt merge main            # commit + merge back + remove worktree & branch + cd home
 ```
 
-Other commands: `wt list`, `wt switch <name>` (existing worktree), `wt remove`.
+Also `wt list`, `wt switch <name>` (existing), `wt remove`. worktrunk has **no branch-prefix setting**
+— type the prefix yourself (these examples use initials); it's convention, not config.
 
-## Branch prefix
+Every worktree lead has auto teammate mode on, but it self-gates. For side reasoning whose output
+shouldn't persist, prefer `Agent`-tool subagents over teammates — ephemeral, and raw output stays out
+of context.
 
-worktrunk has **no branch-prefix setting** (cwt auto-prepended one). Type it:
-`wt switch -c <prefix>/<name>`. A prefix (these examples use your initials, e.g.
-`sm/`) is convention, not config — substitute your own.
+## Session boundaries
 
-## When to spawn teammates
+A session owns exactly one worktree (the git root of its cwd) — that's the ceiling for edits and
+file-targeting Bash. Don't edit or `cd` into a sibling worktree or the parent clone of the same repo;
+ask me if you need another worktree's state. Never `git worktree remove/prune/move`, never
+`git -C <other-worktree>`, and never force-push a branch that may be checked out elsewhere.
 
-Every worktree lead already has auto teammate mode on, so there's no `ct` step to
-remember — but auto mode self-gates. Spawn teammates into cmux splits only when the
-task forks into **2+ genuinely independent workstreams**; most tasks stay single-agent.
-Monitor spawned teammates from the Feed (Ctrl-4). For side reasoning whose output
-shouldn't persist (search, research, a review lens), prefer `Agent`-tool subagents
-(`Explore`/`general-purpose`) over teammates — they're ephemeral and keep raw output out of context.
-
-## Not baked in (use existing skills ad hoc)
-
-- **Review:** `/sam-review` (or `/code-review`). Not wired into the workflow.
-- **Linear:** seed a task by pasting a ticket or via the Linear MCP. No auto-fetch.
-
-## Config / mechanics & setup internals
-
-Config paths, the cmux pre-start/EPIPE rationale, worktree pre-trust, the `wt`
-shell-function requirement, and the AI-commit-message toggle → `~/.claude/docs/worktree-mechanics.md`
-(on-demand; read when setting up or debugging the worktree tooling).
+Setup internals — config paths, cmux pre-start/EPIPE rationale, worktree pre-trust, the `wt`
+shell-function requirement, AI-commit-message toggle → `~/.claude/docs/worktree-mechanics.md`.

@@ -1,135 +1,79 @@
+---
+description: Delegation and model-tiering decisions — implementer tiers, dispatch quality, loop drivers, chunky-deliverable summaries.
+---
+
 # Orchestration & Delegation
 
-The main thread (Opus) is an **orchestrator** — it plans, decides, reviews, and
-holds coupled reasoning. It pushes **separable** work to cheaper / isolated
-agents. Nothing in the platform forces delegation (it is always a model
-decision), so deterministic hooks nudge it and the decision rule below governs
-routing. This doc owns the conceptual model; `workflows.md` holds the
-operational hard-trigger table and points here.
+The main thread orchestrates: it plans, decides, reviews, and holds coupled reasoning. Separable work
+goes to agents. Coupled, iterative, or architectural work stays in main — delegating it costs more
+than it saves.
 
-## Three orthogonal levers
+## Implementer tiers
 
-Keep these distinct — conflating them is the usual mistake.
+`implementer` is the writer agent, and its tier is per-dispatch:
 
-| Need | Mechanism | Cost |
-|---|---|---|
-| **Cheaper writes (model tiering)** | subagent pinned `model: sonnet` — the `implementer` agent | ~40% cheaper than Opus |
-| **Context isolation of separable work** | any subagent (`Explore` / `general-purpose` / `implementer`), or `ce-work`'s subagent dispatch | cheap |
-| **Parallelism of independent workstreams** | agent teams (`cmux claude-teams`) | ~7× — only when genuinely parallel |
+- **Haiku** — mechanical single-file units: renames, boilerplate, rote refactors.
+- **Sonnet** (default) — well-specified multi-file units.
+- **Never Opus or Fable.** If writing a unit needs that much reasoning it isn't well-specified enough
+  to hand off — plan it harder, or keep it in main. For genuinely hard units route to a *different
+  family* (Codex via `best-of-n`), not a bigger same-family implementer. The `tier-router` hook
+  enforces this. Precedence, highest first: `CLAUDE_CODE_SUBAGENT_MODEL` env var → per-dispatch
+  `model` → the definition's `model:` → inherit. That env var would silently outrank the router —
+  leave it unset.
 
-Agent teams are **not** a tiering tool: per-teammate model selection is
-unsupported (CC issue #24316), teammates share one model, and a team costs ~7×
-tokens. Use teams only for genuinely independent parallel workstreams; the
-documented "Opus orchestrates, cheaper model writes" path is a `model: sonnet`
-subagent, not a teammate.
+`Explore` no longer defaults to Haiku (since 2.1.198 it inherits the main model, capped at Opus), so
+gathering stays cheap only because the router sends it to Sonnet. Drop that route and 120+ dispatches
+land on Opus.
 
-**Pick the implementer's tier per dispatch — `model: sonnet` is only the
-default.** The Agent tool takes a `model` override, so one generic `implementer`
-spans tiers:
+Dispatch quality is the whole game: hand the implementer an **executable definition of done** — a
+failing test or the exact verify command — not a prose paragraph. That turns its self-verification
+into a pass/fail gate. For hard or high-stakes units escalate the *review topology*
+(`subagent-driven-development`'s 2-stage, `best-of-n`, `self-consistency`), not the writer's model.
 
-- **Haiku** — mechanical, single-file, pattern-is-obvious units (rename,
-  boilerplate, rote refactor). Cheaper, no quality loss on rote work.
-- **Sonnet (default)** — well-specified multi-file units.
-- **Never promote the implementer to Opus or above (incl. Fable).** If writing
-  a unit needs that level of reasoning, it isn't well-specified enough to hand
-  off — plan it harder so Sonnet can write it, or keep it in the main thread.
-  Big-model-writes → big-model-reviews also collapses the independent-lens
-  benefit. For genuinely hard
-  units, route to a **different family** (Codex via `best-of-n`), not a bigger
-  same-family implementer.
+Never hand-roll a review loop; reuse SDD's 2-stage, `ce-code-review`, or `/sam-review`.
 
-The implementer is only as good as its dispatch: hand it an **executable
-definition of done** (a failing test or exact verify command) as the acceptance
-criterion, not a prose paragraph — that turns its self-verification into a
-pass/fail gate. Escalate the review *topology* (SDD 2-stage, `best-of-n`,
-`self-consistency`) for hard/high-stakes units rather than reaching for a bigger
-implementer model.
+## Agent teams: parallelism with discussion, not tiering
 
-## Decision rule (routing)
+Teammates *can* carry different models — spawn them from subagent definitions and each honours its
+own `model:` frontmatter (fixed at spawn; `/model` afterwards only retargets the lead). So avoiding
+teams for tiering isn't about impossibility, it's the tax: every teammate is a full independent
+session that reloads CLAUDE.md, MCP servers and skills from scratch, and cost scales linearly per
+teammate. The widely-quoted ~7× is specifically teammates *in plan mode*, not a constant.
 
-When a unit of work arrives, route by its shape:
+Decision rule: **do the workers need to talk to each other?** If only the result matters, use
+subagents — their verbose work stays isolated and only a summary returns. Teams earn the tax when
+lenses must argue: multi-lens review of one diff, competing debugging hypotheses, teammates each
+owning a slice of a new module. Not for sequential work, same-file edits, or dependency-heavy work.
 
-- **Coupled / iterative / architectural judgment** → stay in main (Opus).
-  Delegating coupled work costs more than it saves (Amdahl: the sequential
-  synthesis bounds the win).
-- **Read-heavy gathering** (explore, audit, research, doc lookup) → `Explore`
-  (codebase) / `general-purpose` (multi-step) / `ce-web-researcher` (external) /
-  context7 (library docs). Isolated, cheap.
-- **Well-specified implementation of a unit** → `implementer` (sonnet); Opus
-  reviews the returned diff. Tiering + isolation.
-- **Full feature → ship** (multi-unit, needs plan + gates + PR) → `ce-work`
-  (default executor). For tiered execution within it, dispatch `implementer` or
-  use the SDD loop (below).
-- **2+ genuinely independent workstreams** (no shared write surface) → agent
-  team, accepting ~7×. Rare.
-- **Hard bug** → `ce-debug` (+ `Explore`/`general-purpose` for investigation).
+## Loop drivers are dispatched writers
 
-## Executor layer (dual-track)
+A recurring or autonomous driver (`/loop`, `looper`, `ScheduleWakeup`, cron, long unattended
+`ce-work`) does dispatch + gate-checking + logging, so **pin it to Sonnet**. An Opus driver re-reads
+full loop context every iteration and multiplies that across `max_iterations`. Escalate individual
+gates when one is genuinely guardrail-critical; never promote the whole driver to cover one hard step.
+Neither `/loop` nor `ScheduleWakeup` takes a model override — pin it in the driving agent's `model:`
+frontmatter.
 
-- **`ce-work`** — default for features → ship: plan.md, quality gates,
-  worktree-isolated subagents, review loop. Its subagents inherit Opus, which is
-  fine for orchestrated feature work the orchestrator reviews.
-- **`superpowers:subagent-driven-development` (SDD)** — the isolated multi-task
-  implementation loop when you want explicit **model tiering** across units: it
-  dispatches a fresh implementer + 2-stage review per task. Use `implementer`
-  (sonnet) as the dispatched writer — SDD pins no model on its own, so the
-  `implementer` agent is what supplies the cheaper tier. Not demoted; it serves a
-  different purpose than ce-work.
-- **Review loop** — never hand-roll it. Reuse SDD's 2-stage (spec-compliance →
-  code-quality) or `ce-code-review` / `/sam-review`. The `implementer`'s report
-  format feeds these.
+## Approval cost scales with fan-out
 
-## Loop drivers are not orchestrators
+A command shape that needs one approval when you run it needs N when N agents each run it. Before
+fanning out, check that everything the agents will run is already auto-allowed — and in particular
+**never put a `cd /some/path &&` prefix in a fan-out prompt.** A `cd` outside the session directory
+gates the whole compound command, so ~30 free read-only calls become ~30 prompts per member. Use
+`git -C "<path>"` and absolute paths; both stay auto-allowed. Same failure shape as any env-var or
+`unset` prefix. The `Read` tool is also refused outside the session root, so out-of-session reads
+need `cat -n`/`sed -n` with an absolute path.
 
-A recurring or autonomous loop driver (via `/loop`, `looper`, `ScheduleWakeup`,
-a cron, or a long unattended `ce-work`) is a **dispatched writer**, not the
-main-thread orchestrator — so it takes the same tiering rule, and the same
-default. **Pin the driver to Sonnet.** Its per-iteration work is dispatch +
-gate-checking + logging, which is separable and well-specified; an Opus driver
-re-reads full loop context every iteration and multiplies that cost across
-`max_iterations`, which is the worst case for plan-limit consumption. Escalate
-*individual units/gates* to Opus or a cross-family pass (`best-of-n`, a Codex
-judge) only when a step is genuinely guardrail-critical — never promote the
-whole driver to cover one hard step (same reasoning as "never promote the
-implementer to Opus"). Neither `/loop` nor `ScheduleWakeup` takes a model
-override, so the durable place to pin the tier is the **driving agent's `model:`
-frontmatter**; the `looper` skill's Host Model Default bakes this into scaffolds.
+## Chunky deliverables get an HTML summary
 
-## Enforcement layer (deterministic nudges + tier routing)
+When a dispatched agent finishes work a prose reply would bury — a multi-file implementation, a
+research sweep, a plan, a migration, roughly >3 files or more than a few minutes — have it write an
+HTML summary and return the path. Surface it with `SendUserFile` (`display: render`), or publish an
+`Artifact` when I'd want to read it from my phone. Lead with the outcome, then what changed and why,
+then residual risk. Below that threshold, stay inline.
 
-Delegation is a model decision with no platform enforcement, so hooks
-backstop the orchestrator (main-thread only — CC #34692 means hooks
-don't fire for subagent tool calls, which is intended here):
+## Roster
 
-- `hooks/delegate-nudge.sh` (PostToolUse, non-blocking) — 4 consecutive
-  Read/Grep/Glob → reminder to dispatch a subagent; resets on
-  Edit/Write/MultiEdit/Task.
-- `hooks/delegate-prompt-nudge.sh` (UserPromptSubmit, non-blocking) —
-  investigation-shaped prompt → reminder to delegate the gathering phase;
-  skips system/task notifications.
-- **`tier-router` plugin** (PreToolUse on Agent/Task) — deterministic model
-  tiering: any dispatch without an explicit `model` gets one injected per
-  `~/.claude/tier-router.json` (default sonnet; haiku for mechanical agents;
-  `fork`/`Plan` skipped), and `implementer`+`opus`/`fable` are denied — the
-  never-promote rule is now enforced, not just prose. An explicit `model` on
-  the dispatch always wins (deliberate escalation stays available; that's
-  also why routing keys only on `subagent_type`, never prompt content).
-  Injections log to `hooks/state/tier-router.log`. Source:
-  `~/dev/claude-tier-router`. Keep it the only input-modifying hook on
-  Agent/Task — parallel `updatedInput` hooks race.
-
-Heed the nudges; they encode the "3rd consecutive read → Explore" rule as an
-interrupt. Ignore one only when the work is genuinely coupled to the
-conversation (the nudge text says as much).
-
-## Roster (settled)
-
-- **Custom agent:** `implementer` (sonnet) only — the tiering writer. The old
-  `planner` / `researcher` / `reviewer` customs are disabled; built-ins +
-  CE skills + `/sam-review` cover them.
-- **Built-ins:** `Explore`, `Plan`, `general-purpose`.
-- **Reviewers may be language-specialized** (CE ships `ce-swift-ios-reviewer`,
-  `ce-dhh-rails-style`, `ce-julik-frontend-races-reviewer`); **implementers stay
-  generic** — push language toolchain into project CLAUDE.md, not per-language
-  implementer agents. Revisit only for non-prompt-injectable semantics (Rust
-  borrow checker, Swift actor isolation) in a near-monolingual repo.
+`implementer` is the only custom writer agent. Built-ins: `Explore`, `Plan`, `general-purpose`.
+Reviewers may be language-specialised (CE ships several); implementers stay generic — language
+toolchain belongs in the project's own CLAUDE.md.

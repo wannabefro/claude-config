@@ -1,11 +1,16 @@
 {
   "mode": "all-except-skip",
   "default": "sonnet",
+  "route": {
+    "Plan": "opus",
+    "silent-failure-hunter": "opus",
+    "type-design-analyzer": "opus"
+  },
   "haiku": [
     "statusline-setup",
     "impeccable:impeccable-manual-edit-applier"
   ],
-  "skip": ["fork", "Plan"],
+  "skip": ["fork", "Plan", "deep-reasoner", "fable-planner", "fable-debugger"],
   "deny": [
     {
       "agent": "implementer",

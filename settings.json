@@ -4,7 +4,10 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "ENABLE_TOOL_SEARCH": "auto:5",
-    "MCP_TIMEOUT": "60000"
+    "MCP_TIMEOUT": "60000",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "NODE_OPTIONS": ""
   },
   "permissions": {
     "allow": [
@@ -88,7 +91,57 @@
       "mcp__codegraph__codegraph_node",
       "mcp__codegraph__codegraph_status",
       "mcp__codegraph__codegraph_explore",
-      "mcp__codegraph__codegraph_files"
+      "mcp__codegraph__codegraph_files",
+      "Bash(rtk *)",
+      "Bash(bd *)",
+      "Bash(mv *)",
+      "Bash(chmod *)",
+      "Bash(git push *)",
+      "Bash(xcodebuild *)",
+      "Bash(idb *)",
+      "Bash(xcrun simctl list *)",
+      "Bash(xcrun simctl create *)",
+      "Bash(xcrun simctl boot *)",
+      "Bash(xcrun simctl shutdown *)",
+      "Bash(xcrun simctl install *)",
+      "Bash(xcrun simctl launch *)",
+      "Bash(xcrun simctl terminate *)",
+      "Bash(xcrun simctl openurl *)",
+      "Bash(xcrun simctl io *)",
+      "Bash(xcrun simctl spawn *)",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_Preview__preview_stop",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_resize",
+      "mcp__Claude_Preview__preview_inspect",
+      "mcp__Claude_Preview__preview_click",
+      "mcp__Claude_Preview__preview_eval",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "mcp__plugin_context-mode_context-mode__ctx_index",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__take_screenshot",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__take_snapshot",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate_page",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__evaluate_script",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__list_console_messages",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__list_network_requests",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__claude-design__read_file",
+      "mcp__claude-design__list_files",
+      "mcp__Claude_Browser__get_page_text",
+      "Bash(rtk grep *)",
+      "Bash(unset NODE_OPTIONS)",
+      "Bash(unset NODE_OPTIONS *)",
+      "Bash(codex exec --sandbox read-only *)"
     ],
     "deny": [
       "Bash(curl *)",
@@ -116,33 +169,17 @@
       "mcp__serena__open_dashboard"
     ],
     "ask": [
-      "Bash(mkdir *)",
-      "Bash(mv *)",
-      "Bash(chmod *)",
-      "Bash(kill *)",
-      "Bash(pkill *)",
       "Bash(killall *)",
       "Bash(docker *)",
       "Bash(docker-compose *)",
-      "Bash(git push *)",
       "Bash(git clean *)",
       "Bash(git reset *)"
     ],
     "defaultMode": "auto"
   },
-  "model": "opus",
+  "model": "claude-opus-5[1m]",
   "hooks": {
     "PostToolUse": [
-      {
-        "matcher": "Read|Grep|Glob|Edit|Write|MultiEdit|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/delegate-nudge.sh",
-            "timeout": 5
-          }
-        ]
-      },
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
@@ -172,16 +209,6 @@
       {
         "matcher": "*",
         "hooks": []
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/self-consistency-nudge.sh",
-            "timeout": 5
-          }
-        ]
       },
       {
         "matcher": "*",
@@ -256,16 +283,6 @@
       }
     ],
     "UserPromptSubmit": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/delegate-prompt-nudge.sh",
-            "timeout": 5
-          }
-        ]
-      },
       {
         "hooks": [
           {
@@ -407,7 +424,9 @@
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
   "autoDreamEnabled": true,
+  "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
+  "agentPushNotifEnabled": true,
   "feedbackSurveyState": {
     "lastShownTime": 0
   }

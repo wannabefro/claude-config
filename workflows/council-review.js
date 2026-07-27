@@ -1,0 +1,384 @@
+export const meta = {
+  name: 'council-review',
+  description: 'Multi-model council: diverse lenses review a diff, cross-examine each other\'s findings, deadlocks escalate to Fable, then a judge synthesises a verdict',
+  whenToUse: 'High-stakes or guardrail-critical diffs — auth, payments, migrations, data mutations, public API. Overkill for routine changes; use /sam-review or ce-code-review there.',
+  phases: [
+    { title: 'Convene', detail: 'five lenses review in parallel on Opus and Sonnet' },
+    { title: 'Cross-examine', detail: 'every finding challenged from both tiers' },
+    { title: 'Escalate', detail: 'Fable breaks deadlocks and contested criticals only' },
+    { title: 'Verdict', detail: 'judge dedupes, ranks, and decides ship / fix-first' },
+  ],
+}
+
+// Diversity comes from the LENS first and the tier second. Two seats are special:
+//   · Codex (OpenAI) is the only member NOT from the Anthropic family, so it is
+//     the only one whose blind spots are uncorrelated with the rest. That is
+//     worth a standing seat — a unanimous Claude council can be unanimously wrong.
+//   · Fable is same-family and is deliberately NOT standing: it is the escalation
+//     seat, spent only where the council cannot resolve a finding on its own.
+const COUNCIL = [
+  { key: 'correctness',     model: 'opus',   brief:
+    'Logic errors, off-by-one, null/undefined paths, race conditions, incorrect state transitions, error handling that swallows failures. Trace the actual control flow rather than reading for plausibility.' },
+  { key: 'security',        model: 'opus',   brief:
+    'Injection, authz/authn gaps, secrets in code or logs, unsafe deserialisation, SSRF, path traversal, TOCTOU, and silent-failure paths where an error is caught and discarded. Assume hostile input everywhere.' },
+  { key: 'spec',            model: 'opus',   brief:
+    'Does the change actually do what it claims? Derive the intended behaviour from commit messages, PR body, tests and surrounding code, then check the implementation against THAT — not against itself. Flag scope creep and silent behaviour changes.' },
+  { key: 'maintainability', model: 'sonnet', brief:
+    'Abstraction quality, duplicated logic, growing conditionals, files doing too much, names that mislead, comments that contradict code. Judge against the surrounding codebase style, not an abstract ideal.' },
+  { key: 'tests',           model: 'sonnet', brief:
+    'Coverage of the changed paths, and whether tests encode the INVARIANT or merely restate the implementation. A test that still passes when the business rule changes is the wrong test. Flag missing edge cases and absent failure-path coverage.' },
+  { key: 'outsider', via: 'codex', model: 'sonnet', brief:
+    'Whatever a Claude-family reviewer would miss. You have no assigned lens — you are here because you reason differently. Prioritise defects the other members are structurally unlikely to see: unstated assumptions, the problem being solved wrongly, interactions between the diff and code it does not touch.' },
+]
+
+// Every finding is challenged from both tiers regardless of who raised it —
+// a different lens on the same tier is still an independent read.
+const CHALLENGERS = ['opus', 'sonnet']
+const ESCALATION_MODEL = 'fable'
+// Hard ceiling on the expensive seat: cost must not scale with finding count.
+const MAX_ESCALATIONS = 2
+
+const FINDINGS = {
+  type: 'object',
+  required: ['findings'],
+  properties: {
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['title', 'file', 'severity', 'why_it_breaks'],
+        properties: {
+          title: { type: 'string', description: 'One-line claim' },
+          file: { type: 'string', description: 'Repo-relative path' },
+          line: { type: 'number' },
+          severity: { enum: ['critical', 'major', 'minor'] },
+          why_it_breaks: { type: 'string', description: 'Concrete failure scenario: inputs/state -> wrong outcome' },
+          evidence: { type: 'string', description: 'The code that supports the claim' },
+        },
+      },
+    },
+  },
+}
+
+const CHALLENGE = {
+  type: 'object',
+  required: ['refuted', 'reasoning'],
+  properties: {
+    refuted: { type: 'boolean', description: 'true if the finding does NOT hold' },
+    reasoning: { type: 'string' },
+    severity_should_be: { enum: ['critical', 'major', 'minor', 'not-a-finding'] },
+  },
+}
+
+const ADJUDICATION = {
+  type: 'object',
+  required: ['holds', 'reasoning'],
+  properties: {
+    holds: { type: 'boolean', description: 'true if the finding is real and should stand' },
+    reasoning: { type: 'string', description: 'What the disagreeing challengers each got right and wrong' },
+    severity_should_be: { enum: ['critical', 'major', 'minor', 'not-a-finding'] },
+  },
+}
+
+const VERDICT = {
+  type: 'object',
+  required: ['verdict', 'summary', 'ranked'],
+  properties: {
+    verdict: { enum: ['ship', 'fix-first', 'needs-discussion'] },
+    summary: { type: 'string', description: 'Two sentences: the state of this diff and the single most important thing to do' },
+    ranked: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['title', 'file', 'severity', 'action'],
+        properties: {
+          title: { type: 'string' },
+          file: { type: 'string' },
+          line: { type: 'number' },
+          severity: { enum: ['critical', 'major', 'minor'] },
+          action: { type: 'string', description: 'What to actually change' },
+          council_support: { type: 'string', description: 'Which lenses raised it and how the challenge round went' },
+        },
+      },
+    },
+    dismissed: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['title', 'why_dismissed'],
+        properties: { title: { type: 'string' }, why_dismissed: { type: 'string' } },
+      },
+    },
+  },
+}
+
+// args accepts either a plain string (the target) or { target, codexModel }.
+const argObj = (args && typeof args === 'object') ? args : {}
+const rawTarget = (typeof args === 'string' ? args : argObj.target) || ''
+const target = rawTarget.trim()
+  || 'the current branch: committed diff against the default branch, plus any uncommitted changes'
+
+// The installed CLI has no model-list subcommand, so this is passed through
+// unvalidated; omit it to use whatever ~/.codex/config.toml pins.
+const CODEX_MODEL = String(argObj.codexModel || '').trim()
+const CODEX_MODEL_FLAG = CODEX_MODEL ? ` -m ${CODEX_MODEL}` : ''
+
+// Repo path matters for approval cost, not just correctness: `cd /some/path &&`
+// is a boundary crossing that gates the WHOLE compound command, so a review of
+// an out-of-session repo turns ~30 free read-only calls into ~30 approval
+// prompts — once per agent, multiplied by the fan-out. `git -C` and absolute
+// paths never change directory and stay auto-allowed.
+const repoPath = String(argObj.repoPath || '').trim()
+const bundlePath = String(argObj.bundlePath || '').trim()
+const G = repoPath ? `git -C "${repoPath}"` : 'git'
+
+// Bundle mode exists because instructing agents not to `cd` does not work — they
+// do it anyway, and each one costs an approval prompt. With a pre-built bundle
+// the members need no shell at all, and are dispatched as `council-reader`,
+// which has no Bash tool. Enforcement, not instruction.
+const READER = bundlePath ? 'council-reader' : undefined
+
+// Optional: seat only some lenses, e.g. when one has already reported and you
+// want the rest without paying for it again.
+const wanted = Array.isArray(argObj.lenses) ? argObj.lenses : null
+const SEATED = wanted ? COUNCIL.filter((m) => wanted.includes(m.key)) : COUNCIL
+
+const scope = bundlePath ? `
+REVIEW TARGET: ${target}
+
+Everything you need has been assembled for you. Read these files — you have no
+shell and do not need one:
+
+  ${bundlePath}/00-diffstat.txt          summary of what changed
+  ${bundlePath}/01-the-diff.patch        the full diff under review
+  ${bundlePath}/02-tier-router.sh.txt    the changed file AFTER, line-numbered
+  ${bundlePath}/06-tier-router-BEFORE.sh.txt   the same file BEFORE, for comparison
+  ${bundlePath}/03-tests-run.sh.txt      the test suite, line-numbered
+  ${bundlePath}/04-policy.json           shipped default policy
+  ${bundlePath}/05-new-fixtures.txt      the test fixtures
+  ${bundlePath}/07-README.md.txt         the README, line-numbered (check it against the code)
+
+Read the AFTER file in full, not just the diff hunks — a hunk read without its
+surrounding code is how false findings get made. Cite line numbers from the
+line-numbered files. If something you need is genuinely absent from the bundle,
+say so rather than guessing.
+` : `
+REVIEW TARGET: ${target}
+${repoPath ? `REPOSITORY: ${repoPath}\n` : ''}
+Establish the diff yourself before reviewing. Useful starting points:
+  ${G} status --short
+  ${G} diff $(${G} merge-base HEAD origin/main 2>/dev/null || ${G} merge-base HEAD main)...HEAD
+  ${G} diff                      # uncommitted
+${repoPath ? `
+IMPORTANT — do NOT \`cd\` into the repository. Use \`git -C "${repoPath}" ...\` for git and
+absolute paths under ${repoPath} for file reads. A \`cd\` out of the session
+directory requires manual approval for every command that follows it, once per
+council member; \`git -C\` and absolute paths do not.
+
+The Read tool may be refused for paths outside the session directory. If it is,
+read via Bash with an absolute path instead — \`cat -n "${repoPath}/<file>"\` or
+\`sed -n '1,200p' "${repoPath}/<file>"\`.
+` : ''}
+Read the full content of changed files, not just the hunks — a hunk read in
+isolation is how false findings get made.
+`
+
+const rubric = `
+Report ONLY defects you can substantiate. For each, give a concrete failure
+scenario: specific inputs or state leading to a specific wrong outcome. If you
+cannot construct one, it is not a finding — omit it.
+
+Do not report: style preferences, hypotheticals with no reachable path,
+pre-existing issues the diff does not touch, or speculation about code you did
+not read. An empty findings list is a valid and useful result.
+`
+
+let escalations = 0
+
+log(`Convening ${SEATED.length} of ${COUNCIL.length} lenses on Opus + Sonnet; Fable held in reserve for deadlocks`)
+
+// Pipeline, not barrier: a lens's findings enter cross-examination the moment
+// that lens returns, so slow lenses never gate fast ones.
+const perLens = await pipeline(
+  SEATED,
+
+  (member) => member.via === 'codex'
+    ? agent(
+      `You are a HARNESS, not a reviewer. Your only job is to run OpenAI's Codex CLI over this diff
+and relay what IT found. You must not review the code yourself.
+
+${scope}
+
+STEP 1 — obtain the diff. If a bundle path appears above, the diff is already at
+${bundlePath ? bundlePath + '/01-the-diff.patch' : '(build it yourself)'} — use it directly and run no git commands. Otherwise capture it:
+  git diff $(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main)...HEAD > /tmp/council-diff.txt
+  git diff >> /tmp/council-diff.txt
+If the diff is enormous, narrow it to the most consequential files and say which you dropped.
+
+STEP 2 — run Codex in the FOREGROUND with the diff INLINED in the prompt. Codex hangs when a run
+needs tool use, so it must not have to read files itself:
+
+  codex exec --sandbox read-only${CODEX_MODEL_FLAG} -c model_reasoning_effort=high "Review this diff and list only
+  defects you can substantiate with a concrete failure scenario. For each: title, repo-relative
+  file, line if known, severity (critical|major|minor), and the specific inputs or state that
+  produce the wrong outcome. Ignore style. Reply as JSON: {\\"findings\\":[...]}.
+
+  <paste the full contents of /tmp/council-diff.txt here>"
+
+Never use run_in_background — a backgrounded Codex run hangs reporting "still running".
+
+STEP 3 — check for the empty-output flake. The run is empty if stdout ends at the echoed prompt with
+no model output after it. If so, retry ONCE. If the retry is also empty, return an empty findings
+list and say Codex produced no output — do NOT substitute your own review.
+
+CRITICAL: this seat exists because Codex is the only non-Anthropic member of the council. If you
+write findings yourself, the council silently loses its one uncorrelated voice and everyone is worse
+off. Relay Codex's findings faithfully, including ones you disagree with. Returning nothing is a fine
+outcome; fabricating a review is not.`,
+      { label: 'lens:outsider(codex)', phase: 'Convene', model: member.model, effort: 'high', schema: FINDINGS }
+    )
+    : agent(
+      `You are the ${member.key.toUpperCase()} member of a review council.\n\n${scope}\n
+YOUR LENS — report only through it; other members cover the rest:
+${member.brief}
+${rubric}`,
+      { label: `lens:${member.key}`, phase: 'Convene', model: member.model, effort: 'high', schema: FINDINGS, agentType: READER }
+    ),
+
+  (review, member) => {
+    const found = (review && review.findings) || []
+    if (!found.length) {
+      log(`${member.key}: no findings`)
+      return []
+    }
+    log(`${member.key}: ${found.length} finding(s) -> cross-examination`)
+
+    return parallel(found.map((f) => () => {
+      const brief = `CLAIM (${f.severity}): ${f.title}
+FILE: ${f.file}${f.line ? ':' + f.line : ''}
+ASSERTED FAILURE: ${f.why_it_breaks}
+CITED EVIDENCE: ${f.evidence || '(none given)'}`
+
+      // Challengers are prompted to REFUTE: a reviewer asked "is this right?"
+      // agrees far too readily.
+      return parallel(CHALLENGERS.map((fam) => () =>
+        agent(
+          `You are cross-examining a claim made by another council member. Your job is to REFUTE it.\n\n${scope}\n${brief}
+
+Read the actual code. The claim fails if: the path is unreachable, a guard
+elsewhere already prevents it, it misreads the code, it describes pre-existing
+behaviour the diff did not introduce, or no concrete input produces the asserted
+outcome. Default to refuted=true when genuinely uncertain — an unsubstantiated
+finding wastes more of the author's time than a missed minor one.`,
+          { label: `challenge:${f.file}@${fam}`, phase: 'Cross-examine', model: fam, effort: 'high', schema: CHALLENGE, agentType: READER }
+        )
+      )).then(async (votes) => {
+        const cast = votes.filter(Boolean)
+        const refuted = cast.filter((v) => v.refuted).length
+        const unanimousKill = cast.length > 0 && refuted === cast.length
+        const unanimousHold = cast.length > 0 && refuted === 0
+        const split = cast.length > 1 && !unanimousKill && !unanimousHold
+
+        // A split used to escalate, which fired Fable on ~40% of findings — with
+        // only two voters a tie is common, not exceptional. Ties now resolve as
+        // refuted, matching the rubric the challengers are given ("default to
+        // refuted when uncertain"). Fable is reserved for a contested CRITICAL
+        // and hard-capped, so its cost cannot scale with finding count.
+        const contestedCritical = f.severity === 'critical' && refuted > 0 && refuted < cast.length
+        const stuck = contestedCritical && escalations < MAX_ESCALATIONS
+        if (!stuck) {
+          if (split) log(`split verdict on "${f.title}" -> refuted (doubt kills; no Fable spend)`)
+          return { ...f, lens: member.key, survives: unanimousHold, escalated: false,
+                   votes: cast.length, refuted, challenges: cast.map((v) => v.reasoning) }
+        }
+
+        escalations += 1
+        log(`deadlock on "${f.title}" (${refuted}/${cast.length} refuted) -> escalating to Fable`)
+        const ruling = await agent(
+          `The council is deadlocked and you are the deciding vote. Two reviewers examined the
+same claim and disagreed; one of them is wrong.\n\n${scope}\n${brief}
+
+CHALLENGER POSITIONS:
+${cast.map((v, i) => `${i + 1}. ${v.refuted ? 'REFUTES' : 'UPHOLDS'} — ${v.reasoning}`).join('\n')}
+
+Go to the code and settle it. Do not split the difference or restate the
+disagreement — decide whether the finding is real, and say specifically what
+each side got right and wrong. If it is real but mis-rated, correct the severity.`,
+          { label: `escalate:${f.file}`, phase: 'Escalate', model: ESCALATION_MODEL, effort: 'high', schema: ADJUDICATION, agentType: READER }
+        )
+        const holds = ruling ? ruling.holds : unanimousHold
+        return {
+          ...f,
+          severity: (ruling && ruling.severity_should_be && ruling.severity_should_be !== 'not-a-finding')
+            ? ruling.severity_should_be : f.severity,
+          lens: member.key, survives: holds, escalated: true,
+          votes: cast.length, refuted,
+          challenges: cast.map((v) => v.reasoning),
+          adjudication: ruling ? ruling.reasoning : '(escalation failed; fell back to challenger majority)',
+        }
+      })
+    }))
+  }
+)
+
+// The one place a barrier is correct: the judge needs every surviving finding at
+// once to dedupe across lenses and rank globally.
+const all = perLens.flat().filter(Boolean)
+const survivors = all.filter((f) => f.survives)
+const killed = all.filter((f) => !f.survives)
+log(`${all.length} raised · ${survivors.length} survived · ${killed.length} refuted · ${escalations} escalated to Fable`)
+
+phase('Verdict')
+
+const council = {
+  members: SEATED.length,
+  tiers: CHALLENGERS,
+  escalation_model: ESCALATION_MODEL,
+  raised: all.length,
+  survived: survivors.length,
+  refuted: killed.length,
+  escalated: escalations,
+}
+
+if (!survivors.length) {
+  return {
+    verdict: 'ship',
+    summary: `All ${all.length} raised finding(s) were refuted under cross-examination; the council found nothing substantiated.`,
+    ranked: [],
+    dismissed: killed.map((f) => ({ title: f.title, why_dismissed: f.adjudication || f.challenges[0] || 'refuted by challengers' })),
+    council,
+  }
+}
+
+const verdict = await agent(
+  `You are the presiding judge of a review council. ${survivors.length} finding(s) survived
+adversarial cross-examination.
+
+${scope}
+
+SURVIVING FINDINGS:
+${survivors.map((f, i) => `
+${i + 1}. [${f.severity}] ${f.title}
+   lens: ${f.lens} — survived ${f.votes - f.refuted}/${f.votes} challenges${f.escalated ? ' (escalated to Fable)' : ''}
+   file: ${f.file}${f.line ? ':' + f.line : ''}
+   failure: ${f.why_it_breaks}
+   challenger objections: ${f.challenges.join(' | ') || '(none)'}${f.adjudication ? `
+   Fable ruling: ${f.adjudication}` : ''}`).join('\n')}
+
+REFUTED (context only — do not resurrect without new evidence):
+${killed.map((f) => `- ${f.title} (${f.lens})`).join('\n') || '(none)'}
+
+Merge findings that are the same underlying defect seen through different lenses —
+report the defect once, noting which lenses converged on it. Convergence across
+lenses is strong signal; weight it. Rank by real blast radius, not by the label
+the finder chose; downgrade anything whose challenger objections were partly
+right. Verify each surviving finding against the code yourself before ranking it —
+you are the last gate, not a formatter.
+
+verdict: "fix-first" if anything critical or genuinely major survives, "ship" if
+only minor items remain, "needs-discussion" if the right fix is a judgement call
+for the author.`,
+  { label: 'judge', phase: 'Verdict', model: 'opus', effort: 'high', schema: VERDICT, agentType: READER }
+)
+
+return { ...verdict, council }
