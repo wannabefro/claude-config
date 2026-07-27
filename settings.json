@@ -15,6 +15,7 @@
       "Write",
       "Agent",
       "Task",
+      "Workflow",
       "Skill(build)",
       "Skill(build:*)",
       "Skill(compound-engineering:ce-work)",
@@ -435,8 +436,12 @@
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
+  "wheelScrollAccelerationEnabled": true,
+  "remoteControlAtStartup": true,
+  "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
   "feedbackSurveyState": {
     "lastShownTime": 0
-  }
+  },
+  "skipWorkflowUsageWarning": true
 }

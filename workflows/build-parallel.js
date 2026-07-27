@@ -145,6 +145,24 @@ if (!plan.decomposable || !plan.units || !plan.units.length) {
   }
 }
 
+// Ids must be unique BEFORE anything is keyed by them. The scheduler memoises a
+// promise per id, so two units sharing an id collapse into a single build while
+// still being counted twice — the run reports units_green including a unit that
+// never ran, and hands back a merge_sequence naming a branch that does not
+// exist. The wave loop mapped over unit objects and so tolerated duplicates;
+// keying by id is what made this reachable, so it is checked here.
+const idCounts = new Map()
+for (const u of plan.units) idCounts.set(u.id, (idCounts.get(u.id) || 0) + 1)
+const duplicates = [...idCounts].filter(([, n]) => n > 1).map(([id, n]) => ({ id, count: n }))
+if (duplicates.length) {
+  return {
+    error: 'Decomposition emitted duplicate unit ids.',
+    duplicates,
+    recommendation: 'Re-run; ids must be unique because dependencies and scheduling are keyed on them.',
+    plan,
+  }
+}
+
 const byId = new Map(plan.units.map((u) => [u.id, u]))
 const depsOf = (u) => (u.depends_on || []).filter((d) => d !== u.id)
 
