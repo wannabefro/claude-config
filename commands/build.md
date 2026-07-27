@@ -57,7 +57,9 @@ that cost more than the parallelism saves.
   cheap now and expensive after the agents run.
 - If it returns `conflicts`, two units that could run at the same time claim the same file. Report the
   overlap and offer to re-run with them merged or with a real dependency declared between them.
-- If it returns `cycles` or `dangling`, the dependency graph is malformed — relay it and re-run.
+- If it returns `cycles`, `dangling`, or `duplicates`, the dependency graph is malformed — relay it
+  and re-run. `duplicates` is the one most likely to look like a tool malfunction rather than a
+  decomposer slip; it is not, and the decomposition is cheap to redo.
 - On success: report `units_green / units_total`, then the **merge sequence**, which is in dependency
   order so a unit always merges after whatever it was built on. Nothing is merged automatically — an
   unattended N-way merge is where parallel builds go wrong.
