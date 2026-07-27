@@ -15,10 +15,13 @@ non-visual architecture decision, a diagram is the equivalent.
 **iOS simulators are a shared global resource.** Several apps are in flight in parallel sessions, so
 a global reset breaks someone else's run. Read `rules/ios-simulators.md` before touching `simctl`.
 
-**Serena onboarding is one-time per project.** First session in an activated project: check
-`mcp__serena__check_onboarding_performed`, run `mcp__serena__onboarding` if not. Later sessions read
-`.serena/memories/` instead. Use it for symbol-precise navigation and renames in an LSP-indexed
-project — not for tiny, single-file, or greenfield edits.
+**Symbol intelligence: `LSP` first, Serena for edits.** The built-in `LSP` tool (definition,
+references, implementations, workspace symbols, call hierarchy) is powered by the enabled `*-lsp`
+plugins and needs no setup. Serena adds symbol-level *editing* — `rename_symbol`,
+`replace_symbol_body`, `safe_delete_symbol` — plus project memories; its onboarding is one-time per
+project (`mcp__serena__onboarding`, then later sessions read `.serena/memories/`). Reach for either
+over grep when renaming or tracing callers, not for tiny, single-file, or greenfield edits. Serena
+was long configured only for Codex — if `mcp__serena__*` tools are absent, that is the cause.
 
 **Browser automation: prefer `chrome-real`** over playwright and the `chrome-devtools` plugin server.
 Those launch fresh unauthenticated browsers that fail on session- and dev-proxy-gated pages;

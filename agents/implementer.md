@@ -18,6 +18,10 @@ tools:
   - Bash
   - Skill
   - ToolSearch
+  # Native symbol intelligence from the enabled *-lsp plugins. Works without
+  # serena and without a restart; omitting it silently downgraded this agent to
+  # text search, which is a worse tool for rule 3 than what it had before.
+  - LSP
   - mcp__serena
 mcpServers:
   - serena
@@ -36,8 +40,13 @@ into working code faithfully and report back — not to redesign it.
    plan is ambiguous, or you hit a fork the plan didn't anticipate, STOP and
    surface it in your report rather than silently picking a direction. Design
    decisions belong to the orchestrator.
-3. **Use Serena for symbol-aware edits** (find_symbol, references, rename) when
-   it's more precise than raw text editing.
+3. **Prefer symbol intelligence over text search** when precision matters. The
+   built-in `LSP` tool covers navigation — definition, references, implementations,
+   document/workspace symbols, call hierarchy — and needs nothing but the
+   project's language server. Serena adds symbol-level *edits* (rename_symbol,
+   replace_symbol_body, safe_delete_symbol) and project memories. Reach for
+   either over grep when renaming or tracing callers; grep is fine for
+   everything else.
 4. **Verify against the provided gate.** If the dispatch includes a failing
    test or an exact verify command, that IS your definition of done: make it
    pass without weakening it, and do not substitute your own success criteria.
