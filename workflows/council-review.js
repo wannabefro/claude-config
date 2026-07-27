@@ -57,6 +57,14 @@ const FINDINGS = {
         },
       },
     },
+    // Only the codex seat sets this. "Codex ran and found nothing" and "Codex
+    // never ran" are both an empty findings array, and conflating them lets a
+    // dead CLI read as a completed cross-family review — the exact silent pass
+    // rules/pipeline.md forbids. The seat must say which happened.
+    tool_unavailable: {
+      type: 'boolean',
+      description: 'Codex seat only: true if the Codex CLI could not be run at all (failed preflight, hung, or produced no output on every attempt). Leave false/absent when Codex ran and simply had nothing to report.',
+    },
   },
 }
 
@@ -122,6 +130,42 @@ const target = rawTarget.trim()
 // unvalidated; omit it to use whatever ~/.codex/config.toml pins.
 const CODEX_MODEL = String(argObj.codexModel || '').trim()
 const CODEX_MODEL_FLAG = CODEX_MODEL ? ` -m ${CODEX_MODEL}` : ''
+
+// The outsider seat is the only member that shells out to a foreign CLI, so it is
+// the only one whose worst case is a hung process rather than a slow model. It is
+// also the last member the judge waits for, which makes it the council's critical
+// path. Measured 2026-07-27: a wedged Codex install cost 19.4 min of a 22.9 min
+// review and returned nothing — the agent correctly followed codex-exec-recovery,
+// retried, killed three stuck PIDs and reported empty, but nothing bounded how
+// long it could spend finding that out.
+//
+// setTimeout exists in this sandbox (probed); Date.now() and performance do not,
+// so the deadline is a timer, never a clock comparison.
+const OUTSIDER_DEADLINE_MS = Number(argObj.outsiderDeadlineMs) > 0
+  ? Number(argObj.outsiderDeadlineMs)
+  : 8 * 60 * 1000
+
+const OUTSIDER_TIMED_OUT = { __outsiderTimedOut: true }
+
+// Resolves to OUTSIDER_TIMED_OUT if the seat overruns. The agent keeps running in
+// the background and keeps its concurrency slot; that is acceptable because the
+// cap is well above the seat count, and cancelling an agent is not offered.
+const withDeadline = (p, ms) => {
+  let timer
+  return Promise.race([
+    Promise.resolve(p).then(
+      (v) => { clearTimeout(timer); return v },
+      (e) => { clearTimeout(timer); throw e },
+    ),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(OUTSIDER_TIMED_OUT), ms) }),
+  ])
+}
+
+// Distinguishes "Codex looked and found nothing" from "Codex never reported".
+// Both leave the council all-Anthropic in effect, but only the second means the
+// cross-family check did not happen — and rules/pipeline.md is explicit that an
+// empty Codex pass must be reported rather than quietly treated as a pass.
+let outsiderStatus = 'not-seated'
 
 // Repo path matters for approval cost, not just correctness: `cd /some/path &&`
 // is a boundary crossing that gates the WHOLE compound command, so a review of
@@ -290,11 +334,28 @@ const perLens = await pipeline(
   seated,
 
   (member) => member.via === 'codex'
-    ? agent(
+    ? withDeadline(agent(
       `You are a HARNESS, not a reviewer. Your only job is to run OpenAI's Codex CLI over this diff
 and relay what IT found. You must not review the code yourself.
 
 ${scope}
+
+STEP 0 — PREFLIGHT, and treat it as a hard gate. Run exactly:
+
+  timeout 10 codex --version; echo "EXIT:$?"
+
+\`--version\` needs no network, no auth and no model, so it is the cheapest possible
+proof the binary starts at all. If it prints EXIT:124, prints nothing, or errors,
+the CLI is wedged — **return \`{"findings": [], "tool_unavailable": true}\` immediately**.
+Set \`tool_unavailable\` on ANY path where Codex never produced a review: failed preflight,
+both attempts hung, or empty output every time. Leave it false ONLY when Codex actually ran
+and had nothing to report — the council reports those two outcomes differently, and marking a
+dead CLI as "reviewed, no findings" is worse than reporting nothing at all.
+Do NOT load codex-exec-recovery, do NOT retry, do NOT hunt or kill
+processes, do NOT poll a backgrounded run. That recovery path is for a flaky
+single run against a working CLI; against a dead one it is a 19-minute walk to
+the same empty result, and this seat is what the judge waits for. A fast honest
+"Codex unavailable" is worth far more to the council than a slow one.
 
 STEP 1 — obtain the diff. If a bundle path appears above, the diff is already at
 ${bundlePath ? bundlePath + '/01-the-diff.patch' : '(build it yourself)'} — use it directly and run no git commands. Otherwise capture it:
@@ -303,27 +364,49 @@ ${bundlePath ? bundlePath + '/01-the-diff.patch' : '(build it yourself)'} — us
 If the diff is enormous, narrow it to the most consequential files and say which you dropped.
 
 STEP 2 — run Codex in the FOREGROUND with the diff INLINED in the prompt. Codex hangs when a run
-needs tool use, so it must not have to read files itself:
+needs tool use, so it must not have to read files itself. Wrap it in \`timeout\` so a hang costs
+you the cap and not the council's wall clock:
 
-  codex exec --sandbox read-only${CODEX_MODEL_FLAG} -c model_reasoning_effort=high "Review this diff and list only
+  timeout 300 codex exec --sandbox read-only${CODEX_MODEL_FLAG} -c model_reasoning_effort=high "Review this diff and list only
   defects you can substantiate with a concrete failure scenario. For each: title, repo-relative
   file, line if known, severity (critical|major|minor), and the specific inputs or state that
   produce the wrong outcome. Ignore style. Reply as JSON: {\\"findings\\":[...]}.
 
   <paste the full contents of /tmp/council-diff.txt here>"
 
-Never use run_in_background — a backgrounded Codex run hangs reporting "still running".
+Never use run_in_background, and never poll a backgrounded run with a \`while kill -0\` loop or a
+Monitor — a backgrounded Codex run hangs reporting "still running", and the polling is what turns a
+hang into a twenty-minute one.
 
 STEP 3 — check for the empty-output flake. The run is empty if stdout ends at the echoed prompt with
-no model output after it. If so, retry ONCE. If the retry is also empty, return an empty findings
-list and say Codex produced no output — do NOT substitute your own review.
+no model output after it. If so, retry ONCE, again under \`timeout 300\`. If the retry is also empty,
+return an empty findings list and say Codex produced no output — do NOT substitute your own review.
+
+BUDGET — you have at most TWO \`codex exec\` invocations, both under \`timeout\`, plus the preflight.
+That is the whole allowance. When it is spent, return what you have. Never kill stray processes and
+start again: if Codex is leaving processes behind, that is a machine problem to report, not one to
+work around inside a review.
 
 CRITICAL: this seat exists because Codex is the only non-Anthropic member of the council. If you
 write findings yourself, the council silently loses its one uncorrelated voice and everyone is worse
 off. Relay Codex's findings faithfully, including ones you disagree with. Returning nothing is a fine
 outcome; fabricating a review is not.`,
       { label: 'lens:outsider(codex)', phase: 'Convene', model: member.model, effort: 'high', schema: FINDINGS }
-    )
+    ), OUTSIDER_DEADLINE_MS).then((r) => {
+      if (r === OUTSIDER_TIMED_OUT) {
+        outsiderStatus = 'timed-out'
+        log(`outsider (codex) overran ${Math.round(OUTSIDER_DEADLINE_MS / 60000)}min — proceeding without the cross-family lens`)
+        return { findings: [] }
+      }
+      const n = (r && r.findings && r.findings.length) || 0
+      outsiderStatus = !r ? 'failed'
+        : r.tool_unavailable ? 'unavailable'
+        : n ? 'reported' : 'empty'
+      // agent() returns null on a terminal error. Normalising it here gives this
+      // seat one shape on every path — timeout, failure, empty, reported — so a
+      // caller never has to know which of the four it got.
+      return r || { findings: [] }
+    })
     : agent(
       `You are the ${member.key.toUpperCase()} member of a review council.\n\n${scope}\n
 YOUR LENS — report only through it; other members cover the rest:
@@ -417,6 +500,12 @@ log(`${all.length} raised · ${survivors.length} survived · ${killed.length} re
 
 phase('Verdict')
 
+// 'reported' and 'empty' both mean Codex ran. 'timed-out' and 'failed' mean the
+// council was effectively all-Anthropic, which is exactly the correlated-blind-spot
+// case the outsider seat exists to prevent — so it is stated, not inferred from a
+// zero in a findings count.
+const crossFamily = outsiderStatus === 'reported' || outsiderStatus === 'empty'
+
 const council = {
   members: seated.length,
   members_available: COUNCIL.length,
@@ -427,12 +516,26 @@ const council = {
   survived: survivors.length,
   refuted: killed.length,
   escalated: escalations,
+  outsider: outsiderStatus,
+  cross_family_review: crossFamily,
 }
+
+const OUTSIDER_REASON = {
+  'timed-out': `overran its ${Math.round(OUTSIDER_DEADLINE_MS / 60000)}min deadline`,
+  unavailable: 'could not run the Codex CLI at all',
+  failed: 'failed to report',
+  'not-seated': 'was not seated',
+}
+const outsiderReason = OUTSIDER_REASON[outsiderStatus] || 'did not report'
+
+const outsiderCaveat = crossFamily ? '' :
+  ` NOTE: the Codex outsider seat ${outsiderReason},` +
+  ' so every finding here comes from one model family and correlated blind spots are not ruled out.'
 
 if (!survivors.length) {
   return {
     verdict: 'ship',
-    summary: `All ${all.length} raised finding(s) were refuted under cross-examination; the council found nothing substantiated.`,
+    summary: `All ${all.length} raised finding(s) were refuted under cross-examination; the council found nothing substantiated.${outsiderCaveat}`,
     ranked: [],
     dismissed: killed.map((f) => ({ title: f.title, why_dismissed: f.adjudication || f.challenges[0] || 'refuted by challengers' })),
     council,
@@ -442,7 +545,13 @@ if (!survivors.length) {
 const verdict = await agent(
   `You are the presiding judge of a review council. ${survivors.length} finding(s) survived
 adversarial cross-examination.
-
+${crossFamily ? '' : `
+IMPORTANT — the Codex outsider seat ${outsiderReason}, so this council was
+effectively single-family. Say so in your summary. It does not weaken any finding
+that DID survive — those stand on their own evidence — but it does mean the review
+cannot claim to have ruled out blind spots common to one model family, and a
+guardrail-critical diff may deserve an explicit cross-family pass before shipping.
+`}
 ${scope}
 
 SURVIVING FINDINGS:
