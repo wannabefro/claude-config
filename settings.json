@@ -188,6 +188,10 @@
     "defaultMode": "auto"
   },
   "model": "claude-opus-5[1m]",
+  "worktree": {
+    "_baseRef_note": "'fresh' (the default) branches agent worktrees from origin/<default-branch>. This repo routinely sits many commits ahead of origin — pushing needs explicit direction — so on 2026-07-27 a /build fan-out branched every unit from a 23-commit-stale origin/main, edited files as they existed two weeks ago, and still went green because each unit's verify only checked its own file. Merging would have reverted the day's work. 'head' branches from local HEAD instead, so agents see committed-but-unpushed state.",
+    "baseRef": "head"
+  },
   "hooks": {
     "PostToolUse": [
       {
