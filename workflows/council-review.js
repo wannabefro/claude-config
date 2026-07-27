@@ -195,12 +195,98 @@ not read. An empty findings list is a valid and useful result.
 
 let escalations = 0
 
-log(`Convening ${SEATED.length} of ${COUNCIL.length} lenses on Opus + Sonnet; Fable held in reserve for deadlocks`)
+// ---- Triage -----------------------------------------------------------------
+// Seating all six lenses at effort:high on every diff is what made this the most
+// expensive review path available. One cheap read decides how much council the
+// diff has earned. Three properties make that safe to do on Haiku:
+//
+//   1. It can only ever REMOVE optional lenses. FLOOR is seated unconditionally.
+//   2. Any guardrail surface re-seats the full council — the cheap seat is not
+//      allowed to decide that auth or a migration is low-risk.
+//   3. It fails OPEN. A triage that errors, returns nothing, or returns junk
+//      seats everyone. Under-reviewing must never be the failure mode.
+//
+// An explicit `lenses` arg still wins: naming them is a deliberate choice.
+const FLOOR = ['correctness', 'security']
+
+const TRIAGE = {
+  type: 'object',
+  required: ['risk', 'lenses', 'reason'],
+  properties: {
+    risk: { enum: ['guardrail', 'normal', 'trivial'] },
+    lenses: {
+      type: 'array',
+      items: { enum: COUNCIL.map((m) => m.key) },
+      description: 'Lenses this diff has earned, beyond the mandatory floor.',
+    },
+    surfaces: { type: 'array', items: { type: 'string' }, description: 'Sensitive surfaces touched, if any' },
+    reason: { type: 'string', description: 'One sentence, specific to this diff' },
+  },
+}
+
+let seated = SEATED
+if (!wanted) {
+  phase('Triage')
+  // try/catch, not just a null check: agent() returns null on a terminal error
+  // but can still throw, and an exception here would kill the whole review —
+  // the loudest possible way to fail closed on the one seat that must fail open.
+  let triage = null
+  try {
+    triage = await agent(
+    `Decide how much review this change has earned. You are the cheapest seat in the
+process — your job is sizing, NOT reviewing. Do not report defects.
+
+${scope}
+
+Read the diffstat and the changed file paths. Skim the diff only as far as you
+need to classify it.
+
+Return:
+- risk: "guardrail" if the diff touches authentication, authorization, payments,
+  money movement, database migrations or schema, data deletion, cryptography,
+  permissions, or a public API contract. "trivial" only for changes that cannot
+  alter behaviour — formatting, comments, docs, dependency version bumps with no
+  code change. "normal" for everything else. When torn, pick the higher risk.
+- lenses: which of [${COUNCIL.map((m) => m.key).join(', ')}] this diff has earned.
+  correctness and security are seated automatically — you do not need to ask for
+  them. Add "spec" when the change claims to implement something specific,
+  "tests" when it changes behaviour that tests should pin, "maintainability" for
+  non-trivial structural change, "outsider" when the change is architectural or
+  makes assumptions worth an uncorrelated second opinion.
+- reason: one sentence naming what you actually saw in this diff.
+
+Being wrong toward MORE review is cheap. Being wrong toward less is not.`,
+      { label: 'triage', phase: 'Triage', model: 'haiku', effort: 'low', schema: TRIAGE, agentType: READER }
+    )
+  } catch (e) {
+    log(`Triage failed (${e && e.message}) — seating the full council (fail-open)`)
+    triage = null
+  }
+
+  if (!triage || !Array.isArray(triage.lenses)) {
+    log('Triage returned nothing usable — seating the full council (fail-open)')
+  } else if (triage.risk === 'guardrail') {
+    log(`Triage: guardrail surface (${(triage.surfaces || []).join(', ') || 'unspecified'}) — full council regardless`)
+  } else {
+    const keep = new Set([...FLOOR, ...triage.lenses])
+    const picked = COUNCIL.filter((m) => keep.has(m.key))
+    // A degenerate pick still gets the floor; it can never seat nobody.
+    if (picked.length) {
+      seated = picked
+      const dropped = COUNCIL.filter((m) => !keep.has(m.key)).map((m) => m.key)
+      log(`Triage: ${triage.risk} — ${triage.reason}`)
+      if (dropped.length) log(`  seating ${picked.length}/${COUNCIL.length}, standing down: ${dropped.join(', ')}`)
+    }
+  }
+}
+
+phase('Convene')
+log(`Convening ${seated.length} of ${COUNCIL.length} lenses on Opus + Sonnet; Fable held in reserve for deadlocks`)
 
 // Pipeline, not barrier: a lens's findings enter cross-examination the moment
 // that lens returns, so slow lenses never gate fast ones.
 const perLens = await pipeline(
-  SEATED,
+  seated,
 
   (member) => member.via === 'codex'
     ? agent(
@@ -331,7 +417,9 @@ log(`${all.length} raised · ${survivors.length} survived · ${killed.length} re
 phase('Verdict')
 
 const council = {
-  members: SEATED.length,
+  members: seated.length,
+  members_available: COUNCIL.length,
+  lenses: seated.map((m) => m.key),
   tiers: CHALLENGERS,
   escalation_model: ESCALATION_MODEL,
   raised: all.length,
