@@ -123,6 +123,16 @@ Rules for a unit:
 - Two units that could run CONCURRENTLY (neither reachable from the other through depends_on) must
   not share a file. If they must share one, either add a real dependency between them or merge them
   into a single unit.
+- **Each unit is built in its own isolated git worktree, and its verify_command runs THERE, before
+  anything is merged.** Two consequences, and getting either wrong makes a unit fail its own gate for
+  reasons that have nothing to do with its work:
+    · Use repo-relative paths (\`rules/foo.md\`), never absolute ones. An absolute path escapes the
+      worktree and tests the untouched original checkout instead of the unit's edits.
+    · A unit's verify must be satisfiable from THAT UNIT'S changes alone. Never assert a cross-unit
+      invariant — a total across files other units own, a count over the whole tree, a link into a
+      file another unit creates. Those are true only after the merge, so they cannot pass in any
+      single worktree. If a check like that matters, say so in \`notes\` as a post-merge step; do not
+      dress it up as a unit.
 - Every unit needs a \`verify_command\`: one shell command that exits 0 exactly when the unit is done
   and non-zero when it is not. A scoped test, a targeted typecheck — not the whole suite, which would
   fail for reasons unrelated to this unit. **If you cannot write such a command for a unit, that unit
