@@ -1,10 +1,10 @@
 {
   "mode": "all-except-skip",
   "default": "sonnet",
+  "_route_note": "Keys must be the agent name AS DISPATCHED, which for plugin agents is namespaced (plugin:agent). Bare names silently never match — all three entries here were dead until 2026-07-27. Plan is deliberately absent: it lives in skip, and skip outranks route, so listing it here only looked like it did something.",
   "route": {
-    "Plan": "opus",
-    "silent-failure-hunter": "opus",
-    "type-design-analyzer": "opus"
+    "pr-review-toolkit:silent-failure-hunter": "opus",
+    "pr-review-toolkit:type-design-analyzer": "opus"
   },
   "haiku": [
     "statusline-setup",
