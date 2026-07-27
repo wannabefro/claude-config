@@ -37,4 +37,10 @@ the exact invocation live in the `codex-exec-recovery` skill.
 
 **`rtk`** proxies dev commands for token savings and a hook rewrites them transparently. Run it
 directly only for meta commands (`rtk gain`, `rtk discover`). If `rtk gain` errors, a different tool
-named rtk is on PATH.
+named rtk is on PATH. Its rewrites are **lossy summaries, not compact equivalents** — treat their
+output as a sample, never as proof something is absent. `find` is excluded from the rewrite for that
+reason (measured: 23 of 5,770 matches returned).
+
+**Searching files: `fd -u`, not `find`.** Same results as `find` — `-u` is `-H -I`, without it fd
+skips hidden and gitignored paths and silently misses most of a dotfile tree — and ~4x faster.
+Reach for `find` only for predicates fd lacks (`-newermt`, `-perm`).

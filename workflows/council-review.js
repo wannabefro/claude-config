@@ -141,9 +141,22 @@ const CODEX_MODEL_FLAG = CODEX_MODEL ? ` -m ${CODEX_MODEL}` : ''
 //
 // setTimeout exists in this sandbox (probed); Date.now() and performance do not,
 // so the deadline is a timer, never a clock comparison.
+//
+// 15min, not the 8min this shipped with. This is a BACKSTOP, not the primary
+// bound — STEP 0's preflight and the two `timeout 300` attempts cap the failure
+// paths at roughly 310s (hang) and 610s (empty-output flake) on their own, and
+// those fire whatever this is set to. Set below the seat's own 610s worst case,
+// the race preempts the seat's honest self-report and every slow run is labelled
+// 'timed-out' instead of the more specific 'unavailable'/'empty'.
+//
+// Measured both ways on 2026-07-27: at 8min a HEALTHY Codex reviewing a real diff
+// was cut mid-review and the council lost its cross-family lens for no reason.
+// The council itself raised this against the 8min version, argued it away in
+// cross-examination, and was then contradicted by the very next run — which is
+// the more trustworthy evidence.
 const OUTSIDER_DEADLINE_MS = Number(argObj.outsiderDeadlineMs) > 0
   ? Number(argObj.outsiderDeadlineMs)
-  : 8 * 60 * 1000
+  : 15 * 60 * 1000
 
 const OUTSIDER_TIMED_OUT = { __outsiderTimedOut: true }
 
