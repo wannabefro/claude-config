@@ -54,10 +54,35 @@ const UNIT = {
   },
 }
 
-const task = (typeof args === 'string' ? args : (args && args.task)) || ''
-if (!task.trim()) {
+// args arrives either as an object or as a JSON-encoded string depending on the
+// call shape. Taking `typeof args === 'string'` to mean "this is the task" made
+// a stringified object become the task text AND silently drop every flag on it —
+// which once turned an intended dry run into a real fan-out. Parse defensively.
+let opts = args
+if (typeof opts === 'string') {
+  const trimmed = opts.trim()
+  if (trimmed.startsWith('{')) {
+    try {
+      opts = JSON.parse(trimmed)
+    } catch {
+      return { error: 'args looked like JSON but did not parse. Pass an object, or a plain task string.' }
+    }
+  } else {
+    opts = { task: opts }
+  }
+}
+opts = opts || {}
+
+const task = String(opts.task || '').trim()
+if (!task) {
   return { error: 'build-parallel needs a task, plan path, or feature description as args.' }
 }
+
+// Decomposition is the ceiling on everything downstream, is cheap to inspect,
+// and is expensive to discover was wrong after N agents have written code — so
+// reporting the plan is the DEFAULT and fanning out is the opt-in. The reverse
+// default commits writers to a decomposition nobody has read.
+const build = opts.build === true
 
 phase('Decompose')
 log('Decomposing — the ceiling on parallel speed is decomposition quality, so this runs on Opus')
@@ -116,6 +141,18 @@ if (conflicts.length) {
     conflicts,
     recommendation: 'Re-run with the overlapping units merged, or move one to a later wave.',
     plan,
+  }
+}
+
+if (!build) {
+  log(`${plan.units.length} unit(s) across ${waves.length} wave(s) — reporting the plan, not building`)
+  return {
+    built: false,
+    decomposable: true,
+    reason: plan.reason,
+    wave_count: waves.length,
+    units: plan.units,
+    note: 'No implementer ran and no worktree was created. Re-run with build:true to fan out.',
   }
 }
 

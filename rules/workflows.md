@@ -12,6 +12,14 @@ loss, so on a fresh session point `ce-work` at the existing plan rather than rep
 non-code deliverables, have `ce-plan` plan *how it will produce* the deliverable first — asking for it
 directly cuts corners. `lfg` runs the whole pipeline, but only on an explicit hands-off request.
 
+**Execution splits from planning.** `ce-plan` writes the plan; `/build` executes the parts of it that
+decompose, and `ce-work` takes coupled work and the shipping tail. `ce-work` *can* parallelize, but
+that choice lives in prose and the model almost always resolves it to serial — measured here, 2 of 11
+sessions. `/build` computes the split instead: schema-enforced units, same-wave file overlap refused
+in code, `decomposable: false` as a visible outcome rather than a silent fallback. It reports the
+decomposition first and only fans out when told to, because the split is the ceiling on everything
+downstream and is cheap to read before agents commit to it.
+
 ## Tie-breaks between overlapping skills
 
 Skill descriptions do the routing. This table only settles cases where several genuinely match:

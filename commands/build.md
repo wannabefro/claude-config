@@ -5,14 +5,36 @@ argument-hint: "[what to build — a feature description, or a path to a plan do
 
 Build in parallel: **$ARGUMENTS**
 
-Call the `Workflow` tool with:
+This runs in two steps, because the decomposition is the ceiling on everything downstream and is far
+cheaper to read than to undo.
+
+**Step 1 — decompose and report.** Call the `Workflow` tool with:
 
 ```
-{ "scriptPath": "~/.claude/workflows/build-parallel.js", "args": "$ARGUMENTS" }
+{ "scriptPath": "~/.claude/workflows/build-parallel.js",
+  "args": { "task": "$ARGUMENTS" } }
 ```
 
-Invoking this command is the explicit opt-in the Workflow tool requires. Agent count scales with the
-decomposition — roughly one implementer per unit, plus one Opus decomposer.
+Pass `args` as a real object, never a JSON-encoded string — a stringified object arrives as one
+string and every flag on it is silently dropped.
+
+Show the returned units, their file ownership, and their `verify_command`s, then **stop and let me
+read them**. One Opus decomposer runs; no implementer, no worktree.
+
+**Step 2 — build, once I've agreed the split.** Re-invoke with `"build": true` added. Agent count
+scales with the decomposition: roughly one implementer per unit.
+
+Invoking this command is the explicit opt-in the Workflow tool requires.
+
+## Why this and not ce-work's own parallel strategy
+
+`ce-work` can parallelize, but the choice lives in prose and the model resolves it — measured across
+this machine's transcripts it picked parallel in 2 of 11 sessions, so in practice work runs serial
+without anyone deciding it should. Here the split is computed: units are schema-enforced, same-wave
+file overlap is checked in code and refused, and `decomposable: false` is a visible typed outcome
+rather than a silent fallback to serial.
+
+Use `ce-work` when the work is genuinely coupled, and for the shipping tail.
 
 ## Before you run it
 
@@ -33,6 +55,14 @@ that cost more than the parallelism saves.
 
 ## After it succeeds
 
-Merge in wave order, then run `/council` **once** on the assembled diff. Do not run a review per
-unit — the per-unit gate is the `verify_command`, and adding a review inside the loop is what makes
-parallel building slower than serial building.
+Merge in wave order, then review the assembled diff **once** — `ce-code-review` normally, or
+`/sam-review` for a guardrail-critical surface. Do not review per unit: the per-unit gate is the
+`verify_command`, and putting a review inside the loop is what makes parallel building slower than
+serial building.
+
+## Where this sits
+
+`ce-brainstorm` -> `ce-plan` produces the plan; this executes the parts of it that decompose. The
+plan's own unit list is input, not gospel — the decomposer reads the codebase and will contradict it
+when the plan's file boundaries don't survive contact (on its first real run it found one file
+claimed by five separate units).
