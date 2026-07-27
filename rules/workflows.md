@@ -34,6 +34,27 @@ After `/build`, always pass `ce-work` an **explicit plan path**. A blank invocat
 `docs/plans/` for the newest `implementation-ready` plan — which is the one `/build` just executed —
 so it will happily rebuild work that already exists.
 
+## The autonomy boundary sits after plan approval, not before
+
+Measured over 31 sessions, corrections per invocation: `ce-plan` 1.12, `ce-brainstorm` 1.07,
+`ce-work` 1.00, dispatched `implementer` **0.05** (229 dispatches, 12 corrections). Planning draws
+roughly one redirect every single time; delegated implementation is twenty times more reliable.
+
+So run unattended *downstream* of an approved plan and stay interactive upstream of it. Concretely:
+brainstorm and plan interactively — that is where the steering actually happens and automating
+through it just multiplies a wrong premise. Once the plan is agreed, the stretch from
+decomposition → build → per-unit verify → one review on the assembled diff can run without
+check-ins, because that is the stretch that historically doesn't need them.
+
+`/build` already places the one useful checkpoint: it reports the split and waits for `build:true`.
+That gate is worth keeping even when running hands-off, because the decomposition inherits any error
+in the plan and it is the last cheap moment to catch one.
+
+Prefer this shape over `lfg`, which automates *through* brainstorm and plan as well — the two highest
+correction-rate stages. Only reach for `lfg` on an explicit hands-off request where a wrong premise
+is acceptable. Bare approvals are 3% of messages, so autonomy here is not about removing approval
+prompts; it is about not stopping mid-flight in the stretch that never needed a human.
+
 ## Tie-breaks between overlapping skills
 
 Skill descriptions do the routing. This table only settles cases where several genuinely match:
