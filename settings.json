@@ -12,6 +12,15 @@
   "permissions": {
     "allow": [
       "Edit",
+      "Write",
+      "Agent",
+      "Task",
+      "Skill(build)",
+      "Skill(build:*)",
+      "Skill(compound-engineering:ce-work)",
+      "Skill(compound-engineering:ce-work:*)",
+      "Skill(compound-engineering:ce-code-review)",
+      "Skill(compound-engineering:ce-code-review:*)",
       "WebFetch",
       "WebSearch",
       "Bash(cat *)",
