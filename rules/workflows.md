@@ -50,10 +50,17 @@ check-ins, because that is the stretch that historically doesn't need them.
 That gate is worth keeping even when running hands-off, because the decomposition inherits any error
 in the plan and it is the last cheap moment to catch one.
 
-Prefer this shape over `lfg`, which automates *through* brainstorm and plan as well — the two highest
-correction-rate stages. Only reach for `lfg` on an explicit hands-off request where a wrong premise
-is acceptable. Bare approvals are 3% of messages, so autonomy here is not about removing approval
-prompts; it is about not stopping mid-flight in the stretch that never needed a human.
+`lfg` and `looper` are not the route — Sam is moving away from both, and the data agrees: they
+automate *through* brainstorm and plan, the two highest correction-rate stages, multiplying a wrong
+premise across everything downstream. Bare approvals are 3% of messages, so autonomy here is not
+about removing approval prompts; it is about not stopping mid-flight in the stretch that never
+needed a human.
+
+**The bigger win is not stopping at all.** Corrections in this loop are overwhelmingly *standing
+preferences being restated*, not planning failures — "use gh instead (and remember)", "build locally
+not cloud". Those recur across 5–16 distinct sessions each. Every one that gets written to memory or
+a rule is a correction that stops happening, which lowers the correction rate that governs how far
+the loop can run unattended in the first place. Capture the preference the first time it is stated.
 
 ## Tie-breaks between overlapping skills
 
