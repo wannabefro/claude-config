@@ -12,35 +12,26 @@ non-visual architecture decision, a diagram is the equivalent.
 
 # Gotchas
 
-**iOS simulators are a shared global resource.** Several apps are in flight in parallel sessions, so
-a global reset breaks someone else's run. Read `rules/ios-simulators.md` before touching `simctl`.
+Rationale and measurements for each item below: `docs/gotchas.md`.
 
-**Symbol intelligence: `LSP` first, Serena for edits.** The built-in `LSP` tool (definition,
-references, implementations, workspace symbols, call hierarchy) is powered by the enabled `*-lsp`
-plugins and needs no setup. Serena adds symbol-level *editing* — `rename_symbol`,
-`replace_symbol_body`, `safe_delete_symbol` — plus project memories; its onboarding is one-time per
-project (`mcp__serena__onboarding`, then later sessions read `.serena/memories/`). Reach for either
-over grep when renaming or tracing callers, not for tiny, single-file, or greenfield edits. Serena
-was long configured only for Codex — if `mcp__serena__*` tools are absent, that is the cause.
+**iOS simulators are a shared global resource.** Read `rules/ios-simulators.md` before touching
+`simctl`.
 
-**Browser automation: prefer `chrome-real`** over playwright and the `chrome-devtools` plugin server.
-Those launch fresh unauthenticated browsers that fail on session- and dev-proxy-gated pages;
-`chrome-real` drives my actual logged-in Chrome. It needs Chrome running with remote debugging on —
-if its tools error with a connection failure, that toggle is off.
+**Symbol intelligence: `LSP` first, Serena for edits.** Reach for either over grep when renaming or
+tracing callers, not for tiny, single-file, or greenfield edits.
 
-**Codex is the cross-family lens** (`codex-companion` runtime; bills separately, so not for trivia).
-Claude cannot fire the `/codex:*` skills via the Skill tool, and the async rescue agent stalls in
-background mode — use a bounded foreground `codex exec` instead. Its two no-output failure modes and
-the exact invocation live in the `codex-exec-recovery` skill.
+**Browser automation: prefer `chrome-real`** over playwright and the `chrome-devtools` plugin
+server. It needs Chrome running with remote debugging on — if its tools error with a connection
+failure, that toggle is off.
+
+**Codex is the cross-family lens.** It cannot be fired via the Skill tool — use a bounded foreground
+`codex exec` instead; see the `codex-exec-recovery` skill.
 
 **`codegraph`** for structural code questions — who calls X, what would break, trace a flow.
 
-**`rtk`** proxies dev commands for token savings and a hook rewrites them transparently. Run it
-directly only for meta commands (`rtk gain`, `rtk discover`). If `rtk gain` errors, a different tool
-named rtk is on PATH. Its rewrites are **lossy summaries, not compact equivalents** — treat their
-output as a sample, never as proof something is absent. `find` is excluded from the rewrite for that
-reason (measured: 23 of 5,770 matches returned).
+**`rtk`** is proxied by a hook, so run it directly only for meta commands (`rtk gain`, `rtk
+discover`). Its rewrites are lossy — never treat their output as proof something is absent.
 
-**Searching files: `fd -u`, not `find`.** Same results as `find` — `-u` is `-H -I`, without it fd
-skips hidden and gitignored paths and silently misses most of a dotfile tree — and ~4x faster.
-Reach for `find` only for predicates fd lacks (`-newermt`, `-perm`).
+**Search with `fd -u` and `rg`, not `find`/`grep`** — all three are excluded from the rtk rewrite
+because a summarised search stops being an exhaustive one. Reach for `find` only for predicates fd
+lacks.
