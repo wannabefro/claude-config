@@ -10,7 +10,7 @@ Skill descriptions do the routing; this table only settles overlaps:
 
 | Overlap | Prefer |
 |---|---|
-| `ce-debug` / `diagnose` / `superpowers:systematic-debugging` | `ce-debug` |
+| `ce-debug` / `superpowers:systematic-debugging` | `ce-debug` |
 | `/council` / `ce-code-review` | `/council` is the default review path; `ce-code-review` only inside a blank `ce-work` run |
 | `ce-plan` / `superpowers:writing-plans` / `Plan` agent | `ce-plan`; `Plan` only for architecture-only design |
 
@@ -31,8 +31,11 @@ Main thread orchestrates; separable work goes to agents. Tiering/dispatch → `r
 
 Review at checkpoints, not per edit.
 
-**Retired** — do not route to `sam-review`, `self-consistency`, `best-of-n`, `verify-this`; evidence
-in `docs/routing-rationale.md`.
+**Deleted 2026-07-28**, after measuring 0 invocations each across 895 transcripts: `sam-review`,
+`self-consistency`, `best-of-n`, `verify-this`, `thermo-nuclear-code-quality-review`, `diagnose`,
+`control-cli`, `control-ui`, `improve-codebase-architecture`, plus the `spec-deriver` and
+`test-writer` agents and the unregistered `self-consistency-nudge.sh`. Recoverable from git;
+evidence and method in `docs/routing-rationale.md`.
 
 **CodeRabbit's CLI is machine-local; its GitHub app is not.** `coderabbit:code-review` needs a
 `coderabbit` binary that exists on only some machines — never route to it unhanded. `autofix` needs

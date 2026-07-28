@@ -65,6 +65,32 @@ The CLI is left uninstalled deliberately: `/council` never seated CodeRabbit, `s
 route that made it an "Always" lens) is retired below, and `autofix` covers the PR-thread case
 without it. Installing it would add a per-machine auth step to unblock a path nothing routes to.
 
+## Measuring skill use (2026-07-28)
+
+`scripts/audit-skills.py` counts **invocations**, not name mentions — a skill named in prose or in
+another skill's routing table is not a use, and conflating the two is how a dead route looks alive.
+Two signals count: a `Skill` tool call (`tool_use` block, `input.skill`) and a slash-command
+expansion (`<command-name>`), from any thread including subagents. It also reports each skill's age
+from git, because a skill added last week with 0 uses is untested, not unused.
+
+Result across 895 transcripts: 12 of 19 local skills/commands had **zero** invocations, all of them
+35 days old. The work is overwhelmingly done by plugin skills — `ce-plan` 64, `ce-work` 35,
+`ce-brainstorm` 18 — while local ones barely register. Agents told the same story: `implementer`
+218, `Explore` 121, against `test-writer` 0 and `spec-deriver` 2.
+
+Deleted the zero-use set, with three deliberate exceptions:
+
+- `ci-triage` and `pr-watch` are live routes in `rules/shipping.md`. Zero uses reflects how rarely
+  CI and PR events occur in this repo, not deadness — absence of a trigger, not absence of value.
+- `handoff` / `resume-handoff` are a pair for context exhaustion. Rare by design; deleting one half
+  would leave the other incoherent.
+- `deep-reasoner` was 28 hours old. Untested, not unused.
+
+The `self-consistency` cluster went as a unit — the skill, the `spec-deriver` and `test-writer`
+agents that existed only to serve it, and `self-consistency-nudge.sh`, a hook that was registered
+nowhere and pointed at a skill already retired. Deleting the skill alone would have left three
+orphans behind.
+
 **Retired 2026-07-27:** `sam-review`, `self-consistency`, `best-of-n`, `verify-this` went unused
 across 43 measured sessions, and two of them (`sam-review` and `best-of-n`) were the skills the repo's
 own hooks pointed at — so the non-use wasn't for lack of a wired-up trigger, it reflects that the
