@@ -66,6 +66,10 @@ that cost more than the parallelism saves.
 - If it returns `cycles`, `dangling`, or `duplicates`, the dependency graph is malformed — relay it
   and re-run. `duplicates` is the one most likely to look like a tool malfunction rather than a
   decomposer slip; it is not, and the decomposition is cheap to redo.
+- If it returns `deferred`, that is **not** a failure: only depth-1 units are buildable in one pass,
+  because every worktree branches from the same base and nothing merges mid-run — a deeper unit would
+  be written against a tree that never contained its dependency's work. Report it as "layer complete",
+  give the merge sequence, and say the next layer needs a re-run from the new HEAD.
 - On success: report `units_green / units_total`, then the **merge sequence**, which is in dependency
   order so a unit always merges after whatever it was built on. Nothing is merged automatically — an
   unattended N-way merge is where parallel builds go wrong.

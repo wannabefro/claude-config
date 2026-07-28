@@ -373,9 +373,26 @@ log(`${plan.units.length} unit(s), ${startable} starting immediately, critical p
 // here can oversubscribe the machine.
 const scheduled = new Map()
 
+// Only depth-1 is actually buildable. Every worktree branches from the SAME base
+// commit, and nothing merges mid-run, so a depth-2 unit would be built against a
+// tree that never contained its dependency's work — it verifies green against a
+// world that does not exist yet. Sequencing is not composition: waiting for a
+// dependency to go green does not put its code in your checkout. Measured
+// 2026-07-28 on an 8-unit run: 4 reported green, only the 2 roots were mergeable,
+// and a unit that depended on a DB mutation had been written against the old
+// schema throughout. Deeper units are returned as `deferred` — merge this layer,
+// then re-run from the new HEAD.
 const runUnit = (u) => {
   if (scheduled.has(u.id)) return scheduled.get(u.id)
   const p = (async () => {
+    if (depthOf(u.id) > 1) {
+      return {
+        unit: u,
+        status: 'deferred',
+        result: null,
+        deferred_because: `depth ${depthOf(u.id)} — depends on ${depsOf(u).join(', ')}, whose work is not in any worktree until merged`,
+      }
+    }
     const deps = depsOf(u)
     const depOutcomes = await Promise.all(deps.map((d) => runUnit(byId.get(d))))
 
@@ -445,9 +462,14 @@ const results = await Promise.all(plan.units.map(runUnit))
 phase('Integrate')
 
 const green = results.filter((r) => r.status === 'green')
+const deferred = results.filter((r) => r.status === 'deferred')
+const failed = results.filter((r) => r.status !== 'green' && r.status !== 'deferred')
 const notGreen = results.filter((r) => r.status !== 'green')
+const buildable = results.filter((r) => r.status !== 'deferred')
 
-log(`${green.length}/${results.length} unit(s) green`)
+log(deferred.length
+  ? `${green.length}/${buildable.length} buildable unit(s) green — ${deferred.length} deferred to the next layer (merge first)`
+  : `${green.length}/${results.length} unit(s) green`)
 
 return {
   decomposable: true,
@@ -480,12 +502,20 @@ return {
     // A skipped unit was never attempted, and saying why matters more than any
     // verify output: the thing to fix is its dependency, not the unit itself.
     blocked_by: r.blocked_by,
-    detail: r.status === 'skipped'
-      ? `Not built — dependency ${(r.blocked_by || []).join(', ')} did not go green.`
-      : (r.result ? (r.result.verify_output || r.result.summary) : (r.error || 'agent returned nothing')),
+    detail: r.status === 'deferred'
+      ? r.deferred_because
+      : r.status === 'skipped'
+        ? `Not built — dependency ${(r.blocked_by || []).join(', ')} did not go green.`
+        : (r.result ? (r.result.verify_output || r.result.summary) : (r.error || 'agent returned nothing')),
     remaining: r.result ? r.result.remaining : undefined,
   })),
-  next_step: green.length === results.length
-    ? 'All units green. Merge in dependency order (merge_sequence), then run /council once on the assembled diff — not per unit.'
-    : 'Resolve the units needing attention before merging. Anything listed as skipped was never built because a dependency failed — fix that dependency first, and the units downstream of it are still outstanding work.',
+  // Deferred is not a failure — it is the honest half of a layered build, and
+  // reporting it as attention-needed would read as 4 broken units rather than
+  // "this layer is done, merge it and go again".
+  deferred: deferred.map((r) => ({ id: r.unit.id, title: r.unit.title, depth: depthOf(r.unit.id), depends_on: depsOf(r.unit) })),
+  next_step: deferred.length
+    ? `Layer complete: ${green.length} of ${buildable.length} buildable unit(s) green. ${deferred.length} unit(s) are deferred because their dependencies' code exists only on unmerged branches — no worktree contains it. Merge merge_sequence, then re-run /build on the same plan from the new HEAD to build the next layer.${failed.length ? ' Resolve the failed units first.' : ''}`
+    : green.length === results.length
+      ? 'All units green. Merge in dependency order (merge_sequence), then run /council once on the assembled diff — not per unit.'
+      : 'Resolve the units needing attention before merging. Anything listed as skipped was never built because a dependency failed — fix that dependency first, and the units downstream of it are still outstanding work.',
 }
