@@ -24,6 +24,7 @@
 !/skills/
 !/marketplace/
 !/workflows/
+!/evals/
 
 # --- nested re-ignores ---
 # Un-ignoring a directory pulls in its WHOLE subtree, so generated/runtime state
@@ -37,3 +38,6 @@
 **/*.pyc
 **/.DS_Store
 **/node_modules/
+
+# eval run outputs are regenerated; never publish them
+evals/out/
