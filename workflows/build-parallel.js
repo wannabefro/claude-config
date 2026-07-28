@@ -1,7 +1,7 @@
 export const meta = {
   name: 'build-parallel',
-  description: 'Decompose work into independently-verifiable units, build them concurrently in isolated worktrees behind executable done-criteria, and report a merge plan',
-  whenToUse: 'The default execution path once a plan is approved. Send work here first and let the decomposer decide: it returns decomposable:false for coupled changes, same-file edits and broad refactors, which is a real answer, not a failure — build those serially instead. Only skip it when you already know the work is coupled.',
+  description: 'Route approved work to the right execution shape — parallel fan-out, ce-work, or inline — and when it fans out, build the units concurrently in isolated worktrees behind executable done-criteria',
+  whenToUse: 'The entry point for executing ANY approved work — do not pre-judge the shape. It returns route = parallel | ce-work | inline after reading the codebase, and only `parallel` costs anything to be wrong about. Sending coupled work here is not a mistake: routing it is the job.',
   phases: [
     { title: 'Decompose', detail: 'Opus splits the work into units with executable done-criteria' },
     { title: 'Build', detail: 'each unit starts as soon as its own dependencies are green, in an isolated worktree' },

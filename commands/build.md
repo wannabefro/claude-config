@@ -1,14 +1,15 @@
 ---
-description: Decompose work into independent units and build them concurrently in isolated worktrees, each gated by its own executable verify command
-argument-hint: "[what to build — a feature description, or a path to a plan doc]"
+description: The entry point for executing any approved work — routes to parallel fan-out, ce-work, or inline, and when it fans out builds the units concurrently in isolated worktrees behind executable verify commands
+argument-hint: "[what to build — a feature description, or a path to a plan doc. Any size.]"
 ---
 
 Build in parallel: **$ARGUMENTS**
 
-This runs in two steps, because the decomposition is the ceiling on everything downstream and is far
-cheaper to read than to undo.
+**This is the entry point for executing any approved work — always start here.** Don't decide the
+shape first: the decomposer reads the codebase and returns a `route`, and only one of the three
+routes costs anything to be wrong about.
 
-**Step 1 — decompose and report.** Call the `Workflow` tool with:
+**Step 1 — always.** Call the `Workflow` tool with:
 
 ```
 { "scriptPath": "~/.claude/workflows/build-parallel.js",
@@ -16,13 +17,19 @@ cheaper to read than to undo.
 ```
 
 Pass `args` as a real object, never a JSON-encoded string — a stringified object arrives as one
-string and every flag on it is silently dropped.
+string and every flag on it is silently dropped. One Opus decomposer runs; no implementer, no
+worktree.
 
-Show the returned units, their file ownership, and their `verify_command`s, then **stop and let me
-read them**. One Opus decomposer runs; no implementer, no worktree.
+**Step 2 — depends on the route, and only `parallel` waits.**
 
-**Step 2 — build, once I've agreed the split.** Re-invoke with `"build": true` added. Agent count
-scales with the decomposition: roughly one implementer per unit.
+- `inline` → **just build it, this turn.** No second invocation, no asking. The decomposition already
+  cost a round trip; making the user confirm a serial build wastes another.
+- `ce-work` → **invoke `ce-work` now, this turn**, with the plan path if there is one, otherwise the
+  task plus the returned `units` as its task list.
+- `parallel` → **stop and show me the split**: units, file ownership, `verify_command`s, and lead
+  with `critical_path` / `starting_immediately`. Then re-invoke with `"build": true` once I agree.
+  This is the only route that waits, because it is the only one that spawns N implementers into N
+  worktrees — expensive to start and expensive to undo.
 
 Invoking this command is the explicit opt-in the Workflow tool requires.
 

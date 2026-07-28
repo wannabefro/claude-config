@@ -21,8 +21,8 @@ Main thread orchestrates; separable work goes to agents. Tiering/dispatch → `r
 | Work | Route |
 |---|---|
 | Read-heavy gathering, audit, "find out why" | `Explore` (codebase) / `general-purpose` (multi-step) |
-| Any approved plan | `/build`; `decomposable:false` is a real answer for coupled work |
-| Well-specified unit, or work `/build` called coupled | `implementer` — review the returned diff |
+| Executing any approved work, any size | `/build` — it routes to parallel/ce-work/inline itself; pre-judging is the mistake |
+| Well-specified unit, or work `/build` routed to `inline` | `implementer` — review the returned diff |
 | Review — default for a diff you own | `/council` — outranks `coderabbit:code-review` despite its "default review skill" description |
 | Review inside a blank `ce-work` run | `ce-code-review` — hardwired there; don't fight it |
 | CodeRabbit threads on an open PR | `coderabbit:autofix` — `gh`-only, works on every machine |

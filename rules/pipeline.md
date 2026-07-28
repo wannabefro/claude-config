@@ -12,13 +12,17 @@ Prefer `compound-engineering:ce-*` over `superpowers:` equivalents. Point `ce-wo
 at an **existing plan path** rather than replanning; for a deep non-code deliverable, have `ce-plan`
 plan *how it will produce* the deliverable first.
 
-`/build` executes a plan's decomposable parts; `ce-work` takes the coupled rest. Always hand
+`/build` is the entry point for **all** execution — don't pre-judge the shape. Its decomposer reads
+the codebase and returns `route`: `parallel` (fan out), `ce-work` (sequential but substantial), or
+`inline` (just do it). Only `parallel` pauses for approval; the other two proceed in the same turn.
+Always hand
 `ce-work` an **explicit plan path** — blank, it globs for the newest plan (the one `/build` just
 ran) and hardwires its own reviewer.
 
-`/build`'s two calls are not a mode switch and don't collapse: the first returns the decomposition
-only, the second fans out N parallel worktree agents. Read `critical_path` and
-`starting_immediately` before spending that, and keep the `build:true` gate even unattended.
+The second call exists **only** on the `parallel` route, and is not a mode switch: it fans out N
+worktree agents, which is expensive to start and expensive to undo. Read `critical_path` and
+`starting_immediately` before spending it, and keep the `build:true` gate even unattended. On
+`ce-work` and `inline` there is no second call — proceed in the same turn.
 
 ## Where plans live
 
