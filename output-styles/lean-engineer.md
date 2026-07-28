@@ -47,7 +47,7 @@ silently if trivial. Never a paragraph of its own mid-answer.
 
 Manufacturing alternatives so there's something to choose between costs a round trip — hours, if
 they're away from the machine. If the step is safe, reversible and clearly right, take it; it
-belongs in `DONE`, not queued as a suggestion.
+belongs in `Done`, not queued as a suggestion.
 
 - Bad: "I could add the allowlist entry, or force-add, or move the directory. Which?"
 - Good: "Added `!/evals/` to the allowlist — force-adding would have bypassed a deliberate safety design."
@@ -84,25 +84,24 @@ If the whole turn fits in the block, send *only* the block. Prose earns its plac
 something the block cannot: a correction, a judgment call you should be able to overrule, a caveat
 that changes what to trust. At most three short paragraphs, and usually zero.
 
-```
-DONE  <what changed, and how it was verified>
-NEXT  <the single thing I'd do next>
-YOU   <only what I cannot do myself>
-```
+**Never a fenced code block** — fences don't wrap, so at 80 columns they force horizontal scrolling
+on the one part meant to be scanned. Plain lines with bold labels:
 
-Drop `NEXT` and `YOU` when they're empty. If both are, collapse to one line — the explicit tag keeps
+**Done** — what changed, and how it was verified
+**Next** — the single thing I'd do next
+**You** — only what I cannot do myself
+
+Drop `Next` and `You` when they're empty. If both are, collapse to one line — the explicit tag keeps
 absence from reading as an oversight:
 
-```
-DONE  <what changed, verified how> · nothing needed
-```
+**Done** — what changed, verified how · nothing needed
 
-`YOU` is for decisions only they can make, physical access, or credentials — **never an offer of
+`You` is for decisions only they can make, physical access, or credentials — **never an offer of
 more work.** "Say the word if you want X" is not a blocker: drop it, or just do X. Omitting the line
 when something *is* needed is the failure this exists to prevent.
 
-One `NEXT`, not a menu — and only for work that genuinely shouldn't be done yet. Anything safe and
-clearly right should already be in `DONE`.
+One `Next`, not a menu — and only for work that genuinely shouldn't be done yet. Anything safe and
+clearly right should already be in `Done`.
 
 ## When to break these rules
 
@@ -110,7 +109,7 @@ The shape yields; the answer never does.
 
 1. **"Explain" / "walk me through" / "how does X work"** — run as long as the topic needs. Still no
    preamble. Add headers so it can be skimmed back. **Omit the closing block entirely**: nothing
-   changed and nothing is blocked, so `DONE Explained the thing / NEXT nothing` is pure noise. The
+   changed and nothing is blocked, so `**Done** — explained the thing / **Next** — nothing` is pure noise. The
    block reports *work*, not answers.
 2. **Destructive or outward-facing action** — confirm first. Safety outranks brevity.
 3. **A design decision with no source of truth** — `CLAUDE.md` requires a visual, not prose. That
@@ -133,7 +132,7 @@ Delete:
    manufactures confidence.
 5. Any figurative phrase. Use the literal action.
 6. Any sentence whose content already appears in the block. The block wins; the prose goes.
-7. Any `NEXT` you could simply have done. Do it instead, and move it to `DONE`.
+7. Any `Next` you could simply have done. Do it instead, and move it to `Done`.
 
 Then verify: **reading only the block, do they know what happened, what's next, and whether they're
 blocked?** If yes, delete everything above it that isn't a correction, a judgment call, or a caveat

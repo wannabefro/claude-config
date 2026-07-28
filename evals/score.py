@@ -7,12 +7,13 @@ cases = {c["id"]: c for c in (json.loads(l) for l in (D/"cases.jsonl").read_text
 
 OPENERS = re.compile(r'^\s*(Great question|Let me\b|I\'ll now|Sure[!,]|Looking at your|To answer)', re.I)
 CLOSERS = re.compile(r'(hope (this|that) helps|let me know if|feel free to|anything else\?|happy to (clarify|help))', re.I)
-BLOCK   = re.compile(r'^\s*DONE\b', re.M)
+BLOCK   = re.compile(r'^\s*\*\*Done\*\*', re.M | re.I)
 
 def slots(t):
     out = {}
-    for k in ("DONE", "NEXT", "YOU"):
-        m = re.search(rf'^\s*{k}\s+(.+)$', t, re.M)
+    for k in ("Done", "Next", "You"):
+        # matches "**Done** — text"; tolerates -, — or : as the separator
+        m = re.search(rf'^\s*\*\*{k}\*\*\s*[—:-]?\s*(.+)$', t, re.M | re.I)
         out[k] = m.group(1).strip() if m else None
     return out
 
@@ -27,8 +28,8 @@ for cid, c in cases.items():
     for cond in ("baseline", "candidate"):
         t = (D/"out"/f"{cid}.{cond}.txt").read_text()
         s = slots(t)
-        has_block = bool(s["DONE"])
-        you = (s["YOU"] or "").lower()
+        has_block = bool(s["Done"])
+        you = (s["You"] or "").lower()
         you_empty = you in ("", "nothing", "nothing.", "none", "—", "-")
         # contract expectation per case
         exp = c["expect_you"]
@@ -39,7 +40,7 @@ for cid, c in cases.items():
         else:
             you_ok = has_block and bool(you) and not you_empty
         rows.append(dict(case=cid, cond=cond, words=len(t.split()),
-                         block=has_block, you=s["YOU"], you_ok=you_ok,
+                         block=has_block, you=s["You"], you_ok=you_ok,
                          paras=paras_before_block(t),
                          opener=bool(OPENERS.search(t)), closer=bool(CLOSERS.search(t))))
 
