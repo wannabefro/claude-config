@@ -85,6 +85,12 @@ so an ordinary build pays for two lenses and a guardrail surface seats all six. 
 unit: the per-unit gate is the `verify_command`, and putting a review inside the loop is what makes
 parallel building slower than serial building.
 
+Then clean up: `~/.claude/scripts/clean-build-worktrees.sh <repo> --apply`. Worktrees are **not**
+removed automatically, and must not be — agents leave their work uncommitted, so the branch sits at
+the base commit and `git branch -d` will call an entire unmerged unit "already merged". The script
+compares file content against the main tree instead, removes only what is byte-identical or empty,
+and keeps anything that still differs. Run it after merging, not before.
+
 ## Where this sits
 
 `ce-brainstorm` -> `ce-plan` produces the plan; this executes the parts of it that decompose. The
