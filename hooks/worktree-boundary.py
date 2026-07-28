@@ -93,13 +93,56 @@ def main() -> None:
 
     if tool == "Bash":
         cmd = tool_input.get("command", "") or ""
-        if re.search(r"\bgit\s+worktree\s+(remove|prune|move)\b", cmd):
+        # `prune` was blocked alongside `remove` and `move` until 2026-07-28. It
+        # does not belong with them: prune deletes no directory and no branch. It
+        # removes administrative records under .git/worktrees for directories that
+        # are ALREADY gone, and it skips locked entries — verified in a scratch
+        # repo, where prune kept both a live worktree and a locked one whose
+        # directory had been deleted. Blocking it made /cleanup impossible to
+        # finish: the script removes a worktree, then cannot tidy the record.
+        #
+        # `--expire` stays blocked. It reaps records whose directory merely failed
+        # to stat, so an unmounted volume turns a live worktree into a pruned one.
+        if re.search(r"\bgit\s+worktree\s+prune\b", cmd) and re.search(r"--expire\b", cmd):
             block(
-                "git worktree remove/prune/move can destroy another session's state. "
-                "Ask the user to run this manually if it's truly needed."
+                "git worktree prune --expire can reap a live worktree whose directory "
+                "is momentarily unreachable. Use plain `git worktree prune`."
             )
-        for m in re.finditer(r"\bgit\s+-C\s+(\S+)", cmd):
+        if re.search(r"\bgit\s+worktree\s+(remove|move)\b", cmd):
+            block(
+                "git worktree remove/move can destroy another session's state.\n"
+                "Use ~/.claude/scripts/clean-build-worktrees.sh (or /cleanup), which "
+                "compares file content against the main tree and keeps anything that "
+                "still differs. Agents leave work uncommitted, so branch ancestry "
+                "calls an entire unmerged unit 'already merged'."
+            )
+
+        # A target the shell expands at runtime ($d, a glob, a backtick) cannot be
+        # resolved here. Until 2026-07-28 resolve() joined it onto the session dir,
+        # so the SAME command was allowed from ~/.claude — the join landed under a
+        # safelisted prefix — and blocked from any project repo. /cleanup documents
+        # a `for d in ~/dev/*/ ... git -C "$d" worktree list` loop, which therefore
+        # worked or failed purely by where the session happened to start.
+        #
+        # An unresolvable target now decides on the verb, not on the path: a read
+        # is allowed, a mutation is blocked. A read cannot damage another session,
+        # which is the whole thing this hook exists to prevent.
+        mutating = re.compile(
+            r"\b(commit|push|reset|checkout|restore|clean|rm|merge|rebase|stash|apply|"
+            r"cherry-pick|revert|worktree|branch|tag|switch|gc|filter-branch)\b"
+        )
+        for m in re.finditer(r"\bgit\s+-C\s+(\S+)((?:\s+\S+)*)", cmd):
             target = m.group(1).strip("'\"")
+            rest = m.group(2) or ""
+            if re.search(r"[$*?`]", target):
+                if mutating.search(rest) and not re.search(r"\bworktree\s+(list|lock)\b", rest):
+                    block(
+                        f"git -C targets a path this hook cannot resolve, and the command "
+                        f"mutates state.\n"
+                        f"  target:  {target}\n"
+                        f"Expand the path yourself, or read first and act on a literal path."
+                    )
+                continue
             abs_p = resolve(target)
             if not in_root(abs_p) and not is_safe(abs_p):
                 block(
