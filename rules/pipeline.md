@@ -12,7 +12,7 @@ Prefer `compound-engineering:ce-*` over `superpowers:` equivalents. Point `ce-wo
 at an **existing plan path** rather than replanning; for a deep non-code deliverable, have `ce-plan`
 plan *how it will produce* the deliverable first.
 
-**Two entry points, and neither wants you to pre-judge the shape.**
+**Three entry points, and none of them wants you to pre-judge the shape.**
 
 `/plan` for all planning, any size: it decides whether `ce-brainstorm` runs first, produces the plan
 with `ce-plan`, and runs the Codex cross-review when the stakes earn it.
@@ -42,17 +42,19 @@ plan lands in a real directory that syncs nowhere.
 
 | Stage | Trigger | Automatic? |
 |---|---|---|
-| Plan | `ce-plan` / `ce-brainstorm` match their descriptions | **Yes** — I invoke them |
+| Plan | `/plan`, or `ce-plan`/`ce-brainstorm` matching their descriptions | **Partly** — the skills self-invoke, so planning can start without you; `/plan` is how you get the brainstorm decision and cross-review too |
 | Build | You type `/build` | **No.** Typing it *is* the opt-in the Workflow tool requires; I cannot self-start a fan-out |
 | Review | You type `/council` | **No**, except `pr-guardrail-review.sh` at `gh pr ready` on a guardrail diff |
 
-Only planning is self-starting. After an approved plan I'll say what to run rather than run it —
-that's the Workflow opt-in gate, not caution, and it outranks the autonomy rule below. Say
-"ultracode" or "use a workflow" in the same breath to skip the round trip.
+Only planning can start on its own. Execution and review cannot: after an approved plan I say what
+to run rather than running it, which is the Workflow opt-in gate, not caution, and it outranks the
+autonomy rule below. Say "ultracode" or "use a workflow" in the same breath to skip the round trip.
 
 ## Review tail
 
-One path: implement, then `/council` once on the assembled diff. Not per unit, not per commit.
+One path: implement, then `/council` once on the assembled diff — not per unit, not per commit.
+`/council` is the review entry point and makes its own calls: it clears open CodeRabbit threads via
+`autofix` first, declines on a genuinely mechanical diff, and otherwise sizes its seating by triage.
 
 The only way to double-review is to invoke `ce-work` **blank** — it then runs `ce-code-review`
 itself. Don't; always hand it the plan path.

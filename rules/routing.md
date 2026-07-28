@@ -24,9 +24,9 @@ Main thread orchestrates; separable work goes to agents. Tiering/dispatch → `r
 | Planning anything, any size | `/plan` — it decides brainstorm-first and cross-review itself |
 | Executing any approved work, any size | `/build` — it routes to parallel/ce-work/inline itself; pre-judging is the mistake |
 | Well-specified unit, or work `/build` routed to `inline` | `implementer` — review the returned diff |
-| Review — default for a diff you own | `/council` — outranks `coderabbit:code-review` despite its "default review skill" description |
+| Reviewing anything, any size | `/council` — the review entry point; it sizes its own seating, sends you to `autofix` first if CodeRabbit threads are open, and declines outright on a mechanical diff |
 | Review inside a blank `ce-work` run | `ce-code-review` — hardwired there; don't fight it |
-| CodeRabbit threads on an open PR | `coderabbit:autofix` — `gh`-only, works on every machine |
+| CodeRabbit threads on an open PR | `coderabbit:autofix` — `gh`-only; `/council` routes here itself when threads are unresolved |
 | Same bug after 2 failed Claude attempts | `/codex:rescue` |
 | Large bounded task that'd eat the main thread | `/codex:rescue --background` |
 
