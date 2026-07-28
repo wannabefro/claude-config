@@ -46,6 +46,11 @@ def main() -> None:
         f"{home}/.cache/",
         f"{home}/Library/LaunchAgents/",
         f"{home}/Library/Logs/",
+        # docs/plans is a symlink into iCloud, and resolve() calls realpath(), so a
+        # plan read lands here rather than under the repo root. Without this every
+        # Read/Edit of a plan is blocked in every repo. Deliberately shared: the
+        # plan store is per-repo inside, so this is not a cross-worktree crossing.
+        f"{home}/Library/Mobile Documents/com~apple~CloudDocs/claude-plans/",
     )
 
     def is_safe(p: str) -> bool:
