@@ -168,12 +168,35 @@ a fan-out on coupled work is strictly worse than building it serially.`,
 )
 
 if (!plan) return { error: 'Decomposition failed — no plan returned.' }
+// Where to go when a fan-out is not the right shape. Naming the concrete route
+// is what lets the caller act without a round trip: with a plan path, ce-work
+// already knows how to execute it; without one, inline is cheaper than dispatch.
+const planPath = (task.match(/[\w./-]*docs\/plans\/[\w.-]+\.md/) || [])[0] || null
+const fallbackRoute = planPath
+  ? `ce-work with the explicit plan path: \`${planPath}\``
+  : 'a single implementer, or inline in the main thread if the reasoning is coupled'
+
+// One unit is not a fan-out. Building it still pays for a worktree, an isolated
+// checkout and a dispatch, and buys no concurrency at all — so it falls back
+// rather than dressing a serial build up as a parallel one.
+if (plan.decomposable && plan.units && plan.units.length === 1) {
+  log('single unit — no concurrency to gain, falling back to a serial build')
+  return {
+    decomposable: false,
+    reason: `The decomposer produced one unit ("${plan.units[0].title}"), so there is nothing to run concurrently.`,
+    fallback: fallbackRoute,
+    recommendation: `Build it directly via ${fallbackRoute}. A one-unit fan-out pays worktree and dispatch cost for zero parallelism.`,
+    plan,
+  }
+}
+
 if (!plan.decomposable || !plan.units || !plan.units.length) {
   log('Not decomposable — recommending serial build')
   return {
     decomposable: false,
     reason: plan.reason,
-    recommendation: 'Build this serially: a single implementer, or the main thread if the reasoning is coupled. Fanning it out would cost more in merge conflicts than it saves.',
+    fallback: fallbackRoute,
+    recommendation: `Build this serially via ${fallbackRoute}. Fanning it out would cost more in merge conflicts than it saves.`,
   }
 }
 
@@ -277,7 +300,8 @@ if (conflicts.length) {
   return {
     error: 'Units that can run concurrently share files.',
     conflicts,
-    recommendation: 'Re-run with the overlapping units merged, or a real dependency declared between them.',
+    fallback: fallbackRoute,
+    recommendation: `Re-run once with the overlapping units merged or a real dependency declared. If it comes back overlapping again, the work is coupled — build it via ${fallbackRoute} instead of forcing a third decomposition.`,
     plan,
   }
 }
@@ -323,7 +347,8 @@ if (contractIssues.length) {
   return {
     error: 'Units share a contract without an ordering that makes it real.',
     contract_issues: contractIssues,
-    recommendation: 'For unordered-contract, add the provider to the consumer\'s depends_on. For duplicate-provider, one unit owns the name — merge them or move the definition into a single unit the others depend on.',
+    fallback: fallbackRoute,
+    recommendation: `For unordered-contract, add the provider to the consumer's depends_on. For duplicate-provider, one unit owns the name — merge them, or move the definition into a single unit the others depend on. If a second decomposition still collides, the contract is genuinely shared: build via ${fallbackRoute}.`,
     plan,
   }
 }

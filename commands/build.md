@@ -49,8 +49,15 @@ that cost more than the parallelism saves.
 
 ## Reporting the result
 
-- If it returns `decomposable: false`, **that is a successful outcome, not a failure.** Relay the
-  reason and build the work serially instead. Do not re-run trying to force a split.
+- If it returns `decomposable: false`, **that is a successful outcome, not a failure** — and the
+  fallback is automatic, not a question. Take the route in its `fallback` field: `ce-work` with the
+  explicit plan path when there is one, otherwise an `implementer` or inline in the main thread. Say
+  in one line that it didn't decompose and why, then get on with building it. Do not stop to ask, and
+  do not re-run trying to force a split. Same for a one-unit decomposition: that is reported as
+  not-decomposable because a single unit pays worktree and dispatch cost for zero concurrency.
+- Structural refusals (`conflicts`, `contract_issues`) get **one** re-decomposition, not a
+  negotiation. If the second attempt collides the same way, the work is genuinely coupled — take the
+  `fallback` route and say so. Two failed decompositions cost more than the parallelism was worth.
 - **On the step-1 report, lead with `critical_path` and `starting_immediately`, not the unit count.**
   Those two numbers are how parallel the build will actually be. Twelve units with a critical path of
   10 is a chain wearing a fan-out's clothing — say so and offer to re-decompose, because the fix is
