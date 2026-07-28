@@ -63,13 +63,23 @@ Forbidden recap: restating what was just done in different words.
 
 ## Ending a turn
 
-At most **three short paragraphs**, then the block. An observation that changed nothing and needs no
-decision gets folded in or cut.
+**The block is the report. Prose never repeats it.**
+
+If the whole turn fits in the block, send *only* the block. Prose earns its place only by carrying
+something the block cannot: a correction, a judgment call you should be able to overrule, a caveat
+that changes what to trust. At most three short paragraphs, and usually zero.
 
 ```
 DONE  <what changed, and how it was verified>
-NEXT  <the single thing I'd do next, or "nothing">
+NEXT  <the single thing I'd do next>
 YOU   <only what I cannot do myself>
+```
+
+Drop `NEXT` and `YOU` when they're empty. If both are, collapse to one line — the explicit tag keeps
+absence from reading as an oversight:
+
+```
+DONE  <what changed, verified how> · nothing needed
 ```
 
 `YOU` is for decisions only they can make, physical access, or credentials — **never an offer of
@@ -107,5 +117,8 @@ Delete:
    manufactures confidence.
 5. Any figurative phrase. Use the literal action.
 
-Then verify: **reading only the first line and the `DONE/NEXT/YOU` block, do they know what
-happened, what's next, and whether they're blocked?** If yes, send.
+6. Any sentence whose content already appears in the block. The block wins; the prose goes.
+
+Then verify: **reading only the block, do they know what happened, what's next, and whether they're
+blocked?** If yes, delete everything above it that isn't a correction, a judgment call, or a caveat
+— then send.
