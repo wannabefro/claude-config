@@ -16,13 +16,40 @@ or matched against a name that never occurs. Editing it is not evidence it works
 that shipped unverified here was later found broken — that track record is why this bar is stated as
 equal to, not lesser than, the bar for application code.
 
-## The ssh push fallback
+## Why gh/https is the default transport, not a fallback
 
-Stated as a fallback rather than a fact because the actual cause is machine-specific: whether
-`gh auth status` reports ssh as the protocol while no usable key is present depends on how that
-particular machine's git credentials are configured. The https-through-gh command sidesteps the
-question entirely rather than diagnosing it, which is why it's the first move rather than a last
-resort.
+This was a *push* fallback until 2026-07-28, framed as machine-specific. Both halves were wrong, and
+the narrow framing is what let a real bug through — the rule was followed correctly and the failure
+happened anyway.
+
+The ssh agent stopped signing (`sign_and_send_pubkey: ... communication with agent failed`). Push
+failed loudly and the documented fallback handled it. But the same broken agent had been failing
+`git fetch` silently, so `origin/main` sat frozen 26 commits behind at `82ac57c` while `main` moved
+on. Nothing surfaced it: `git status` compares against the stale ref, so it reported a clean,
+up-to-date branch.
+
+The cost was concrete. Agent worktrees branch from `origin/<default-branch>`, so a `/build` fan-out
+branched all six units from `82ac57c` — a day's work missing. Every unit returned green, because
+each verified only its own change. It was caught by luck: one unit mentioned reconstructing
+`rules/shipping.md` from a file that no longer existed in that shape. Merging would have silently
+reverted the day.
+
+`worktree.baseRef: "head"` was set in response and is still correct — it makes worktree bases
+independent of ref freshness. But it treated the symptom. The stale ref was the cause, and it could
+as easily have produced a wrong ahead/behind count or a wrong "already merged" verdict.
+
+Hence the two-part rule. https-through-`gh` covers *all* remote transport, not just push: it works
+on any machine where `gh` is authed, so there was never a reason to keep it conditional, and
+diagnosing the agent was never the cheaper path. And a local `origin/*` is not evidence — confirm
+against the remote. Fetching by explicit URL does not update the tracking ref by itself, which is
+why the rule spells out the refspec form.
+
+A zero-discipline alternative is deliberately not adopted:
+`git config --global url."https://github.com/".insteadOf git@github.com:` rewrites every ssh remote
+transparently, needing no per-command care. It is a global change affecting every repo on the
+machine, and machine-local config rather than something this synced repo can carry — recorded as an
+option, not applied. Repairing the agent (`ssh-add`, keychain unlock) is the other option and is
+orthogonal: it fixes today's outage, whereas the rule survives the next one.
 
 ## Guardrail reviews
 

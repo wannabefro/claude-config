@@ -22,9 +22,16 @@ invocation is a bug.
 
 ## Commits & PRs
 
-- **Push fails on "correct access rights" → push https through `gh` instead of diagnosing ssh.**
-  `git push https://github.com/<owner>/<repo>.git <branch>` uses gh as credential helper. Fallback,
-  not fact — machine-specific.
+- **Reach GitHub through `gh`, never ssh** — API work (`gh pr`, `gh api`) *and* git remote transport.
+  For transport that means the https URL, which picks up gh as credential helper:
+  `git <push|fetch> https://github.com/<owner>/<repo>.git <refspec>`. Default, not fallback: it works
+  on every machine, whereas ssh works on some. Never diagnose an ssh agent to unblock a push.
+- **A failed `fetch` is the dangerous one** — push fails loudly, fetch leaves `origin/*` silently
+  frozen, and anything reading it (worktree bases, ahead/behind, "is this merged") is then wrong
+  without saying so. Fetching by URL does *not* update the tracking ref; refresh it explicitly:
+  `git fetch https://github.com/<o>/<r>.git <branch>:refs/remotes/origin/<branch> --force`.
+  Confirm a push landed against the remote (`gh api repos/<o>/<r>/commits/<branch>`), never against
+  a local `origin/*` that may not have moved for months. Rationale: `docs/shipping-rationale.md`.
 - **Commit proactively at logical checkpoints** — overrides "only when asked". One feature/fix/refactor
   per commit, verified. Never commit plans, specs, or scratch artifacts.
 - Push, force-push, PR-open, amend-published need explicit direction.
