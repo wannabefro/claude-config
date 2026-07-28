@@ -20,6 +20,18 @@ ran) and hardwires its own reviewer.
 only, the second fans out N parallel worktree agents. Read `critical_path` and
 `starting_immediately` before spending that, and keep the `build:true` gate even unattended.
 
+## Who pulls each lever
+
+| Stage | Trigger | Automatic? |
+|---|---|---|
+| Plan | `ce-plan` / `ce-brainstorm` match their descriptions | **Yes** — I invoke them |
+| Build | You type `/build` | **No.** Typing it *is* the opt-in the Workflow tool requires; I cannot self-start a fan-out |
+| Review | You type `/council` | **No**, except `pr-guardrail-review.sh` at `gh pr ready` on a guardrail diff |
+
+Only planning is self-starting. After an approved plan I'll say what to run rather than run it —
+that's the Workflow opt-in gate, not caution, and it outranks the autonomy rule below. Say
+"ultracode" or "use a workflow" in the same breath to skip the round trip.
+
 ## Review tail
 
 One path: implement, then `/council` once on the assembled diff. Not per unit, not per commit.
