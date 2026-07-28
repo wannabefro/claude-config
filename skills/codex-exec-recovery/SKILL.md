@@ -25,6 +25,25 @@ description: Use when a `codex exec` run produces no usable output — it hangs 
 
 **Fix:** always pass `-c model_reasoning_effort=medium` (or higher). On empty output, retry **once** at `high`. Still empty → report the empty pass; do **not** treat it as a completed review/plan.
 
+## Just use the wrapper
+
+`~/.claude/scripts/codex-run.sh [-t SECS] [-s STALL_SECS] [-d DIR] "<prompt>"` encodes everything
+below and branches on exit code, so a caller never has to infer failure from output shape:
+
+| exit | meaning | what to do |
+|---:|---|---|
+| 0 | answered | use it |
+| 3 | CLI unavailable (preflight) | report unavailable — do **not** retry or hunt processes |
+| 4 | stalled, killed | re-run with context **inlined**; waiting longer never helps |
+| 5 | empty at medium *and* high | report an empty pass — it does not satisfy a cross-model review |
+
+It preflights with `codex --version` (10s), always passes `model_reasoning_effort=medium`, retries
+once at `high` on an empty turn, and kills a run that emits nothing for the stall window. Sampled
+2026-07-28: 8 healthy runs at 5-8s, so multi-minute silence is a hang, not thinking.
+
+The manual invocation below is what the wrapper does; reach for it only when you need to vary
+something the wrapper does not expose.
+
 ## How to run it (foreground, bounded)
 
 ```bash
