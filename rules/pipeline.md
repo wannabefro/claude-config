@@ -12,12 +12,16 @@ Prefer `compound-engineering:ce-*` over `superpowers:` equivalents. Point `ce-wo
 at an **existing plan path** rather than replanning; for a deep non-code deliverable, have `ce-plan`
 plan *how it will produce* the deliverable first.
 
-`/build` is the entry point for **all** execution — don't pre-judge the shape. Its decomposer reads
-the codebase and returns `route`: `parallel` (fan out), `ce-work` (sequential but substantial), or
-`inline` (just do it). Only `parallel` pauses for approval; the other two proceed in the same turn.
-Always hand
-`ce-work` an **explicit plan path** — blank, it globs for the newest plan (the one `/build` just
-ran) and hardwires its own reviewer.
+**Two entry points, and neither wants you to pre-judge the shape.**
+
+`/plan` for all planning, any size: it decides whether `ce-brainstorm` runs first, produces the plan
+with `ce-plan`, and runs the Codex cross-review when the stakes earn it.
+
+`/build` for all execution, any size: its decomposer reads the codebase and returns `route` —
+`parallel` (fan out), `ce-work` (sequential but substantial), or `inline` (just do it). Only
+`parallel` pauses for approval; the other two proceed in the same turn. Always hand `ce-work` an
+**explicit plan path** — blank, it globs for the newest plan (the one `/build` just ran) and
+hardwires its own reviewer.
 
 The second call exists **only** on the `parallel` route, and is not a mode switch: it fans out N
 worktree agents, which is expensive to start and expensive to undo. Read `critical_path` and
@@ -55,10 +59,14 @@ itself. Don't; always hand it the plan path.
 
 ## Cross-model plan review
 
-Exactly one review pass from the family that didn't author the plan. Claude-authored → one Codex
-pass (review only). Codex-authored → Claude's own review *is* the cross-model pass. An **empty Codex
-pass doesn't satisfy this** — report it rather than finalising. Never recurse into multiple
-cross-reviews unless asked.
+`/plan` runs this. Exactly one pass from the family that didn't author the plan — Claude-authored →
+one Codex pass, review only; Codex-authored → Claude's own review *is* the pass. Gated on stakes:
+guardrail surfaces (auth, payments, migrations/schema, data mutations, public API, permissions) or a
+plan large enough that a wrong shape is expensive to find mid-build.
+
+Run it through `scripts/codex-run.sh` and branch on the exit code, not the output. An **empty pass
+(exit 5) does not satisfy this**, and neither does an unavailable CLI (exit 3) — report either rather
+than finalising. Never recurse into multiple cross-reviews unless asked.
 
 ## Autonomy: after plan approval, not before
 

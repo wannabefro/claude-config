@@ -12,7 +12,7 @@ Skill descriptions do the routing; this table only settles overlaps:
 |---|---|
 | `ce-debug` / `superpowers:systematic-debugging` | `ce-debug` |
 | `/council` / `ce-code-review` | `/council` is the default review path; `ce-code-review` only inside a blank `ce-work` run |
-| `ce-plan` / `superpowers:writing-plans` / `Plan` agent | `ce-plan`; `Plan` only for architecture-only design |
+| `/plan` / `ce-plan` / `ce-brainstorm` / `superpowers:writing-plans` | `/plan` — it invokes brainstorm/plan/codex-review itself; `Plan` agent only for architecture-only design |
 
 ## Delegation
 
@@ -21,6 +21,7 @@ Main thread orchestrates; separable work goes to agents. Tiering/dispatch → `r
 | Work | Route |
 |---|---|
 | Read-heavy gathering, audit, "find out why" | `Explore` (codebase) / `general-purpose` (multi-step) |
+| Planning anything, any size | `/plan` — it decides brainstorm-first and cross-review itself |
 | Executing any approved work, any size | `/build` — it routes to parallel/ce-work/inline itself; pre-judging is the mistake |
 | Well-specified unit, or work `/build` routed to `inline` | `implementer` — review the returned diff |
 | Review — default for a diff you own | `/council` — outranks `coderabbit:code-review` despite its "default review skill" description |
