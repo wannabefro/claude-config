@@ -22,9 +22,17 @@ export const meta = {
 
 const PLAN = {
   type: 'object',
-  required: ['decomposable', 'reason', 'units'],
+  required: ['route', 'reason', 'units'],
   properties: {
-    decomposable: { type: 'boolean', description: 'false if the work is genuinely coupled and should be built serially instead' },
+    // Was a boolean `decomposable`. One bit could say "don't fan out" but not
+    // where to go instead, so the caller guessed — a regex on whether the task
+    // string happened to mention a plan path. The decomposer has already read
+    // the codebase; it is the thing best placed to make this call.
+    route: {
+      enum: ['parallel', 'ce-work', 'inline'],
+      description: 'parallel = two or more units with disjoint files and no shared contract, at least two startable at once. ce-work = sequential or coupled but substantial: several steps, a plan document, needs discovery, wants its own quality gates. inline = one coherent change, or coupled reasoning where the thinking IS the work, or small enough that worktree and dispatch cost exceed the work itself.',
+    },
+    route_reason: { type: 'string', description: 'Why this route and not the other two — name the deciding property (shared file, shared contract, size, coupling), not a generic phrase' },
     reason: { type: 'string', description: 'Why it does or does not decompose — specific, not generic' },
     units: {
       type: 'array',
@@ -161,9 +169,22 @@ Rules for a unit:
   is not safe to build in parallel** — say so rather than inventing a weak command like \`echo ok\`.
 - Mark \`mechanical: true\` only when the change is genuinely rote and the pattern is already obvious.
 
-**Returning decomposable:false is a valid and valuable answer.** Tightly coupled changes, same-file
-edits, and refactors that touch everything do NOT decompose. Say so plainly and explain why; forcing
-a fan-out on coupled work is strictly worse than building it serially.`,
+**Choosing the route is the most valuable thing you do here.** Pick one, and say which property
+decided it:
+
+- \`parallel\` — two or more units with disjoint files and no shared contract, at least two able to
+  start at once. Only this route earns the worktree and dispatch cost.
+- \`ce-work\` — sequential or coupled, but substantial: several steps, a plan document to execute,
+  real discovery needed, or it wants quality gates. Still emit \`units\` when you can, in dependency
+  order — they become ce-work's task list even though nothing fans out.
+- \`inline\` — one coherent change; or coupled reasoning where the thinking *is* the work and
+  handing it off would cost more in explanation than doing it; or small enough that a worktree and a
+  dispatch cost more than the change.
+
+Two failure modes, and the second is the expensive one. Forcing a fan-out on coupled work produces
+merge conflicts that cost more than the parallelism saved. But routing genuinely parallel work to
+\`inline\` silently serialises it — nobody notices, because it still finishes. When it is close,
+prefer the cheaper route: an under-parallelised build is slow, an over-parallelised one is wrong.`,
   { label: 'decompose', phase: 'Decompose', model: 'opus', effort: 'high', schema: PLAN }
 )
 
@@ -172,17 +193,21 @@ if (!plan) return { error: 'Decomposition failed — no plan returned.' }
 // is what lets the caller act without a round trip: with a plan path, ce-work
 // already knows how to execute it; without one, inline is cheaper than dispatch.
 const planPath = (task.match(/[\w./-]*docs\/plans\/[\w.-]+\.md/) || [])[0] || null
-const fallbackRoute = planPath
-  ? `ce-work with the explicit plan path: \`${planPath}\``
-  : 'a single implementer, or inline in the main thread if the reasoning is coupled'
+const routeOf = (r) => r === 'ce-work'
+  ? `ce-work${planPath ? ` with the explicit plan path: \`${planPath}\`` : ' (hand it the plan path or the task verbatim)'}`
+  : 'build it inline in the main thread, or hand a single `implementer` the whole task'
+// The decomposer's choice wins; the regex is only a fallback for an older shape
+// that returned no route at all.
+const fallbackRoute = routeOf(plan.route || (planPath ? 'ce-work' : 'inline'))
 
 // One unit is not a fan-out. Building it still pays for a worktree, an isolated
 // checkout and a dispatch, and buys no concurrency at all — so it falls back
 // rather than dressing a serial build up as a parallel one.
-if (plan.decomposable && plan.units && plan.units.length === 1) {
+if (plan.route === 'parallel' && plan.units && plan.units.length === 1) {
   log('single unit — no concurrency to gain, falling back to a serial build')
   return {
     decomposable: false,
+    route: 'inline',
     reason: `The decomposer produced one unit ("${plan.units[0].title}"), so there is nothing to run concurrently.`,
     fallback: fallbackRoute,
     recommendation: `Build it directly via ${fallbackRoute}. A one-unit fan-out pays worktree and dispatch cost for zero parallelism.`,
@@ -190,11 +215,17 @@ if (plan.decomposable && plan.units && plan.units.length === 1) {
   }
 }
 
-if (!plan.decomposable || !plan.units || !plan.units.length) {
-  log('Not decomposable — recommending serial build')
+if (plan.route !== 'parallel' || !plan.units || !plan.units.length) {
+  log(`route: ${plan.route || 'serial'} — not fanning out`)
   return {
     decomposable: false,
+    route: plan.route || 'inline',
     reason: plan.reason,
+    route_reason: plan.route_reason,
+    // Units still travel even when nothing fans out: for ce-work they are a
+    // ready-made task list in dependency order, which is most of the value the
+    // decomposition produced.
+    units: plan.units || [],
     fallback: fallbackRoute,
     recommendation: `Build this serially via ${fallbackRoute}. Fanning it out would cost more in merge conflicts than it saves.`,
   }

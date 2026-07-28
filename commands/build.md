@@ -49,12 +49,19 @@ that cost more than the parallelism saves.
 
 ## Reporting the result
 
-- If it returns `decomposable: false`, **that is a successful outcome, not a failure** — and the
-  fallback is automatic, not a question. Take the route in its `fallback` field: `ce-work` with the
-  explicit plan path when there is one, otherwise an `implementer` or inline in the main thread. Say
-  in one line that it didn't decompose and why, then get on with building it. Do not stop to ask, and
-  do not re-run trying to force a split. Same for a one-unit decomposition: that is reported as
-  not-decomposable because a single unit pays worktree and dispatch cost for zero concurrency.
+- **It returns a `route`, and that is the answer — act on it, don't re-litigate it.** The decomposer
+  has read the codebase, so it is better placed to make this call than a guess from the task string:
+
+  | route | meaning | what you do |
+  |---|---|---|
+  | `parallel` | ≥2 units, disjoint files, no shared contract | re-invoke with `"build": true` |
+  | `ce-work` | sequential or coupled but substantial | hand `ce-work` the plan path, or the task plus the returned `units` as its task list |
+  | `inline` | one coherent change, or coupled reasoning, or too small to dispatch | just build it |
+
+  Relay `route_reason` in one line and get on with it — no stopping to ask, no re-running to force a
+  split. On `ce-work` and `inline` the `units` still come back in dependency order; that ordering is
+  most of what the decomposition bought, so use it rather than re-deriving it. A one-unit result
+  reports `inline` for the same reason: one unit pays worktree and dispatch cost for zero concurrency.
 - Structural refusals (`conflicts`, `contract_issues`) get **one** re-decomposition, not a
   negotiation. If the second attempt collides the same way, the work is genuinely coupled — take the
   `fallback` route and say so. Two failed decompositions cost more than the parallelism was worth.
