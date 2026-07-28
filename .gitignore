@@ -25,6 +25,7 @@
 !/marketplace/
 !/workflows/
 !/evals/
+!/scripts/
 
 # --- nested re-ignores ---
 # Un-ignoring a directory pulls in its WHOLE subtree, so generated/runtime state
@@ -41,3 +42,6 @@
 
 # eval run outputs are regenerated; never publish them
 evals/out/
+
+# python bytecode from the audit scripts
+scripts/__pycache__/
