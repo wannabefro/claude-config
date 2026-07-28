@@ -93,6 +93,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('root')
     ap.add_argument('--test-cmd', required=True)
+    # The directory to mutate is often not the directory the runner must start
+    # from: jest and vitest resolve their config from the package root, while the
+    # code worth mutating lives in src/. Conflating the two either mutates the
+    # config or breaks the runner.
+    ap.add_argument('--cwd', default=None, help='where to run --test-cmd (default: root)')
     ap.add_argument('--n', type=int, default=40, help='number of mutants')
     ap.add_argument('--tested-only', action='store_true',
                     help='mutate only files that have a matching test file. Without this, a '
@@ -128,7 +133,8 @@ def main():
     print(f'{len(pool)} mutable sites across {len(set(p[0] for p in pool))} files; sampling {a.n}')
 
     # Baseline must be green, or every mutant reads as killed and the run is a lie.
-    base = subprocess.run(a.test_cmd, shell=True, cwd=a.root, capture_output=True,
+    run_dir = a.cwd or a.root
+    base = subprocess.run(a.test_cmd, shell=True, cwd=run_dir, capture_output=True,
                           text=True, timeout=a.timeout)
     if base.returncode != 0:
         print('BASELINE IS RED — fix that first; every mutant would look killed.', file=sys.stderr)
@@ -144,7 +150,7 @@ def main():
         lines[line_i] = before[:s] + rep + before[e:]
         open(path, 'w', encoding='utf8').write('\n'.join(lines))
         try:
-            r = subprocess.run(a.test_cmd, shell=True, cwd=a.root, capture_output=True,
+            r = subprocess.run(a.test_cmd, shell=True, cwd=run_dir, capture_output=True,
                                text=True, timeout=a.timeout)
             ok = r.returncode == 0
         except subprocess.TimeoutExpired:
