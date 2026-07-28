@@ -57,6 +57,12 @@ that cost more than the parallelism saves.
   cheap now and expensive after the agents run.
 - If it returns `conflicts`, two units that could run at the same time claim the same file. Report the
   overlap and offer to re-run with them merged or with a real dependency declared between them.
+- If it returns `contract_issues`, units disagree about a shared name while touching different files.
+  This is the one worth explaining rather than just relaying: `unordered-contract` means a unit reads
+  a name another unit defines with no dependency between them, so both verify green in isolation and
+  only disagree once merged. `duplicate-provider` means two units define the same name and the later
+  merge silently wins. Neither is visible in the file lists. Offer to re-decompose with the
+  dependency declared, or with the name owned by exactly one unit.
 - If it returns `cycles`, `dangling`, or `duplicates`, the dependency graph is malformed — relay it
   and re-run. `duplicates` is the one most likely to look like a tool malfunction rather than a
   decomposer slip; it is not, and the decomposition is cheap to redo.

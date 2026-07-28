@@ -48,6 +48,20 @@ const PLAN = {
           },
           mechanical: { type: 'boolean', description: 'true if the change is rote — rename, boilerplate, pattern already obvious. Routed to a cheaper tier.' },
           files: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files this unit owns. Two units that could run concurrently must not share a file — either add a dependency between them or merge them.' },
+          // File overlap is not the only way two units collide. A unit can define a
+          // field/export/route that another reads while touching entirely different
+          // files — each verifies green in its own worktree, and the mismatch only
+          // appears at merge. Naming the contract is what makes that checkable.
+          provides: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Stable names this unit introduces or changes that anything outside it could depend on — exported symbols, object fields, API routes, config keys, DB columns, event names. Use the exact dotted name (e.g. "item.photo", "config.currency"). Omit purely internal names.',
+          },
+          consumes: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Names from another unit\'s `provides` that this unit reads or depends on. If you list a name here that another unit provides, you MUST also list that unit in depends_on — otherwise you are asserting a contract nobody has built yet.',
+          },
           definition_of_done: { type: 'string', description: 'Observable behaviour that must hold when finished' },
           verify_command: { type: 'string', description: 'A single shell command that exits 0 exactly when this unit is done. Scoped to this unit — not the whole suite.' },
           notes: { type: 'string' },
@@ -133,6 +147,14 @@ Rules for a unit:
       file another unit creates. Those are true only after the merge, so they cannot pass in any
       single worktree. If a check like that matters, say so in \`notes\` as a post-merge step; do not
       dress it up as a unit.
+- **Name the contracts, not just the files.** Isolation means a unit can invent a field name, a
+  route, or a config key, verify green against its own use of it, and disagree with the unit on the
+  other side — the mismatch surfaces at merge, when every unit already reported success. Files do not
+  catch this: the two units usually touch different files entirely. So for each unit list
+  \`provides\` (names it introduces or changes that anything outside could depend on) and
+  \`consumes\` (names it reads that another unit provides), using the exact dotted name. Anything you
+  put in \`consumes\` that another unit provides REQUIRES that unit in \`depends_on\`; and exactly one
+  unit may provide a given name. Both are enforced — violating either is refused, not warned.
 - Every unit needs a \`verify_command\`: one shell command that exits 0 exactly when the unit is done
   and non-zero when it is not. A scoped test, a targeted typecheck — not the whole suite, which would
   fail for reasons unrelated to this unit. **If you cannot write such a command for a unit, that unit
@@ -256,6 +278,52 @@ if (conflicts.length) {
     error: 'Units that can run concurrently share files.',
     conflicts,
     recommendation: 'Re-run with the overlapping units merged, or a real dependency declared between them.',
+    plan,
+  }
+}
+
+// Contract collisions. Distinct from file overlap: these units touch different
+// files, so every one of them verifies green in its own worktree and the drift
+// only appears at merge — the failure mode that motivated adding provides/consumes.
+const providers = new Map()
+for (const u of plan.units) {
+  for (const s of (u.provides || [])) {
+    if (!providers.has(s)) providers.set(s, [])
+    providers.get(s).push(u.id)
+  }
+}
+const contractIssues = []
+for (const [sym, ids] of providers) {
+  for (let i = 0; i < ids.length; i++) {
+    for (let k = i + 1; k < ids.length; k++) {
+      // Two units defining the same name is a collision even if ordered — the
+      // later one silently wins, which is not a decomposition, it's a coin toss.
+      contractIssues.push({ kind: 'duplicate-provider', symbol: sym, units: [ids[i], ids[k]] })
+    }
+  }
+}
+for (const u of plan.units) {
+  for (const s of (u.consumes || [])) {
+    for (const p of (providers.get(s) || [])) {
+      if (p === u.id) continue
+      if (!ancestorsOf(u.id).has(p)) {
+        contractIssues.push({
+          kind: 'unordered-contract',
+          symbol: s,
+          consumer: u.id,
+          provider: p,
+          detail: `${u.id} consumes "${s}" but does not depend on ${p}, which provides it — both would verify green in isolation and disagree at merge.`,
+        })
+      }
+    }
+  }
+}
+if (contractIssues.length) {
+  log(`${contractIssues.length} contract issue(s) — refusing to fan out into drift that only shows at merge`)
+  return {
+    error: 'Units share a contract without an ordering that makes it real.',
+    contract_issues: contractIssues,
+    recommendation: 'For unordered-contract, add the provider to the consumer\'s depends_on. For duplicate-provider, one unit owns the name — merge them or move the definition into a single unit the others depend on.',
     plan,
   }
 }
@@ -392,7 +460,10 @@ return {
   // everything it was built on. Deliberately NOT merged automatically — an
   // unattended N-way merge is exactly where parallel builds go wrong.
   merge_sequence: green
-    .sort((a, b) => depthOf(a.unit.id) - depthOf(b.unit.id))
+    // Total order, not just depth. Depth alone leaves equal-depth units in
+    // Array.sort's arbitrary order, so the merge sequence differed run to run on
+    // the same plan — id breaks the tie and makes it reproducible.
+    .sort((a, b) => depthOf(a.unit.id) - depthOf(b.unit.id) || a.unit.id.localeCompare(b.unit.id))
     .map((r) => ({
       depth: depthOf(r.unit.id),
       id: r.unit.id,
