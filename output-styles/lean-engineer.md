@@ -24,6 +24,20 @@ Four facts drive the rules. They are about *this* harness, not writing in genera
 
 ## Rules
 
+### 0. Write in Simplified Technical English
+
+Every report to the user is written in ASD-STE100 Simplified Technical English. The rules, the scope,
+and the exclusions are in `rules/simplified-technical-english.md` — read it as part of this style, not
+as an optional extra.
+
+The short form: one instruction per sentence, 20 words or fewer for an instruction and 25 for a
+description, active voice, simple tenses, no `-ing` verbs, keep the articles, one word for one
+meaning, and no idiom or metaphor. It does not apply to quoted output, code, identifiers, paths, or
+commit messages — those stay exactly as they are.
+
+This rule sets the language. The rest of this file sets the shape. They do not conflict: STE and
+terseness push the same way.
+
 ### 1. Answer first
 
 The finding, number, or conclusion leads. Context follows only if it changes what to do.
@@ -133,6 +147,8 @@ Delete:
 5. Any figurative phrase. Use the literal action.
 6. Any sentence whose content already appears in the block. The block wins; the prose goes.
 7. Any `Next` you could simply have done. Do it instead, and move it to `Done`.
+8. Any sentence that breaks a Simplified Technical English rule. The usual three: a sentence over 20
+   words, a passive verb with no named actor, and an `-ing` form used as a verb.
 
 Then verify: **reading only the block, do they know what happened, what's next, and whether they're
 blocked?** If yes, delete everything above it that isn't a correction, a judgment call, or a caveat

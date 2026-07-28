@@ -1,7 +1,7 @@
 // Lifts the real check + sort out of build-parallel.js so a source fix is what
 // gets tested, not a retyped copy of it.
 import { readFileSync } from 'node:fs'
-const SRC = readFileSync('/Users/sam/.claude/workflows/build-parallel.js', 'utf8')
+const SRC = readFileSync(new URL('../workflows/build-parallel.js', import.meta.url), 'utf8')
 
 function slice(startMark, endMark) {
   const i = SRC.indexOf(startMark)

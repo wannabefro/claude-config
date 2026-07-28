@@ -33,6 +33,18 @@ const PLAN = {
       description: 'parallel = two or more units with disjoint files and no shared contract, at least two startable at once. ce-work = sequential or coupled but substantial: several steps, a plan document, needs discovery, wants its own quality gates. inline = one coherent change, or coupled reasoning where the thinking IS the work, or small enough that worktree and dispatch cost exceed the work itself.',
     },
     route_reason: { type: 'string', description: 'Why this route and not the other two — name the deciding property (shared file, shared contract, size, coupling), not a generic phrase' },
+    // Added 2026-07-28 after measuring what a worktree actually contains. A fresh
+    // worktree checks out tracked files only: in one repo that was 12M with NO
+    // node_modules against a 1.0G main checkout, so every verify_command that
+    // needs installed dependencies fails there for a reason unrelated to the
+    // unit's work. Where a worktree HAD been populated it cost 1.2G each, which
+    // is how 37 of them accumulated unnoticed. Isolation is only worth buying
+    // when the gate can still run inside it.
+    workspace: {
+      enum: ['shared', 'worktree'],
+      description: 'shared = every unit builds in the existing checkout (default). worktree = each unit gets its own isolated checkout. Choose worktree ONLY if every verify_command can pass in a tree containing tracked files alone — no node_modules, .venv, vendor, Pods, build cache or any other ignored path. If any gate needs installed dependencies, choose shared: a worktree would fail it for reasons unrelated to the unit.',
+    },
+    workspace_reason: { type: 'string', description: 'Name the deciding fact — which ignored path the verify commands need, or the evidence that they need none' },
     reason: { type: 'string', description: 'Why it does or does not decompose — specific, not generic' },
     units: {
       type: 'array',
@@ -145,16 +157,26 @@ Rules for a unit:
 - Two units that could run CONCURRENTLY (neither reachable from the other through depends_on) must
   not share a file. If they must share one, either add a real dependency between them or merge them
   into a single unit.
-- **Each unit is built in its own isolated git worktree, and its verify_command runs THERE, before
-  anything is merged.** Two consequences, and getting either wrong makes a unit fail its own gate for
-  reasons that have nothing to do with its work:
-    · Use repo-relative paths (\`rules/foo.md\`), never absolute ones. An absolute path escapes the
-      worktree and tests the untouched original checkout instead of the unit's edits.
+- **Each unit runs its own verify_command before anything else sees its work**, so:
+    · Use repo-relative paths (\`rules/foo.md\`), never absolute ones.
     · A unit's verify must be satisfiable from THAT UNIT'S changes alone. Never assert a cross-unit
       invariant — a total across files other units own, a count over the whole tree, a link into a
-      file another unit creates. Those are true only after the merge, so they cannot pass in any
-      single worktree. If a check like that matters, say so in \`notes\` as a post-merge step; do not
-      dress it up as a unit.
+      file another unit creates. Those are true only after the merge, so no unit can pass them. If a
+      check like that matters, say so in \`notes\` as a post-merge step; do not dress it up as a unit.
+- **Set \`workspace\`, and get it right — this is the one that silently breaks builds.** A git
+  worktree checks out TRACKED FILES ONLY. Nothing ignored comes with it: no \`node_modules\`, no
+  \`.venv\`, no \`vendor\`, no \`Pods\`, no build cache, and no ignored symlink such as \`docs/plans\`.
+  So run the check, do not assume:
+    · Look at what each \`verify_command\` actually needs to execute — \`npm test\`, \`pytest\`,
+      \`tsc\`, \`bundle exec\` all need an install that a fresh worktree does not have.
+    · Needs any ignored path → \`workspace: "shared"\`. Every unit builds in the existing checkout.
+      This is safe here precisely because concurrent units are already forbidden from sharing a file
+      or a contract, and both rules are enforced rather than advisory.
+    · Needs none of them — the gate is a lint, a grep, a file-shape assertion, a pure-source
+      typecheck with dependencies committed — → \`workspace: "worktree"\`, which additionally buys
+      clean rollback of a failed unit.
+    · When unsure, choose \`shared\`. A wrong \`shared\` risks a partial edit left behind by a failed
+      unit; a wrong \`worktree\` fails EVERY gate at once and reads as the whole plan being broken.
 - **Name the contracts, not just the files.** Isolation means a unit can invent a field name, a
   route, or a config key, verify green against its own use of it, and disagree with the unit on the
   other side — the mismatch surfaces at merge, when every unit already reported success. Files do not
@@ -412,9 +434,17 @@ if (!build) {
     starting_immediately: startable,
     critical_path: criticalPath,
     units: plan.units.map((u) => ({ ...u, depth: depthOf(u.id) })),
-    note: 'No implementer ran and no worktree was created. Re-run with build:true to fan out.',
+    workspace: plan.workspace || 'shared',
+    workspace_reason: plan.workspace_reason || '(not stated — defaulted to shared)',
+    note: 'No implementer ran and nothing was created. Re-run with build:true to fan out.',
   }
 }
+
+// Default shared, not worktree. An unset field must land on the choice that
+// still runs the gates; the failure mode of a wrong `worktree` is every unit
+// failing verification at once.
+const useWorktrees = plan.workspace === 'worktree'
+log(`workspace: ${useWorktrees ? 'worktree per unit' : 'shared checkout'}${plan.workspace_reason ? ` — ${plan.workspace_reason}` : ''}`)
 
 log(`${plan.units.length} unit(s), ${startable} starting immediately, critical path ${criticalPath} — building`)
 
@@ -429,19 +459,25 @@ log(`${plan.units.length} unit(s), ${startable} starting immediately, critical p
 // here can oversubscribe the machine.
 const scheduled = new Map()
 
-// Only depth-1 is actually buildable. Every worktree branches from the SAME base
-// commit, and nothing merges mid-run, so a depth-2 unit would be built against a
+// Depth limiting applies to WORKTREES ONLY, and this is the second reason the
+// shared checkout is now the default. Every worktree branches from the SAME base
+// commit and nothing merges mid-run, so a depth-2 unit would be built against a
 // tree that never contained its dependency's work — it verifies green against a
 // world that does not exist yet. Sequencing is not composition: waiting for a
-// dependency to go green does not put its code in your checkout. Measured
+// dependency to go green does not put its code in your worktree. Measured
 // 2026-07-28 on an 8-unit run: 4 reported green, only the 2 roots were mergeable,
 // and a unit that depended on a DB mutation had been written against the old
 // schema throughout. Deeper units are returned as `deferred` — merge this layer,
 // then re-run from the new HEAD.
+//
+// In a SHARED checkout that failure cannot occur: the dependency wrote into this
+// same tree, so by the time the gate below passes, its work is present and the
+// full DAG runs in one pass. An audit of past runs put ~30% of units at depth>1,
+// and every one of them was a re-run this removes.
 const runUnit = (u) => {
   if (scheduled.has(u.id)) return scheduled.get(u.id)
   const p = (async () => {
-    if (depthOf(u.id) > 1) {
+    if (useWorktrees && depthOf(u.id) > 1) {
       return {
         unit: u,
         status: 'deferred',
@@ -484,7 +520,15 @@ build on work that was never there.
 
 Do not touch files outside your unit, do not "helpfully" fix unrelated things you notice, and do not
 commit anything beyond your own unit. If your unit turns out to depend on another unit's work,
-report \`blocked\` and say which — that is a decomposition error worth knowing about.`,
+report \`blocked\` and say which — that is a decomposition error worth knowing about.
+${useWorktrees ? '' : `
+YOU ARE IN THE SHARED CHECKOUT, not a private copy. Sibling agents are editing other files in this
+same tree right now. The files listed above are yours alone — no concurrent unit is permitted to
+touch them — but everything else in the tree belongs to somebody else. Never run a command that
+writes outside your own files: no \`git checkout .\`, no \`git stash\`, no \`git reset\`, no formatter
+or codemod over the whole tree. If you must abandon your unit, undo ONLY your own paths
+(\`git checkout -- <your files>\`) and report \`failed\`. If your verify_command fails inside a file
+you do not own, that is a sibling's in-flight edit, not your bug — report \`blocked\` and name it.`}`,
         {
           label: `build:${u.id}`,
           phase: 'Build',
@@ -492,9 +536,10 @@ report \`blocked\` and say which — that is a decomposition error worth knowing
           // Tier per unit: rote work does not need Sonnet. This is the lever that
           // has been sitting unused.
           model: u.mechanical ? 'haiku' : 'sonnet',
-          // Isolation is what makes concurrent writers safe. It costs ~200-500ms
-          // and a little disk per unit; a merge conflict costs far more.
-          isolation: 'worktree',
+          // Only when the decomposer confirmed every gate can pass on tracked
+          // files alone. See the `workspace` field for why this is not the
+          // default any more.
+          ...(useWorktrees ? { isolation: 'worktree' } : {}),
           schema: UNIT,
         }
       )
@@ -547,7 +592,7 @@ return {
       id: r.unit.id,
       title: r.unit.title,
       depends_on: depsOf(r.unit),
-      branch: r.result.branch || '(worktree branch — see task output)',
+      branch: useWorktrees ? (r.result.branch || '(worktree branch — see task output)') : '(shared checkout — already in the working tree)',
       files: r.result.files_changed || r.unit.files,
       verify: r.unit.verify_command,
     })),
@@ -574,16 +619,22 @@ return {
   // agents leave changes uncommitted, so branch ancestry says "already merged"
   // about a worktree containing an entire unit. The script compares file
   // content instead; it is safe only AFTER merge_sequence has been applied.
-  cleanup: {
-    when: 'after merging merge_sequence — never before',
-    command: '~/.claude/scripts/clean-build-worktrees.sh <repo> --apply',
-    note: deferred.length
-      ? 'Run it between layers too, not just at the end — each re-run adds a worktree per unit, and a deep plan otherwise leaves one set behind per layer.'
-      : 'Dry run first (omit --apply) to see what it considers merged.',
-  },
+  cleanup: useWorktrees
+    ? {
+        when: 'after merging merge_sequence — never before',
+        command: '~/.claude/scripts/clean-build-worktrees.sh <repo> --apply',
+        note: deferred.length
+          ? 'Run it between layers too, not just at the end — each re-run adds a worktree per unit, and a deep plan otherwise leaves one set behind per layer.'
+          : 'Dry run first (omit --apply) to see what it considers merged.',
+      }
+    : { when: 'not applicable', command: null, note: 'Shared checkout — no worktree and no branch was created, so there is nothing to collect.' },
   next_step: deferred.length
     ? `Layer complete: ${green.length} of ${buildable.length} buildable unit(s) green. ${deferred.length} unit(s) are deferred because their dependencies' code exists only on unmerged branches — no worktree contains it. Merge merge_sequence, then re-run /build on the same plan from the new HEAD to build the next layer.${failed.length ? ' Resolve the failed units first.' : ''}`
     : green.length === results.length
-      ? 'All units green. Merge in dependency order (merge_sequence), then run /council once on the assembled diff — not per unit.'
-      : 'Resolve the units needing attention before merging. Anything listed as skipped was never built because a dependency failed — fix that dependency first, and the units downstream of it are still outstanding work.',
+      ? (useWorktrees
+          ? 'All units green. Merge in dependency order (merge_sequence), then run /council once on the assembled diff — not per unit.'
+          : 'All units green, and their work is already in the working tree — nothing to merge. Review the assembled diff with /council once, then commit.')
+      : useWorktrees
+        ? 'Resolve the units needing attention before merging. Anything listed as skipped was never built because a dependency failed — fix that dependency first, and the units downstream of it are still outstanding work.'
+        : 'Resolve the units needing attention. Their partial edits are in the working tree alongside the green units, so check `git status` before committing — a failed unit may have left files behind. Anything skipped was never built because a dependency failed; fix that dependency first.',
 }

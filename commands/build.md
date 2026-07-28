@@ -26,10 +26,31 @@ worktree.
   cost a round trip; making the user confirm a serial build wastes another.
 - `ce-work` → **invoke `ce-work` now, this turn**, with the plan path if there is one, otherwise the
   task plus the returned `units` as its task list.
-- `parallel` → **stop and show me the split**: units, file ownership, `verify_command`s, and lead
-  with `critical_path` / `starting_immediately`. Then re-invoke with `"build": true` once I agree.
-  This is the only route that waits, because it is the only one that spawns N implementers into N
-  worktrees — expensive to start and expensive to undo.
+- `parallel` → **stop and show me the split**: units, file ownership, `verify_command`s, `workspace`,
+  and lead with `critical_path` / `starting_immediately`. Then re-invoke with `"build": true` once I
+  agree. This is the only route that waits, because it is the only one that spawns N implementers —
+  expensive to start and expensive to undo.
+
+## Shared checkout or worktree
+
+The decomposer returns `workspace`, and **`shared` is the default** — every unit builds in the
+existing checkout. That is safe because concurrent units are already forbidden from sharing a file or
+a contract, and both rules are enforced in code rather than left to prose.
+
+`worktree` is chosen only when every `verify_command` can pass in a tree of tracked files alone.
+A worktree checks out **nothing that is ignored**: no `node_modules`, no `.venv`, no `vendor`, no
+`Pods`, no build cache, and not the ignored `docs/plans` symlink either. Measured 2026-07-28 — one
+repo's worktree was 12M against a 1.0G main checkout with no `node_modules` at all, so every gate
+needing an install would have failed there for reasons unrelated to the unit; another repo's
+worktrees had been populated and cost 1.2G each, which is how 37 accumulated unnoticed.
+
+Two things follow from `shared`, and both are worth saying in the report:
+
+- **The whole DAG builds in one pass.** `deferred` only exists for worktrees, where a dependency's
+  work lives on an unmerged branch. In a shared tree the dependency wrote here, so depth-2 and
+  deeper units build normally. An audit put ~30% of units at depth>1 — those re-runs disappear.
+- **There is nothing to merge and nothing to clean up.** The work is already in the working tree.
+  Check `git status` before committing if any unit failed: its partial edits are there too.
 
 Invoking this command is the explicit opt-in the Workflow tool requires.
 
@@ -87,10 +108,11 @@ that cost more than the parallelism saves.
 - If it returns `cycles`, `dangling`, or `duplicates`, the dependency graph is malformed — relay it
   and re-run. `duplicates` is the one most likely to look like a tool malfunction rather than a
   decomposer slip; it is not, and the decomposition is cheap to redo.
-- If it returns `deferred`, that is **not** a failure: only depth-1 units are buildable in one pass,
-  because every worktree branches from the same base and nothing merges mid-run — a deeper unit would
-  be written against a tree that never contained its dependency's work. Report it as "layer complete",
-  give the merge sequence, and say the next layer needs a re-run from the new HEAD.
+- If it returns `deferred` — only possible on `workspace: "worktree"` — that is **not** a failure:
+  there, only depth-1 units are buildable in one pass, because every worktree branches from the same
+  base and nothing merges mid-run, so a deeper unit would be written against a tree that never
+  contained its dependency's work. Report it as "layer complete", give the merge sequence, and say
+  the next layer needs a re-run from the new HEAD.
 - On success: report `units_green / units_total`, then the **merge sequence**, which is in dependency
   order so a unit always merges after whatever it was built on. Nothing is merged automatically — an
   unattended N-way merge is where parallel builds go wrong.
@@ -101,14 +123,16 @@ that cost more than the parallelism saves.
 
 ## After it succeeds
 
-Merge in `merge_sequence` order, then run `/council` **once** on the assembled diff. Its triage sizes the seating,
-so an ordinary build pays for two lenses and a guardrail surface seats all six. Do not review per
-unit: the per-unit gate is the `verify_command`, and putting a review inside the loop is what makes
-parallel building slower than serial building.
+Run `/council` **once** on the assembled diff — after merging `merge_sequence` on the worktree route,
+or directly on the working tree on the shared one. Its triage sizes the seating, so an ordinary build
+pays for two lenses and a guardrail surface seats all six. Do not review per unit: the per-unit gate
+is the `verify_command`, and putting a review inside the loop is what makes parallel building slower
+than serial building.
 
-Then clean up — the result carries the command in its `cleanup` field, and running it is part of
-finishing a build, not an optional tidy-up. Left alone these accumulate: 37 stale worktrees and 33
-orphan branches had built up across four repos before anyone counted.
+**Cleanup applies to the worktree route only** — on `shared`, `cleanup.command` is null and there is
+nothing to collect. Where it does apply the result carries the command in its `cleanup` field, and
+running it is part of finishing a build, not an optional tidy-up. Left alone these accumulate: 37
+stale worktrees and 33 orphan branches had built up across four repos before anyone counted.
 
 `~/.claude/scripts/clean-build-worktrees.sh <repo> --apply`. Worktrees are **not**
 removed automatically, and must not be — agents leave their work uncommitted, so the branch sits at

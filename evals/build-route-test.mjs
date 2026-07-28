@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-const SRC = readFileSync('/Users/sam/.claude/workflows/build-parallel.js','utf8')
+const SRC = readFileSync(new URL('../workflows/build-parallel.js', import.meta.url),'utf8')
 const i = SRC.indexOf('const planPath ='), j = SRC.indexOf('// Ids must be unique', i)
 const blk = SRC.slice(i, j)
 const run = (route, units, task) => {

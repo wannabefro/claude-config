@@ -38,6 +38,11 @@ A fresh worktree won't have the symlink, because ignored paths aren't checked ou
 `~/.claude/scripts/link-plans.sh <path> --apply` (idempotent) before writing a plan there, or the
 plan lands in a real directory that syncs nowhere.
 
+This is one instance of a general rule, and the reason `/build` now defaults to a **shared checkout**
+rather than a worktree per unit: a worktree contains tracked files only. No `node_modules`, no
+`.venv`, no `Pods`, no build cache, no ignored symlink. `/build`'s decomposer returns `workspace`,
+and picks `worktree` only when every `verify_command` can pass without any of them.
+
 ## Who pulls each lever
 
 | Stage | Trigger | Automatic? |

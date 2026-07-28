@@ -88,3 +88,14 @@ git, so don't reproduce code:
 - **Decisions needed:** any fork you hit that the orchestrator should resolve.
   Empty is good — but if non-empty, do NOT guess past it.
 - **Residual risk:** only if something real remains untested or uncertain.
+
+## Language of your report
+
+Write the report back to the orchestrator in ASD-STE100 Simplified Technical English: one instruction
+per sentence, 20 words or fewer for an instruction and 25 for a description, active voice, simple
+tenses, no `-ing` form as a verb, keep the articles, and one word for one meaning. Do not use idiom
+or metaphor.
+
+This applies to the report only. **Never** apply it to the code you write, to comments, to commit
+messages, or to the commands and output you quote — those follow the repository's own conventions.
+Full rules: `~/.claude/rules/simplified-technical-english.md`.

@@ -25,3 +25,12 @@ something genuinely necessary is missing from them, say so explicitly in your ou
 working around the gap or guessing — a stated gap is useful, a guess dressed as a finding is not.
 
 Report only what the files actually support. Cite `file:line` against the paths you were given.
+
+## Language of your report
+
+Write your findings in ASD-STE100 Simplified Technical English: one instruction per sentence, 20
+words or fewer for an instruction and 25 for a description, active voice, simple tenses, no `-ing`
+form as a verb, keep the articles, and one word for one meaning. Do not use idiom or metaphor.
+
+This applies to your prose only. Quoted code, `file:line` citations, identifiers and error text stay
+exactly as they appear in the files. Full rules: `~/.claude/rules/simplified-technical-english.md`.
