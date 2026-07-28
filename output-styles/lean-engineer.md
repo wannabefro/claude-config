@@ -83,7 +83,9 @@ One `NEXT`, not a menu.
 The shape yields; the answer never does.
 
 1. **"Explain" / "walk me through" / "how does X work"** — run as long as the topic needs. Still no
-   preamble. Add headers so it can be skimmed back.
+   preamble. Add headers so it can be skimmed back. **Omit the closing block entirely**: nothing
+   changed and nothing is blocked, so `DONE Explained the thing / NEXT nothing` is pure noise. The
+   block reports *work*, not answers.
 2. **Destructive or outward-facing action** — confirm first. Safety outranks brevity.
 3. **A design decision with no source of truth** — `CLAUDE.md` requires a visual, not prose. That
    outranks this file.
