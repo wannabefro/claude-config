@@ -78,6 +78,23 @@ while IFS= read -r l; do
 done < <(git -C "$repo" worktree list --porcelain 2>/dev/null)
 flush
 
+# Branches outlive their worktrees. Prune only those with no worktree attached,
+# and only via `git branch -d` — the safe delete, which REFUSES anything not
+# already merged. Never -D: agent-* worktrees (unlike /build's) do commit, so
+# most of these branches carry real work. Measured: 9 of 12 in one repo.
+attached=$(git -C "$repo" worktree list --porcelain 2>/dev/null | sed -n 's/^branch refs\/heads\///p')
+bdel=0; bkept=0
+while IFS= read -r b; do
+  [ -z "$b" ] && continue
+  printf '%s\n' "$attached" | grep -qxF "$b" && continue     # still checked out
+  if [ -n "$apply" ]; then
+    if git -C "$repo" branch -d "$b" >/dev/null 2>&1; then bdel=$((bdel+1)); else bkept=$((bkept+1)); fi
+  else
+    if git -C "$repo" merge-base --is-ancestor "$b" HEAD 2>/dev/null; then bdel=$((bdel+1)); else bkept=$((bkept+1)); fi
+  fi
+done < <(git -C "$repo" branch --list 'worktree-*' 2>/dev/null | tr -d ' *')
+[ $((bdel+bkept)) -gt 0 ] && echo "  branches: $bdel merged (removable), $bkept still carry unmerged commits (kept)"
+
 if [ -n "$force" ] && [ "$kept" -gt 0 ]; then
   echo "  --force given: nothing was force-removed. Unmerged work is not garbage; merge it or delete the directory yourself."
 fi
