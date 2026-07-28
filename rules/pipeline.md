@@ -20,6 +20,16 @@ ran) and hardwires its own reviewer.
 only, the second fans out N parallel worktree agents. Read `critical_path` and
 `starting_immediately` before spending that, and keep the `build:true` gate even unattended.
 
+## Where plans live
+
+`docs/plans/` is a **symlink into iCloud** (`.../CloudDocs/claude-plans/<repo>/`), globally ignored
+via `~/.config/git/ignore`. Plans are durable — measured, 83 of 122 re-read more than 20 times and
+half revised after creation — but they stay out of every repo's history.
+
+A fresh worktree won't have the symlink, because ignored paths aren't checked out. Re-create it with
+`~/.claude/scripts/link-plans.sh <path> --apply` (idempotent) before writing a plan there, or the
+plan lands in a real directory that syncs nowhere.
+
 ## Who pulls each lever
 
 | Stage | Trigger | Automatic? |
