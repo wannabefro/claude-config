@@ -16,7 +16,15 @@ repo="${1:?usage: link-plans.sh <repo-path> [--apply]}"
 apply=""; [ "${2:-}" = "--apply" ] && apply=1
 
 repo="${repo%/}"
-name=$(basename "$repo")
+# Name the store after the MAIN repo, never the directory basename: inside a
+# worktree the basename is `wf_abc-2`, which would point at a store that does
+# not exist and silently create an empty one.
+common=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+if [ -n "$common" ]; then
+  name=$(basename "$(dirname "$common")")
+else
+  name=$(basename "$repo")
+fi
 src="$repo/docs/plans"
 dst="$STORE/$name"
 
@@ -30,10 +38,14 @@ fi
 
 n=0; [ -d "$src" ] && n=$(find "$src" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
 
-# Only touch repos that actually hold plans. Symlinking ~60 empty repos would be
-# churn in trees this change has no business entering; they get linked if and
-# when they first produce a plan.
-[ "$n" -eq 0 ] && { say "SKIP $name — no plans"; exit 0; }
+# Only touch repos that actually hold plans — symlinking ~60 empty repos would be
+# churn in trees this change has no business entering. But "no local plans" is
+# also exactly what a fresh worktree looks like, and there the whole point is to
+# link it. So: skip only when there is nothing on either side.
+if [ "$n" -eq 0 ] && [ ! -d "$dst" ]; then
+  say "SKIP $name — no plans here and no store to link"
+  exit 0
+fi
 
 if [ -z "$apply" ]; then
   say "PLAN $name — move $n plan(s) to iCloud, symlink back, gitignore docs/plans"
