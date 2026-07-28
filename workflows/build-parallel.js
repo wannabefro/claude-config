@@ -569,6 +569,18 @@ return {
   // reporting it as attention-needed would read as 4 broken units rather than
   // "this layer is done, merge it and go again".
   deferred: deferred.map((r) => ({ id: r.unit.id, title: r.unit.title, depth: depthOf(r.unit.id), depends_on: depsOf(r.unit) })),
+  // Emitted, never executed. At the moment a build ends, every worktree holds
+  // work that is NOT yet merged — deleting here would destroy it. And the
+  // agents leave changes uncommitted, so branch ancestry says "already merged"
+  // about a worktree containing an entire unit. The script compares file
+  // content instead; it is safe only AFTER merge_sequence has been applied.
+  cleanup: {
+    when: 'after merging merge_sequence — never before',
+    command: '~/.claude/scripts/clean-build-worktrees.sh <repo> --apply',
+    note: deferred.length
+      ? 'Run it between layers too, not just at the end — each re-run adds a worktree per unit, and a deep plan otherwise leaves one set behind per layer.'
+      : 'Dry run first (omit --apply) to see what it considers merged.',
+  },
   next_step: deferred.length
     ? `Layer complete: ${green.length} of ${buildable.length} buildable unit(s) green. ${deferred.length} unit(s) are deferred because their dependencies' code exists only on unmerged branches — no worktree contains it. Merge merge_sequence, then re-run /build on the same plan from the new HEAD to build the next layer.${failed.length ? ' Resolve the failed units first.' : ''}`
     : green.length === results.length

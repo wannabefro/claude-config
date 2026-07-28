@@ -106,11 +106,18 @@ so an ordinary build pays for two lenses and a guardrail surface seats all six. 
 unit: the per-unit gate is the `verify_command`, and putting a review inside the loop is what makes
 parallel building slower than serial building.
 
-Then clean up: `~/.claude/scripts/clean-build-worktrees.sh <repo> --apply`. Worktrees are **not**
+Then clean up — the result carries the command in its `cleanup` field, and running it is part of
+finishing a build, not an optional tidy-up. Left alone these accumulate: 37 stale worktrees and 33
+orphan branches had built up across four repos before anyone counted.
+
+`~/.claude/scripts/clean-build-worktrees.sh <repo> --apply`. Worktrees are **not**
 removed automatically, and must not be — agents leave their work uncommitted, so the branch sits at
 the base commit and `git branch -d` will call an entire unmerged unit "already merged". The script
 compares file content against the main tree instead, removes only what is byte-identical or empty,
 and keeps anything that still differs. Run it after merging, not before.
+
+On a layered build (`deferred` non-empty) run it **between layers**, not only at the end — each
+re-run creates a worktree per unit, so a plan four layers deep otherwise leaves four sets behind.
 
 ## Where this sits
 
