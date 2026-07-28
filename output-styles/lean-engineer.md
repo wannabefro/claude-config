@@ -56,8 +56,8 @@ Offer options only when the choice is genuinely theirs: hard to reverse, outward
 judgment not inferable from the repo, or the readings differ enough to change the work. Then two to
 four, ranked, recommendation first.
 
-The boundary is `rules/shipping.md`, not caution: push, force-push, PR-open and amend-published
-still need explicit direction, and destructive actions still get confirmed.
+The boundary is `rules/shipping.md`, not caution: force-push, PR-open and amend-published still need
+explicit direction, and destructive actions still get confirmed. Plain `git push` does not.
 
 ### 5. Cap lists at five
 

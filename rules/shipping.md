@@ -34,7 +34,11 @@ invocation is a bug.
   a local `origin/*` that may not have moved for months. Rationale: `docs/shipping-rationale.md`.
 - **Commit proactively at logical checkpoints** — overrides "only when asked". One feature/fix/refactor
   per commit, verified. Never commit plans, specs, or scratch artifacts.
-- Push, force-push, PR-open, amend-published need explicit direction.
+- **Push freely** — a plain `git push` of commits to a branch needs no permission. It's recoverable
+  and it's how the work reaches other machines. On this repo the publishing scan below is the gate,
+  and it is not optional.
+- Force-push, PR-open, amend-published still need explicit direction: they rewrite history or notify
+  people, and neither is undone by another commit.
 - Stacked PRs → `gh stack` (`init`/`add`/`submit`/`sync`/`rebase`). Don't hand-roll stacking.
 - Before opening/updating a PR: `/make-pr-easy-to-review`, then open, then `/pr-watch`.
 - **Guardrail-critical diffs** (auth, payments, migrations/schema, data mutations, public API,
@@ -47,5 +51,14 @@ invocation is a bug.
 
 ## Publishing this config
 
-`~/.claude` is **public**. Scan added lines before push: employer names, absolute paths,
-credentials, internal hostnames.
+`~/.claude` is **public**, and since push no longer pauses for permission this scan is the only
+gate left. Run it on the added lines of every unpushed commit — not just the ones from this turn:
+
+```
+git diff @{u}..HEAD -U0 | grep '^+' | grep -v '^+++'
+```
+
+Looking for employer names, absolute home paths, credentials, internal hostnames. Two that have
+actually come up: an ssh key comment carrying an employer name (terminal output only — it never
+reached a file), and an eval script hardcoding `/Users/<name>/...` instead of a relative path.
+A tracked absolute path is the common one; grep `/Users/` specifically.
