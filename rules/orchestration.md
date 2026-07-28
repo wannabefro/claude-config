@@ -37,6 +37,21 @@ Never prefix a fan-out prompt with `cd <path> &&` — gates the whole command; u
 and absolute paths. Out-of-session reads: `cat -n`/`sed -n`. Long dispatches (>3 files) return an
 HTML summary via `SendUserFile` or `Artifact`; short work stays inline.
 
+**`/build`'s `depends_on` sequences agents; it does not compose their code.** Every worktree branches
+from the *base* commit, and a dependency's result reaches its dependent as prose. So a depth-2 unit
+verifies green against a tree that never contained depth-1's work — and where both touch the same
+contract, they ship contradictory designs, not a merge conflict. Two consequences, both load-bearing:
+**commit anything the units must see before dispatching** (an isolated worktree cannot see untracked
+files — a plan, a fixture, a prior unit's output), and **treat only depth-1 as buildable per wave**.
+Merge each wave, then re-dispatch the next from the new HEAD. Measured 2026-07-28: an 8-unit run
+reported 4 green, of which only the 2 roots were mergeable.
+
+Depth-1-only is now enforced in `build-parallel.js` — deeper units come back `deferred` rather than
+being built blind — so it is no longer discipline you have to remember. The untracked-file half
+still is, and it bites harder since plans moved: `docs/plans/` is a globally-ignored symlink, so a
+worktree does **not** contain it. A unit whose `notes` say "see the plan" is telling an agent to read
+a file it cannot see. Put what the unit needs in the unit.
+
 Roster: `implementer` is the only writer agent; built-ins: `Explore`, `Plan`, `general-purpose`.
 Reviewers may be language-specialised; implementers stay generic — language toolchain belongs in the
 project's own CLAUDE.md.
