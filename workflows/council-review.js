@@ -38,6 +38,11 @@ const ESCALATION_MODEL = 'fable'
 // Hard ceiling on the expensive seat: cost must not scale with finding count.
 const MAX_ESCALATIONS = 2
 
+// Findings per challenger agent. 4 is the point where the round stops scaling
+// linearly with finding count while a challenger can still hold each claim
+// separately in view. A 12-finding lens goes from 24 challenge agents to 6.
+const CHALLENGE_BATCH = 4
+
 const FINDINGS = {
   type: 'object',
   required: ['findings'],
@@ -75,6 +80,29 @@ const CHALLENGE = {
     refuted: { type: 'boolean', description: 'true if the finding does NOT hold' },
     reasoning: { type: 'string' },
     severity_should_be: { enum: ['critical', 'major', 'minor', 'not-a-finding'] },
+  },
+}
+
+// One challenger agent returns a verdict per claim in its batch. `index` is what
+// maps a verdict back to its finding, so it is required — an unindexed verdict
+// cannot be attributed and is dropped.
+const CHALLENGE_BATCH_SCHEMA = {
+  type: 'object',
+  required: ['verdicts'],
+  properties: {
+    verdicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['index', 'refuted', 'reasoning'],
+        properties: {
+          index: { type: 'integer', description: 'The [n] index of the claim this verdict is for' },
+          refuted: { type: 'boolean', description: 'true if the finding does NOT hold' },
+          reasoning: { type: 'string' },
+          severity_should_be: { enum: ['critical', 'major', 'minor', 'not-a-finding'] },
+        },
+      },
+    },
   },
 }
 
@@ -436,27 +464,79 @@ ${rubric}`,
     }
     log(`${member.key}: ${found.length} finding(s) -> cross-examination`)
 
+    // Findings are challenged in BATCHES, not one agent per finding per family.
+    // Measured 2026-07-28 across 12 real runs: the per-finding fan-out made the
+    // challenge round 48 of 55 agents in one run and 50 of 60 in another — 84% of
+    // all workflow spend, median $75 a run against build's $14. The escalation
+    // cap worked (0 and 2 firings); this round had no cap at all, because it
+    // scales as findings x CHALLENGERS and nothing bounded findings.
+    //
+    // Batching keeps every property that made the round worth having: two
+    // independent model families still vote, the framing is still adversarial,
+    // and each finding still gets its own verdict. What it gives up is isolation
+    // between findings inside one batch, which is why batches stay small.
+    const batches = []
+    for (let i = 0; i < found.length; i += CHALLENGE_BATCH) batches.push(found.slice(i, i + CHALLENGE_BATCH))
+    if (found.length > CHALLENGE_BATCH) {
+      log(`${member.key}: ${found.length} findings -> ${batches.length} batch(es) x ${CHALLENGERS.length} families = ${batches.length * CHALLENGERS.length} agents (was ${found.length * CHALLENGERS.length})`)
+    }
+
+    const batchVotes = await parallel(batches.flatMap((batch, bi) => CHALLENGERS.map((fam) => () => {
+      const claims = batch.map((f, i) => `[${i}] CLAIM (${f.severity}): ${f.title}
+    FILE: ${f.file}${f.line ? ':' + f.line : ''}
+    ASSERTED FAILURE: ${f.why_it_breaks}
+    CITED EVIDENCE: ${f.evidence || '(none given)'}`).join('\n\n')
+      return agent(
+        `You are cross-examining ${batch.length} claim(s) made by another council member. Your job is
+to REFUTE them. Judge each claim ON ITS OWN — a weak claim next to a strong one
+is still weak, and a strong one next to a weak one is still strong.\n\n${scope}\n${claims}
+
+Read the actual code for each. A claim fails if: the path is unreachable, a guard
+elsewhere already prevents it, it misreads the code, it describes pre-existing
+behaviour the diff did not introduce, or no concrete input produces the asserted
+outcome. Default to refuted=true when genuinely uncertain — an unsubstantiated
+finding wastes more of the author's time than a missed minor one.
+
+Return one verdict per claim, using the [index] shown above.`,
+        { label: `challenge:${member.key}#${bi}@${fam}`, phase: 'Cross-examine', model: fam, effort: 'high', schema: CHALLENGE_BATCH_SCHEMA, agentType: READER }
+      ).then((r) => ({ bi, verdicts: (r && r.verdicts) || [] }))
+    })))
+
+    // Regroup batch verdicts back onto individual findings. A verdict that never
+    // arrived is simply absent, and the existing cast.length logic already treats
+    // a short vote count as weaker evidence rather than as agreement.
+    const votesFor = new Map()
+    for (const bv of batchVotes.filter(Boolean)) {
+      for (const v of bv.verdicts) {
+        const f = batches[bv.bi] && batches[bv.bi][v.index]
+        if (!f) continue
+        if (!votesFor.has(f)) votesFor.set(f, [])
+        votesFor.get(f).push(v)
+      }
+    }
+
     return parallel(found.map((f) => () => {
       const brief = `CLAIM (${f.severity}): ${f.title}
 FILE: ${f.file}${f.line ? ':' + f.line : ''}
 ASSERTED FAILURE: ${f.why_it_breaks}
 CITED EVIDENCE: ${f.evidence || '(none given)'}`
 
-      // Challengers are prompted to REFUTE: a reviewer asked "is this right?"
-      // agrees far too readily.
-      return parallel(CHALLENGERS.map((fam) => () =>
-        agent(
-          `You are cross-examining a claim made by another council member. Your job is to REFUTE it.\n\n${scope}\n${brief}
-
-Read the actual code. The claim fails if: the path is unreachable, a guard
-elsewhere already prevents it, it misreads the code, it describes pre-existing
-behaviour the diff did not introduce, or no concrete input produces the asserted
-outcome. Default to refuted=true when genuinely uncertain — an unsubstantiated
-finding wastes more of the author's time than a missed minor one.`,
-          { label: `challenge:${f.file}@${fam}`, phase: 'Cross-examine', model: fam, effort: 'high', schema: CHALLENGE, agentType: READER }
-        )
-      )).then(async (votes) => {
+      return Promise.resolve(votesFor.get(f) || []).then(async (votes) => {
         const cast = votes.filter(Boolean)
+
+        // A finding nobody voted on must not be silently dropped. `survives` is
+        // computed from `unanimousHold`, which is false at zero votes, so an
+        // unchallenged finding would disappear as though it had been refuted.
+        // Batching made that failure worse: both challengers for a batch dying
+        // takes CHALLENGE_BATCH findings with it, not one. Fail open instead and
+        // mark it, matching the rule that under-reviewing is never the failure
+        // mode — the judge sees it flagged as unverified rather than not at all.
+        if (!cast.length) {
+          log(`no challenger verdict for "${f.title}" — surfacing it unchallenged`)
+          return { ...f, lens: member.key, survives: true, escalated: false,
+                   votes: 0, refuted: 0, unchallenged: true,
+                   challenges: ['no challenger returned a verdict; finding is unverified, not confirmed'] }
+        }
         const refuted = cast.filter((v) => v.refuted).length
         const unanimousKill = cast.length > 0 && refuted === cast.length
         const unanimousHold = cast.length > 0 && refuted === 0

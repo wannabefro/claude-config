@@ -55,6 +55,9 @@ The workflow returns `{ verdict, summary, ranked, dismissed, council }`. Report 
   converged on each, since cross-lens agreement is the strongest signal the council produces.
 - Note anything that went to **Fable adjudication** and how it was settled — those were the genuinely
   contested calls and are worth the reader's attention.
+- Flag anything marked **`unchallenged: true`** separately and say so plainly: no challenger returned
+  a verdict on it, so it is *unverified, not confirmed*. It survives because under-reviewing must
+  never be the failure mode, and it carries less weight than a finding two families upheld.
 - Give **dismissed findings one line total**, not a list, unless something was dismissed for a reason
   the author should know about.
 - State the council stats plainly: raised / survived / refuted / escalated. If a lot was raised and
