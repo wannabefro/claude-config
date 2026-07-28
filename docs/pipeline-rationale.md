@@ -18,23 +18,29 @@ Units declare `depends_on` and each starts when *its own* dependencies go green,
 means the decomposer emitted a chain and the fan-out will not buy much, which is worth catching before
 any agent runs.
 
-## Review tail: the 2026-07-27 flip
+## Review tail: one path, collapsed 2026-07-28
 
-Two honest modes, and mixing them is what produces a double review:
+This documented two modes — `ce-work mode:return-to-caller <plan-path>` with `/council` after, versus
+a blank `ce-work` that runs `ce-code-review` itself — and warned against mixing them.
 
-- *Default — you own the tail, `/council` reviews.* Invoke `ce-work mode:return-to-caller
-  <plan-path>`; it implements and locally verifies, then returns a structured envelope instead of
-  running its own review. Then run `/council` once on the assembled diff. Work built by `/build`
-  already arrives in this shape. Haiku triage sizes the seating, so an ordinary diff pays for two
-  lenses and only guardrail surfaces seat all six — which is what makes this affordable as the
-  default rather than the exception.
-- *Hardwired tail — `ce-work` owns it.* A blank `ce-work` runs `ce-code-review` itself on every
-  non-mechanical diff, and that is not a preference the runtime lets you override from outside. Fine
-  for a small or mechanical diff where invoking nothing is the point; just don't then also run
-  `/council`, or you have reviewed the same diff twice.
+Measured across every `ce-work` invocation in 895 transcripts: **36 of 36** passed a plan path plus
+freeform instructions ("execute in dependency order"). Zero used `mode:return-to-caller`. Zero were
+blank. Neither documented mode had ever been used. The dichotomy described a hypothetical, and the
+"pick one" framing implied a decision that was never actually faced.
 
-The default flipped on 2026-07-27. It used to be the second mode, back when council was the expensive
-exception; the triage gate is what changed the economics.
+Collapsed to the single real path: hand `ce-work` the plan path, then `/council` once on the
+assembled diff. Haiku triage sizes the seating, so an ordinary diff pays for two lenses and only
+guardrail surfaces seat all six — that economics is what made council affordable as the default when
+it flipped on 2026-07-27, back when it had been the expensive exception.
+
+The double-review hazard is real but narrow, so it survives as one line rather than a mode: a blank
+`ce-work` runs `ce-code-review` itself and that isn't overridable from outside, so passing the plan
+path is what keeps the tail single.
+
+`/build`'s two calls are a separate thing and are *not* a mode switch: the first returns the
+decomposition only, the second fans out N parallel worktree agents. They don't collapse because the
+gate between them is the point — seeing `critical_path` and `starting_immediately` before spending
+on a fan-out.
 
 ## The autonomy-boundary measurement
 

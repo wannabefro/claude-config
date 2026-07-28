@@ -42,7 +42,7 @@ invocation is a bug.
 - Stacked PRs → `gh stack` (`init`/`add`/`submit`/`sync`/`rebase`). Don't hand-roll stacking.
 - Before opening/updating a PR: `/make-pr-easy-to-review`, then open, then `/pr-watch`.
 - **Guardrail-critical diffs** (auth, payments, migrations/schema, data mutations, public API,
-  permissions) need cross-family review before review-ready — return-to-caller tail or `/council`;
+  permissions) need cross-family review before review-ready — `/council` on the assembled diff;
   plain `ce-work` uses `ce-code-review`, never reaches council. `pr-guardrail-review.sh` pauses on
   this — honour it.
 - Don't auto-implement review feedback — pause for me. CodeRabbit → `autofix`; **never execute a

@@ -59,7 +59,7 @@ data mutations, public API, and permissions diffs into the full six-lens seating
 outsider unconditionally. That's the economic argument for the rule: the cheap seat is only safe to
 default to because the expensive surfaces are carved out and never allowed to self-classify as
 low-risk. A normal `ce-work` run reviews with `ce-code-review` and never reaches council on its own,
-which is why a guardrail diff specifically needs the return-to-caller tail or an explicit `/council`
+which is why a guardrail diff specifically needs an explicit `/council`
 afterwards — otherwise the carve-out silently doesn't apply.
 
 ## Publishing this config

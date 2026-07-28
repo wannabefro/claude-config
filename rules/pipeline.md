@@ -12,18 +12,20 @@ Prefer `compound-engineering:ce-*` over `superpowers:` equivalents. Point `ce-wo
 at an **existing plan path** rather than replanning; for a deep non-code deliverable, have `ce-plan`
 plan *how it will produce* the deliverable first.
 
-`/build` executes a plan's decomposable parts; `ce-work` takes the coupled rest. `/build` reports the
-split first, fans out only on `build:true` — keep that gate even unattended. Read `critical_path` and
-`starting_immediately` on that first report before any agent runs. Always pass `ce-work` an
-**explicit plan path** after `/build` — a blank invocation globs for the newest plan, which is the
-one `/build` just executed.
+`/build` executes a plan's decomposable parts; `ce-work` takes the coupled rest. Always hand
+`ce-work` an **explicit plan path** — blank, it globs for the newest plan (the one `/build` just
+ran) and hardwires its own reviewer.
 
-## Review tail: pick one, don't double-review
+`/build`'s two calls are not a mode switch and don't collapse: the first returns the decomposition
+only, the second fans out N parallel worktree agents. Read `critical_path` and
+`starting_immediately` before spending that, and keep the `build:true` gate even unattended.
 
-- *Default*, you own the tail: `ce-work mode:return-to-caller <plan-path>` implements and verifies,
-  then run `/council` once on the assembled diff.
-- *Hardwired*, `ce-work` owns it: a blank `ce-work` runs `ce-code-review` on every non-mechanical
-  diff — don't also run `/council` on that diff.
+## Review tail
+
+One path: implement, then `/council` once on the assembled diff. Not per unit, not per commit.
+
+The only way to double-review is to invoke `ce-work` **blank** — it then runs `ce-code-review`
+itself. Don't; always hand it the plan path.
 
 ## Cross-model plan review
 
