@@ -34,7 +34,7 @@ Pick the row that best matches. If multiple apply (e.g. an API change that also 
 | Configuration / appfile change | Boot the affected service locally with the new config; verify the change took effect |
 | Performance change | Benchmark before and after on representative input; record both numbers |
 | Bug fix | First reproduce the bug to confirm you understand it; then verify the fix removes the bad behavior **and** preserves the good behavior |
-| Test-only change | Run the new test; then **mutate** the production code to break the invariant and confirm the test fails. A test that doesn't fail when the invariant is violated is theater. |
+| Test-only change | Run the new test; then **mutate** the production code to break the invariant and confirm the test fails. A test that doesn't fail when the invariant is violated is theater. `~/.claude/scripts/mutation-probe.py` automates this — see below. |
 
 ## Step 2: Pick the right tool
 
@@ -110,3 +110,34 @@ The good versions are falsifiable — a reviewer can repeat them. The bad versio
 - **Skipping the "before" state.** For bug fixes, reproducing the original bug first is what proves the fix works.
 - **"Tests pass, so it works."** Tests prove the code matches your intent. Dogfooding proves your intent matched the user's.
 - **Trusting a 200 response.** 200 + wrong body, 200 + no side effect, 200 + silent error swallowing — all common.
+
+## Measuring whether tests are worth anything
+
+`rules/principles.md` says a test that still passes after the rule it guards changes is the wrong
+test. That is a mutation test. Do not try to judge it by reading the tests — measured 2026-07-28, a
+regex classifier called 22% of one suite low-value and **3 of 3** hand-checked flags were wrong. A
+`.toBe(true)` on `accessibilityState.disabled` is precise; a `.toBe(true)` on a render result is
+vacuous; nothing in the text distinguishes them.
+
+```
+R=~/dev/<repo>; W=/tmp/mut-<repo>
+git -C $R worktree add --detach $W HEAD
+ln -s $R/node_modules $W/node_modules
+python3 ~/.claude/scripts/mutation-probe.py $W/src --test-cmd "npx vitest run --root $W" --tested-only
+```
+
+The symlink is required. A worktree checks out tracked files only, so without it every run fails for
+a reason unrelated to the mutant.
+
+Read the **survivors**, not the score. Each one is a rule nothing guards. A first run on
+inflationguessr scored 28/40 killed (70%); the 12 survivors clustered in component render logic and
+store guard clauses, and three were real defects — an inverted over/under direction, an inverted
+phase guard, and an off-by-one on `roundIndex`. Pure library functions were guarded well.
+
+Two traps, both hit on the first run:
+
+- **Validate the operators before quoting a number.** The first pass mutated JSX brackets (`</p>` →
+  `<=/p>`), which is a syntax error rather than a changed rule, in files no test imported. 23 of 40
+  mutants were noise.
+- **Use `--tested-only`** unless you want uncovered files in the result. Without it a survivor may
+  only mean the file has no tests — a real finding, but a different one.
