@@ -24,6 +24,30 @@ Hand implementers an **executable definition of done** — a failing test or exa
 prose. Escalate review topology (SDD's 2-stage, `/council`), not the model. Never hand-roll a review
 loop.
 
+## Before spending: is the question still worth answering?
+
+**The most expensive failure is not a stuck agent or a wrong answer. It is a correct, bounded,
+green result that nobody needed.** Nothing goes red, so nothing catches it.
+
+The case that named this: a 49-flow sweep ran about two hours to answer "does the level map still
+work?", while a later unit in the same plan deleted the level map and rewrote all 47 flows that
+referenced it. The sweep was well-formed and it passed. The plan already contained the fact that
+made it pointless.
+
+Ask this before any dispatch you expect to run long, and again before any broad sweep:
+
+1. **After the whole plan lands, does this thing still exist?** If a later unit deletes or rewrites
+   the subject, the answer is already known and the work is waste.
+2. **Would a different answer change what I do next?** If both outcomes lead to the same action,
+   do not buy the answer.
+3. **Can the cheap invalidating work go first?** Demolition before verification, always. Then you
+   verify once, against what actually survives, instead of twice against two different worlds.
+
+`/build` enforces the first one: a unit declares what it destroys in `removes`, and a unit that
+touches a removed name without depending on the remover is refused as `invalidated-work`. The fix is
+to order the remover first — or to delete the verifying unit, because the plan has already answered
+its question. Outside `/build` there is no enforcement, so ask the three questions yourself.
+
 ## When an agent seems stuck
 
 **Bound it at dispatch; do not try to detect it afterwards.** Investigated 2026-07-29 across 1,030

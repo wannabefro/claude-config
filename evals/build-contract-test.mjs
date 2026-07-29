@@ -89,5 +89,65 @@ const det = o1 === o2
 console.log(`  ${det ? 'ok  ' : 'FAIL'} equal-depth merge order is input-independent (${o1})`)
 det ? pass++ : fail++
 
+
+const check = (name, cond, detail) => {
+  cond ? pass++ : fail++
+  console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}${cond ? '' : '\n         ' + detail}`)
+}
+
+// invalidated-work: a unit spending time on something a later unit deletes. The
+// case this came from ran 2 hours, went green, and answered a dead question.
+const invBlk = slice('for (const remover of plan.units)', 'if (contractIssues.length)')
+const runInv = (units) => {
+  const plan = { units }
+  const byId = new Map(units.map((u) => [u.id, u]))
+  const depsOf = (u) => (u.depends_on || []).filter((d) => byId.has(d))
+  const anc = new Map()
+  const ancestorsOf = (id) => {
+    if (anc.has(id)) return anc.get(id)
+    const seen = new Set()
+    const walk = (x) => { for (const d of depsOf(byId.get(x) || {})) if (!seen.has(d)) { seen.add(d); walk(d) } }
+    walk(id); anc.set(id, seen); return seen
+  }
+  const contractIssues = []
+  new Function('plan', 'ancestorsOf', 'contractIssues', invBlk)(plan, ancestorsOf, contractIssues)
+  return contractIssues
+}
+
+const sweep = [
+  { id: 'sweep', depends_on: [], consumes: ['level.map'], files: ['a'] },
+  { id: 'u7', depends_on: [], removes: ['level.map'], provides: ['flow.registry'], files: ['b'] },
+]
+check('a sweep over something a later unit deletes is refused',
+  runInv(sweep).some((i) => i.kind === 'invalidated-work' && i.wasted === 'sweep' && i.remover === 'u7'),
+  JSON.stringify(runInv(sweep)))
+
+// Ordering the demolition first is the fix, and must be accepted.
+const ordered = [
+  { id: 'sweep', depends_on: ['u7'], consumes: ['level.map'], files: ['a'] },
+  { id: 'u7', depends_on: [], removes: ['level.map'], files: ['b'] },
+]
+check('the same pair is allowed once the remover runs first',
+  runInv(ordered).length === 0, JSON.stringify(runInv(ordered)))
+
+check('a transitive dependency on the remover also counts',
+  runInv([
+    { id: 'sweep', depends_on: ['mid'], consumes: ['level.map'], files: ['a'] },
+    { id: 'mid', depends_on: ['u7'], files: ['c'] },
+    { id: 'u7', depends_on: [], removes: ['level.map'], files: ['b'] },
+  ]).length === 0, 'transitive ordering should satisfy it')
+
+check('a unit that PROVIDES a name someone else removes is caught too',
+  runInv([
+    { id: 'builder', depends_on: [], provides: ['level.map'], files: ['a'] },
+    { id: 'u7', depends_on: [], removes: ['level.map'], files: ['b'] },
+  ]).some((i) => i.kind === 'invalidated-work'), 'building what another unit deletes is also waste')
+
+check('removes with no other unit touching the name is silent',
+  runInv([
+    { id: 'u7', depends_on: [], removes: ['level.map'], files: ['b'] },
+    { id: 'other', depends_on: [], consumes: ['thing.else'], files: ['a'] },
+  ]).length === 0, 'unrelated removal must not warn')
+
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

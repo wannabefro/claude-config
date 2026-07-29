@@ -82,6 +82,18 @@ const PLAN = {
             items: { type: 'string' },
             description: 'Names from another unit\'s `provides` that this unit reads or depends on. If you list a name here that another unit provides, you MUST also list that unit in depends_on — otherwise you are asserting a contract nobody has built yet.',
           },
+          // `provides`/`consumes` catch two units disagreeing about a thing that
+          // exists. They cannot catch work spent on a thing that is scheduled to
+          // STOP existing. Real case: a 49-flow sweep ran for two hours to answer
+          // "does the level map still work?" while a later unit in the same plan
+          // deleted the level map and rewrote all 47 flows referencing it. The
+          // sweep was correct, bounded, and green. It was also worthless before
+          // it started, and the plan already said so.
+          removes: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Names this unit DELETES or rewrites wholesale — the same dotted names used in provides/consumes. List a name here when nothing downstream should still be reading it afterwards. Getting this wrong is expensive in one direction only: an unlisted removal lets other units spend real time verifying something you are about to delete.',
+          },
           definition_of_done: { type: 'string', description: 'Observable behaviour that must hold when finished' },
           verify_command: { type: 'string', description: 'A single shell command that exits 0 exactly when this unit is done. Scoped to this unit — not the whole suite.' },
           notes: { type: 'string' },
@@ -185,6 +197,18 @@ Rules for a unit:
   \`consumes\` (names it reads that another unit provides), using the exact dotted name. Anything you
   put in \`consumes\` that another unit provides REQUIRES that unit in \`depends_on\`; and exactly one
   unit may provide a given name. Both are enforced — violating either is refused, not warned.
+- **Name what each unit DESTROYS, in \`removes\`, and schedule demolition first.** This is the one
+  failure no other check here can see, because nothing goes red: a unit spends real time on something
+  a later unit deletes, passes its gate, and the result is worthless. It happened — a 49-flow sweep
+  ran two hours to answer "does the level map still work?" while a later unit in the same plan deleted
+  the level map and rewrote all 47 flows that referenced it.
+    · List in \`removes\` every name the unit deletes or rewrites wholesale.
+    · Then order the plan so removals come EARLY. A unit that touches a removed name must depend on
+      the remover, or it is refused.
+    · If a unit exists only to verify something another unit removes, **do not order it — delete it.**
+      The question it answers has already been answered by the plan.
+  Ask this of every unit before you emit it: after the whole plan lands, is this unit's subject still
+  there? If not, you are scheduling waste that will report success.
 - Every unit needs a \`verify_command\`: one shell command that exits 0 exactly when the unit is done
   and non-zero when it is not. A scoped test, a targeted typecheck — not the whole suite, which would
   fail for reasons unrelated to this unit. **If you cannot write such a command for a unit, that unit
@@ -395,13 +419,38 @@ for (const u of plan.units) {
     }
   }
 }
+// Work whose subject is scheduled to be destroyed. This is not a correctness
+// bug — every unit here would go green. It is spend on a question the plan has
+// already answered, and it is invisible to every other check precisely because
+// nothing fails. Ordering is the fix: do the demolition first, then verify once
+// against what actually survives.
+for (const remover of plan.units) {
+  for (const s of (remover.removes || [])) {
+    for (const victim of plan.units) {
+      if (victim.id === remover.id) continue
+      const touches = (victim.consumes || []).includes(s) || (victim.provides || []).includes(s)
+      if (!touches) continue
+      // Safe only if the removal happens FIRST. Then the victim is written
+      // against the world that survives, which is the world that ships.
+      if (ancestorsOf(victim.id).has(remover.id)) continue
+      contractIssues.push({
+        kind: 'invalidated-work',
+        symbol: s,
+        wasted: victim.id,
+        remover: remover.id,
+        detail: `${victim.id} works on "${s}", which ${remover.id} deletes or rewrites. ${victim.id} does not depend on ${remover.id}, so it is scheduled against a world that will not exist. It will go green and the result will mean nothing.`,
+      })
+    }
+  }
+}
+
 if (contractIssues.length) {
   log(`${contractIssues.length} contract issue(s) — refusing to fan out into drift that only shows at merge`)
   return {
     error: 'Units share a contract without an ordering that makes it real.',
     contract_issues: contractIssues,
     fallback: fallbackRoute,
-    recommendation: `For unordered-contract, add the provider to the consumer's depends_on. For duplicate-provider, one unit owns the name — merge them, or move the definition into a single unit the others depend on. If a second decomposition still collides, the contract is genuinely shared: build via ${fallbackRoute}.`,
+    recommendation: `For unordered-contract, add the provider to the consumer's depends_on. For duplicate-provider, one unit owns the name — merge them, or move the definition into a single unit the others depend on. For invalidated-work, put the remover FIRST — add it to the other unit's depends_on — or delete the other unit outright if it only existed to check something being removed; do not "just run it anyway", which is exactly the spend this catches. If a second decomposition still collides, the contract is genuinely shared: build via ${fallbackRoute}.`,
     plan,
   }
 }

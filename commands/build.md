@@ -105,6 +105,12 @@ that cost more than the parallelism saves.
   only disagree once merged. `duplicate-provider` means two units define the same name and the later
   merge silently wins. Neither is visible in the file lists. Offer to re-decompose with the
   dependency declared, or with the name owned by exactly one unit.
+  `invalidated-work` is the third kind and the one to read carefully, because it is not a
+  correctness problem at all — both units would go green. It means a unit is scheduled to spend real
+  time on a name another unit deletes or rewrites, so its result is worthless before it starts. Say
+  which unit is about to be wasted and on what. The fix is to order the remover first, **or to drop
+  the verifying unit entirely** when it existed only to check something being removed. Never relay
+  this as "a warning we can proceed past" — proceeding is precisely the spend it caught.
 - If it returns `cycles`, `dangling`, or `duplicates`, the dependency graph is malformed — relay it
   and re-run. `duplicates` is the one most likely to look like a tool malfunction rather than a
   decomposer slip; it is not, and the decomposition is cheap to redo.
