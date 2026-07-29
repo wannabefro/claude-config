@@ -456,7 +456,7 @@ ${rubric}`,
       { label: `lens:${member.key}`, phase: 'Convene', model: member.model, effort: 'high', schema: FINDINGS, agentType: READER }
     ),
 
-  (review, member) => {
+  async (review, member) => {
     const found = (review && review.findings) || []
     if (!found.length) {
       log(`${member.key}: no findings`)

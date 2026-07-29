@@ -24,6 +24,33 @@ Hand implementers an **executable definition of done** — a failing test or exa
 prose. Escalate review topology (SDD's 2-stage, `/council`), not the model. Never hand-roll a review
 loop.
 
+## When an agent seems stuck
+
+**Bound it at dispatch; do not try to detect it afterwards.** Investigated 2026-07-29 across 1,030
+agent transcripts and found no reliable way to tell a stuck agent from a finished one after the fact.
+Four signatures were tried and all four failed: workflow agents recorded 378 results with **0** null
+and no silent gap over 435s; of 12 main-thread agents that went quiet for over 10 minutes, **9 ended
+cleanly** with `end_turn`; a transcript ending on an unanswered tool result covers **40%** of all
+agents, so it means nothing; and "the session kept working during the gap" proves nothing either,
+because a session transcript spans days and the later activity may be a resumption. Do not build a
+detector on any of these, and do not report an agent as hung on this evidence.
+
+What is certain is narrower, and it is a property of the tool: **an `Agent` dispatch has no timeout.**
+Nothing ends it. So the control has to be in the prompt.
+
+- **Give every dispatch a self-bound.** Say what to do when the work does not converge: "if you do not
+  have the answer after roughly 20 tool calls, return what you have and name what is missing." A
+  partial answer with a stated gap is useful; an agent still running after an hour is not.
+- **Never idle waiting on a background agent.** The harness re-invokes you when one finishes, so
+  polling is waste. If nothing is left to do and no notification has arrived, say that to the user
+  rather than sitting.
+- **Bound the foreign CLI, always.** `codex exec` is the one component measured to stall often —
+  `codex-exec-recovery` gives the rule: zero output for about 2 minutes means stalled, not slow. Kill
+  it, then re-run with the context pasted inline so the run needs no tool use. Run it through
+  `scripts/codex-run.sh`, which enforces a timeout and returns an exit code you can branch on.
+- **A long agent is not a stuck agent.** Median main-thread dispatch is 246s and p90 is 963s, so 15
+  minutes is ordinary for `implementer`. Re-dispatching on suspicion costs more than waiting.
+
 ## Delegation shape
 
 Workers need to talk? No → subagents (isolated, summary only). Yes → teams (lenses argue); not
