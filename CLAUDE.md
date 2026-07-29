@@ -34,4 +34,9 @@ discover`). Its rewrites are lossy — never treat their output as proof somethi
 
 **Search with `fd -u` and `rg`, not `find`/`grep`** — all three are excluded from the rtk rewrite
 because a summarised search stops being an exhaustive one. Reach for `find` only for predicates fd
-lacks.
+lacks. Verified 2026-07-29 with `rtk rewrite`: it touches `cat` and `ls`, and nothing else here.
+
+**`rg -r` is `--replace`, not grep's `--recursive`** — rg recurses by default, so `rg -rn 'X' src`
+clusters as `--replace=n` and prints every match replaced by the literal `n`. It looks like a
+corrupt file, not a wrong flag: it cost five bad searches and two wrong accusations against rtk in
+one session. `bash-safety.sh` now denies the clustered `-r<letter>` form.
