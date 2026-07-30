@@ -45,29 +45,15 @@ So when you write a test for a function, add two cases beyond the main path:
 Run the probe before claiming a suite is thorough. `/dogfood` documents the invocation, including the
 `node_modules` symlink a worktree needs.
 
-### The house style is already good — this is the baseline it should stay at
+### The house style is already good — keep it there
 
-Measured 2026-07-28 across six repos (5,117 tests). Do not "improve" the style away from this; a
-change that moves a column far from these numbers needs a reason.
+Write short tests: two assertions, almost no module mocking, little shared setup, and a long
+descriptive name. A change that moves far from that shape needs a reason. The measured baseline across
+six repos and 5,117 tests is in `docs/principles-rationale.md`; check a column before you change it.
 
-| | tipsy | chromaticly | taivo | inflationguessr | kayen | sidetalk |
-|---|---|---|---|---|---|---|
-| median lines / test | 11 | 9 | 9 | 7 | 9 | 12 |
-| median assertions / test | 2 | 2 | 2 | 2 | 2 | 2 |
-| zero-assertion tests | 0% | 0% | 0% | 1% | 0% | 0% |
-| module mocks / file | 0.31 | 0.22 | 0.45 | 0.00 | 0.47 | 0.00 |
-| setup hooks / file | 0.52 | 0.04 | 0.24 | 0.40 | 0.27 | 1.67 |
-| median words in name | 10 | 10 | 9 | 9 | 9 | 9 |
-
-Short tests, two assertions, almost no module mocking, little shared setup, and long descriptive
-names. Suites are fast enough to run whole: 2,706 chromaticly tests in 7s, 1,072 tipsy mobile tests
-in 17s.
-
-**Never judge a test by its text.** Three separate regex passes tried it on 2026-07-28 and all three
-were wrong: assertion shape called 22% low-value (3 of 3 hand-checks wrong), JSX brackets were read
-as comparisons (23 of 40 mutants), and a name-shape pattern scored chromaticly at 25% when its names
-are among the best written (`an atom naming an unregistered numeral throws`). Structure counts and
-mutation scores are measurable. Quality is not, from text.
+**Never judge a test by its text.** Three regex passes tried it on 2026-07-28 and all three gave a
+wrong answer. Structure counts and mutation scores are measurable. Quality is not measurable from
+text, so do not go looking for weak assertions — run `scripts/mutation-probe.py` instead.
 
 ## Name the readings when a request is ambiguous
 
