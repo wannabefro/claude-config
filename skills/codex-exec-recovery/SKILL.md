@@ -30,6 +30,19 @@ description: Use when a `codex exec` run produces no usable output — it hangs 
 
 > HARD CONSTRAINT: Do NOT read any files. Do NOT run any shell commands. Do NOT search the repo. Everything you need is stated above. A run that explores the repo is a failed run.
 
+`codex-run.sh -N` appends exactly that paragraph, so you no longer paste it by hand. Omit `-N` for a rescue that must read the repo.
+
+### Use a file to CARRY the prompt, never to REFER to one
+
+These two look similar and behave oppositely:
+
+| | what Codex does | verdict |
+|---|---|---|
+| `codex-run.sh "review the plan at docs/plans/x.md"` | Opens the file, then keeps exploring | **The measured failure mode.** Tool use is what stalls |
+| `codex-run.sh -f brief.md -N` | Nothing. The wrapper inlined the bytes already | Correct |
+
+`-f FILE` (or `-f -` for stdin) reads the file and inlines it, so a file is only ever the transport. That also removes a real corruption hazard: a brief embedded as a shell argument passes through argv quoting, and briefs contain backticks, `$VAR`, and `$(...)`. Verified 2026-07-30 with a stub `codex` on `PATH` — a brief carrying backticks, `$DOLLARS`, both quote styles and `$(command substitution)` arrived byte-identical through `-f`.
+
 Measured: the same 6.9 KB brief went from two killed multi-minute runs to a complete 13-finding review in under 300s once MCP was off and the prompt forbade exploration.
 
 ## Failure mode 1 — genuinely stalled (bare `codex exec`, zero bytes, process alive)

@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Bounded codex exec with the two known failure modes handled.
 #
-#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-M] "<prompt>"
+#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-M] [-N] "<prompt>"
+#   codex-run.sh -f brief.md -N        # brief inlined from a file, no exploring
+#   … | codex-run.sh -f - -N           # same, from stdin
+#
+# Use a file to CARRY the prompt, never to REFER to one. `-f` reads the file and
+# inlines it, so Codex needs no tool call. Naming a path inside the prompt makes
+# Codex open it, and tool use is the measured failure mode. `-N` appends the
+# no-exploration constraint; omit it for a rescue that must read the repo.
 #
 # Exit codes are the point — a caller can branch on them instead of guessing
 # from output shape:
@@ -36,16 +43,39 @@ TIMEOUT=600
 STALL=120
 DIR="."
 MCP=0
+FROM_FILE=""
+NO_EXPLORE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -t) TIMEOUT="$2"; shift 2 ;;
     -s) STALL="$2"; shift 2 ;;
     -d) DIR="$2"; shift 2 ;;
     -M) MCP=1; shift ;;
+    -f) FROM_FILE="$2"; shift 2 ;;
+    -N) NO_EXPLORE=1; shift ;;
     *) break ;;
   esac
 done
-PROMPT="${1:?usage: codex-run.sh [-t SECS] [-s STALL_SECS] [-d DIR] [-M] \"<prompt>\"}"
+
+if [ -n "$FROM_FILE" ]; then
+  if [ "$FROM_FILE" = "-" ]; then
+    PROMPT=$(cat)
+  else
+    [ -r "$FROM_FILE" ] || { echo "codex-run: cannot read $FROM_FILE" >&2; exit 2; }
+    PROMPT=$(cat "$FROM_FILE")
+  fi
+  [ -n "$PROMPT" ] || { echo "codex-run: $FROM_FILE is empty" >&2; exit 2; }
+else
+  PROMPT="${1:?usage: codex-run.sh [-t SECS] [-s SECS] [-d DIR] [-M] [-N] (-f FILE|-|\"<prompt>\")}"
+fi
+
+if [ "$NO_EXPLORE" -eq 1 ]; then
+  PROMPT="$PROMPT
+
+HARD CONSTRAINT: Do NOT read any files. Do NOT run any shell commands. Do NOT
+search the repo. Everything you need is stated above. A run that explores the
+repo is a failed run."
+fi
 
 if ! timeout 10 codex --version >/dev/null 2>&1; then
   echo "codex-run: CLI unavailable (preflight timed out or failed)." >&2
