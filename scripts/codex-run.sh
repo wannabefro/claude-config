@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bounded codex exec with the two known failure modes handled.
 #
-#   codex-run.sh [-t SECONDS] [-d DIR] "<prompt>"
+#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-M] "<prompt>"
 #
 # Exit codes are the point — a caller can branch on them instead of guessing
 # from output shape:
@@ -16,9 +16,18 @@
 #    for a version string, and failing here is decisive rather than a retry.
 #  * Effort. Default reasoning effort on gpt-5.5 is `none`, which consumes the
 #    prompt and exits 0 with no turn. Always pass medium; retry once at high.
-#  * Stall window. A healthy run streams within seconds — sampled 8 runs at
-#    5-8s. Silence for minutes means hung on tool use, not thinking, and the
-#    fix is to re-run with context inlined, never to wait longer.
+#  * Stall window. Silence inside the run means hung, not thinking. Note the
+#    run is buffered to a temp file, so the CALLER sees nothing until the end
+#    — that is normal, and is why the heartbeat below exists. Never infer a
+#    stall from the caller's view; only this script's watcher can see it.
+#  * No MCP. `codex exec` is non-interactive, so a tool carrying
+#    approval_mode="approve" has no way to be approved. config.toml has 14 of
+#    them plus context-mode's default_tools_approval_mode. Worse, codegraph
+#    and serena index the whole repo: measured 2026-07-30 on a large monorepo,
+#    a plan review with them enabled was still crawling at 600s, while the same
+#    question with both disabled answered in well under 200s. Shell is built
+#    in, not MCP, so the run keeps rg/sed/nl and loses nothing it needs.
+#    Pass -M for a run that genuinely needs a remote MCP server.
 #  * Never background. A backgrounded run leaves the async rescue wrapper
 #    reporting "still running" forever with no rollout file.
 set -uo pipefail
@@ -26,15 +35,17 @@ set -uo pipefail
 TIMEOUT=600
 STALL=120
 DIR="."
+MCP=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -t) TIMEOUT="$2"; shift 2 ;;
     -s) STALL="$2"; shift 2 ;;
     -d) DIR="$2"; shift 2 ;;
+    -M) MCP=1; shift ;;
     *) break ;;
   esac
 done
-PROMPT="${1:?usage: codex-run.sh [-t SECS] [-d DIR] \"<prompt>\"}"
+PROMPT="${1:?usage: codex-run.sh [-t SECS] [-s STALL_SECS] [-d DIR] [-M] \"<prompt>\"}"
 
 if ! timeout 10 codex --version >/dev/null 2>&1; then
   echo "codex-run: CLI unavailable (preflight timed out or failed)." >&2
@@ -47,16 +58,25 @@ fi
 out=$(mktemp)
 trap 'rm -f "$out"' EXIT
 
+MCP_ARGS=()
+[ "$MCP" -eq 0 ] && MCP_ARGS=(-c 'mcp_servers={}')
+
 run_at() {
   local effort="$1"
   : > "$out"
   ( cd "$DIR" && timeout "$TIMEOUT" codex exec --skip-git-repo-check \
-      -c "model_reasoning_effort=$effort" "$PROMPT" > "$out" 2>&1 ) &
-  local pid=$! last=0 quiet=0
+      "${MCP_ARGS[@]}" -c "model_reasoning_effort=$effort" "$PROMPT" > "$out" 2>&1 ) &
+  local pid=$! last=0 quiet=0 elapsed=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 5
+    elapsed=$((elapsed+5))
     local now; now=$(wc -c < "$out" | tr -d ' ')
     if [ "$now" -gt "$last" ]; then last="$now"; quiet=0; else quiet=$((quiet+5)); fi
+    # Output is buffered, so without this the caller cannot tell a working run
+    # from a hung one and kills a healthy pass. Measured: that happened twice.
+    if [ $((elapsed % 30)) -eq 0 ]; then
+      echo "codex-run: ${effort} effort, ${elapsed}s elapsed, ${now} bytes, ${quiet}s quiet" >&2
+    fi
     if [ "$quiet" -ge "$STALL" ]; then
       kill -9 "$pid" 2>/dev/null
       wait "$pid" 2>/dev/null
@@ -76,8 +96,9 @@ answered() {
 run_at medium; rc=$?
 if [ "$rc" -eq 99 ]; then
   echo "codex-run: STALLED — no output for ${STALL}s, killed." >&2
-  echo "codex-run: hung on tool use. Re-run with the code/context INLINE in the prompt" >&2
-  echo "codex-run: so the run needs no file reads or MCP. Waiting longer does not help." >&2
+  echo "codex-run: MCP is already off unless you passed -M; if you did, drop it." >&2
+  echo "codex-run: otherwise re-run with the code/context INLINE so the run needs" >&2
+  echo "codex-run: no file reads. Waiting longer does not help." >&2
   cat "$out"
   exit 4
 fi

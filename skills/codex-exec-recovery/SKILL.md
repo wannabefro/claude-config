@@ -7,15 +7,38 @@ description: Use when a `codex exec` run produces no usable output — it hangs 
 
 ## Overview
 
-`codex exec` has two distinct no-output failure modes. Both look like "Codex did nothing," but each has a different cause and fix. Don't keep waiting or re-run blindly — identify which one and apply its fix.
+`codex exec` has three no-output failure modes. All look like "Codex did nothing," but each has a different cause and fix. Don't keep waiting or re-run blindly — identify which one and apply its fix.
 
-## Failure mode 1 — stalled (zero bytes for minutes, process still alive)
+## READ FIRST — "zero bytes" from the wrapper proves nothing
 
-**Symptom:** the run has printed nothing for several minutes and the process is still running. A real run streams output within seconds; **zero bytes for ~2+ minutes means stalled, not slow.**
+`codex-run.sh` **buffers**: it writes to a temp file and only `cat`s at the end. A caller watching its stdout sees nothing until the run finishes, whether the run is healthy or hung. Measured 2026-07-30: two healthy passes were killed on this misreading, and the second was producing 298 KB of trace at the time.
 
-**Cause:** Codex is hung on tool use — its bundled MCP servers or a file/tool call wedged.
+**Only the wrapper's own watcher can see a stall, and it says so — exit 4 plus a `STALLED` message.** No exit 4 means no stall. Judge by the exit code and by the heartbeat it now prints to stderr every 30 s, never by the absence of stdout. The "zero bytes for 2 minutes" rule applies **only** to a bare `codex exec` you are watching directly.
 
-**Fix:** kill it, then **rerun with everything it needs pasted inline in the prompt so the run requires no tool use** (no file reads, no MCP). Inlining the code/context is what unsticks it — verified: a run stalled at 0 bytes for ~30 min returned findings immediately once re-run with the code inline.
+## Failure mode 0 — slow because MCP is enabled (the common one)
+
+**Symptom:** the run takes many minutes and the trace fills with repo reads. The heartbeat shows bytes climbing steadily, so it is working, just not converging.
+
+**Cause:** two compounding problems, both in `~/.codex/config.toml`.
+
+1. **`codex exec` is non-interactive, and 14 tools carry `approval_mode = "approve"`** (plus `context-mode`'s `default_tools_approval_mode`). Nothing can approve them.
+2. **`codegraph` and `serena` index the whole repo.** On a large monorepo a plan review with them enabled was still crawling at 600s; the same question with both disabled answered in well under 200s.
+
+**Fix:** the wrapper now passes `-c mcp_servers={}` by default. Shell is built in, not MCP, so the run keeps `rg`/`sed`/`nl` and loses nothing it needs. Pass `-M` only for a run that genuinely needs a remote MCP server.
+
+**Also constrain the prompt.** Disabling MCP does not stop Codex reading the repo by shell. A review prompt asking it to check "anything the plan asserts about existing code that is not true" is an invitation to grep the whole tree, and it will take it. When you have already inlined everything, say so:
+
+> HARD CONSTRAINT: Do NOT read any files. Do NOT run any shell commands. Do NOT search the repo. Everything you need is stated above. A run that explores the repo is a failed run.
+
+Measured: the same 6.9 KB brief went from two killed multi-minute runs to a complete 13-finding review in under 300s once MCP was off and the prompt forbade exploration.
+
+## Failure mode 1 — genuinely stalled (bare `codex exec`, zero bytes, process alive)
+
+**Symptom:** you are watching a bare `codex exec` directly and it has printed nothing for several minutes while still running.
+
+**Cause:** hung on tool use — an MCP server or a file/tool call wedged.
+
+**Fix:** kill it, then rerun with MCP off (`-c mcp_servers={}`) **and** everything it needs pasted inline so the run requires no tool use. Inlining alone is not enough while MCP is still enabled.
 
 ## Failure mode 2 — prompt-echo only (exits 0 fast, output is just the echo)
 
