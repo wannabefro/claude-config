@@ -9,7 +9,26 @@ Build in parallel: **$ARGUMENTS**
 shape first: the decomposer reads the codebase and returns a `route`, and only one of the three
 routes costs anything to be wrong about.
 
-**Step 1 — always.** Call the `Workflow` tool with:
+**Step 0 — preflight, one command.** The `Workflow` tool can be removed from the tool set entirely by
+managed policy, in which case it is not registered, not deferred, and `ToolSearch` cannot find it.
+Check before you plan around it:
+
+```
+~/.claude/scripts/workflow-available.sh build-parallel.js
+```
+
+Branch on the exit code, not on whether you can see the tool:
+
+| exit | meaning | what you do |
+|---:|---|---|
+| 0 | available | continue to Step 1 |
+| 1 | disabled by managed policy | **take the Degraded route below.** Do not hunt for the tool, do not edit `policy-limits.json`, do not retry |
+| 2 | allowed but the script is missing | report that and stop — this one *is* fixable locally |
+
+Say which branch you took in one line, so a decomposition that never ran is never mistaken for one
+that returned `inline`.
+
+**Step 1 — only on exit 0.** Call the `Workflow` tool with:
 
 ```
 { "scriptPath": "~/.claude/workflows/build-parallel.js",
@@ -30,6 +49,32 @@ worktree.
   and lead with `critical_path` / `starting_immediately`. Then re-invoke with `"build": true` once I
   agree. This is the only route that waits, because it is the only one that spawns N implementers —
   expensive to start and expensive to undo.
+
+## Degraded route — Workflow disabled by policy (exit 1)
+
+You route by hand. **Do the file-ownership check anyway** — it is the part of the decomposer that
+catches the expensive mistake, and it is cheap to do manually.
+
+1. **Build the file→units map** from the plan's `**Files:**` lists, or from the task if there is no
+   plan.
+2. **Any file claimed by two units that could run concurrently is a refusal**, exactly as it would be
+   under the tool. Measured on a real plan: `router.go` was claimed by three units and `settings.go`
+   by two, so a fan-out would have collided on four of six units.
+3. **Route on what survives:**
+   - two or more units, disjoint files, no shared contract → **still do not fan out.** The tool is
+     what makes a fan-out safe: schema-enforced units, refusal on contested files, `depends_on`
+     scheduling. Without it, run them sequentially in dependency order and say why.
+   - otherwise → `ce-work` with the plan path when the work is substantial, or just build it inline.
+4. **Report the routing decision and the evidence for it** — the collision table, not a bare verdict.
+   The user needs to see the boundary check happened.
+
+Two things the degraded route does *not* get, and both are worth saying out loud: no `verify_command`
+per unit, and no `invalidated-work` check. So read the plan for units that verify something a later
+unit deletes, and order the remover first yourself.
+
+Everything below about worktrees, `deferred`, merge sequences and cleanup applies to the tool path
+only. On the degraded route you are building in the working tree, serially, and there is nothing to
+merge.
 
 ## Shared checkout or worktree
 

@@ -28,6 +28,18 @@ formatting pass with no logic change — say so in one line and don't convene. T
 still 15–25 agents, and triage sizes the *seating*, not whether it runs at all. A review that cannot
 find anything is not free.
 
+**Preflight, one command.** The `Workflow` tool can be removed from the tool set entirely by managed
+policy — not registered, not deferred, invisible to `ToolSearch`. Check first:
+
+```
+~/.claude/scripts/workflow-available.sh council-review.js
+```
+
+Branch on the exit code: `0` continue below; `1` take the Degraded route at the end of this file and
+do **not** hunt for the tool or edit `policy-limits.json`; `2` report the missing script and stop.
+Say which branch you took, so a review that never convened is never reported as one that found
+nothing.
+
 Run it by calling the `Workflow` tool with:
 
 ```
@@ -64,3 +76,32 @@ The workflow returns `{ verdict, summary, ranked, dismissed, council }`. Report 
   little survived, say so — that is a signal about the review, not just the diff.
 
 Do not fix anything. This command reports; the author decides what to act on.
+
+## Degraded route — Workflow disabled by policy (exit 1)
+
+There is no substitute for the council's shape: 15–25 agents, adversarial cross-examination, triage-
+sized seating. Do not pretend a smaller pass is one. **Say plainly that the council did not convene**,
+then get the best coverage still available:
+
+1. **`ce-code-review`** on the same diff. It is the closest same-family stand-in and it carries the
+   persona tiers, so it is the bulk of the value.
+2. **One cross-family pass** — the lens the council exists for, and the one `ce-code-review` cannot
+   supply on its own:
+
+   ```
+   ~/.claude/scripts/codex-run.sh -t 300 "<review brief with the diff INLINE>"
+   ```
+
+   Inline the diff and forbid exploration outright, or the run spends its budget grepping the repo
+   instead of reviewing:
+
+   > HARD CONSTRAINT: Do NOT read files, run shell commands, or search the repo. Everything you need
+   > is below. A run that explores the repo is a failed run.
+
+   Branch on its exit code — `3` unavailable, `4` stalled, `5` empty. **None of those is a review**;
+   report the gap rather than counting it as one.
+3. **On a guardrail surface** — auth, payments, migrations or schema, data mutations, public API,
+   permissions — say explicitly that the diff did not get the review the shipping rules require, and
+   let the user decide whether to ship on the reduced pass. That call is theirs, not yours.
+
+Report it as `verdict: degraded`, list what actually ran, and name what was skipped.

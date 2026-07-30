@@ -55,6 +55,13 @@ Only planning can start on its own. Execution and review cannot: after an approv
 to run rather than running it, which is the Workflow opt-in gate, not caution, and it outranks the
 autonomy rule below. Say "ultracode" or "use a workflow" in the same breath to skip the round trip.
 
+**Both levers depend on the `Workflow` tool, and managed policy can remove it outright** — not
+registered, not deferred, invisible to `ToolSearch`, so its absence looks like a broken install and
+is not one. Each command preflights with `scripts/workflow-available.sh <script>.js` and branches on
+the exit code: `0` proceed, `1` take that command's own Degraded route, `2` the script is missing and
+that one is fixable locally. Report which branch ran — a decomposition or a council that never
+happened must never be reported as one that found nothing.
+
 ## Review tail
 
 One path: implement, then `/council` once on the assembled diff — not per unit, not per commit.
