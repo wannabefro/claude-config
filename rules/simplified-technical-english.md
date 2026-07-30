@@ -70,3 +70,42 @@ one action, and a word that has more than one meaning.
 
 This rule sets the **language** of a report. It does not change the **shape** of one — the closing
 block and the length limits stay as the output style defines them.
+
+## Authored text, not reports: use the skill
+
+The 16 rules above are the always-on subset, and they govern **reports**. For text you *author* — a
+README, a runbook, a doc, an error message, a release note — invoke the `simple-english` skill. It
+carries the full 53-rule catalog with rule numbers. It also carries the procedural or descriptive
+split, which sets the 20-word or the 25-word limit, and a check mode that cites rule numbers.
+
+Do not cite ASD-STE100 rule numbers without that file open. The numbering is unintuitive and models
+invent it.
+
+`scripts/ste-lint.py` counts the mechanical violations: sentence length, contractions, banned modals,
+perfect tenses, `-ing` clauses, semicolons, Latin abbreviations, slop words, trailing conditions, and
+synonym rotation.
+
+```
+python3 ~/.claude/scripts/ste-lint.py --type procedural FILE.md
+```
+
+The linter is a regex pass, not a grammar parser. It finds no passive voice, and a clean run is
+evidence, never a compliance verdict.
+
+**It over-reports on markdown, and the rate is measured.** On 2026-07-30 it flagged 13 violations on
+this file. Only 3 are real:
+
+| source | count | why it is not a finding |
+|---|---|---|
+| Table rows | 9 — 5 over-limit, 2 contractions, 1 modal, 1 rotation | A row is not a sentence, and a quoted bad example is not your prose |
+| A bullet list | 1 over-limit, at 69 words | Bullets carry no terminal punctuation, so the linter reads the whole list as one sentence |
+| Real prose findings | 3 | — |
+
+Two rules follow. Read the **per-100-word rate against the same file over time**, never the absolute
+count. Lint the prose, not the tables:
+
+```
+sed '/^|/d' FILE.md | python3 ~/.claude/scripts/ste-lint.py --type descriptive -
+```
+
+That drops this file from 13 to 4, and the one artifact left is the 69-word bullet list.

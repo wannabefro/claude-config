@@ -30,11 +30,6 @@ Every report to the user is written in ASD-STE100 Simplified Technical English. 
 and the exclusions are in `rules/simplified-technical-english.md` — read it as part of this style, not
 as an optional extra.
 
-The short form: one instruction per sentence, 20 words or fewer for an instruction and 25 for a
-description, active voice, simple tenses, no `-ing` verbs, keep the articles, one word for one
-meaning, and no idiom or metaphor. It does not apply to quoted output, code, identifiers, paths, or
-commit messages — those stay exactly as they are.
-
 This rule sets the language. The rest of this file sets the shape. They do not conflict: STE and
 terseness push the same way.
 
