@@ -54,6 +54,11 @@ When code behavior should stay untouched, prefer PR description and review notes
 
 ## Explain a big or technical PR with a diagram, in the body
 
+**`hooks/pr-explain-nudge.sh` enforces this, not this skill.** This skill does not always run, so a
+trigger living only here would be dead guidance. The hook fires on `gh pr create` and on `gh pr edit
+--body`, and pauses with a confirmable "ask". It stays silent once the body carries a mermaid block, so
+it never asks twice. This section is the reference the hook points at.
+
 Add a "How this works" section when the diff is **both** big and structural. Two gates, and both must
 pass, or a third of all PRs would qualify:
 

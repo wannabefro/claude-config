@@ -265,6 +265,10 @@
             "command": "bash __CLAUDE_HOME__/hooks/pr-guardrail-review.sh",
             "if": "Bash(gh pr *)",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/pr-explain-nudge.sh\""
           }
         ]
       },
