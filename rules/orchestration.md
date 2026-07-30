@@ -50,14 +50,10 @@ its question. Outside `/build` there is no enforcement, so ask the three questio
 
 ## When an agent seems stuck
 
-**Bound it at dispatch; do not try to detect it afterwards.** Investigated 2026-07-29 across 1,030
-agent transcripts and found no reliable way to tell a stuck agent from a finished one after the fact.
-Four signatures were tried and all four failed: workflow agents recorded 378 results with **0** null
-and no silent gap over 435s; of 12 main-thread agents that went quiet for over 10 minutes, **9 ended
-cleanly** with `end_turn`; a transcript ending on an unanswered tool result covers **40%** of all
-agents, so it means nothing; and "the session kept working during the gap" proves nothing either,
-because a session transcript spans days and the later activity may be a resumption. Do not build a
-detector on any of these, and do not report an agent as hung on this evidence.
+**Bound it at dispatch; do not try to detect it afterwards.** Four detection signatures were tried
+across 1,030 agent transcripts on 2026-07-29, and all four failed. **Do not build a detector, and do
+not report an agent as hung.** The four signatures and why each one fails:
+`docs/orchestration-rationale.md`.
 
 What is certain is narrower, and it is a property of the tool: **an `Agent` dispatch has no timeout.**
 Nothing ends it. So the control has to be in the prompt.

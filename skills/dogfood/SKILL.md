@@ -16,7 +16,7 @@ Static checks (type-check, lint, unit tests) verify that code does what you told
 
 The acceptance signal is **"I ran it and saw X"** — never "it should work" or "the tests pass, so."
 
-**vs neighbours:** `/verify-this` is for adjudicating a stated claim with baseline-vs-treatment evidence; `/verify` bootstraps a project-specific verification skill. Dogfood is the general "exercise the change in its real runtime" pass — don't stack all three on one change.
+**vs neighbours:** `/verify-this` and `/verify` are gone — deleted 2026-07-28 for zero measured invocations. Dogfood is now the only runtime-verification pass. For a *stated* claim that needs baseline-versus-treatment evidence, state the claim, measure both sides, and report the numbers here; do not look for a separate skill.
 
 ## Step 1: Classify the change
 

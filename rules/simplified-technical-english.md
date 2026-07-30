@@ -90,22 +90,6 @@ python3 ~/.claude/scripts/ste-lint.py --type procedural FILE.md
 ```
 
 The linter is a regex pass, not a grammar parser. It finds no passive voice, and a clean run is
-evidence, never a compliance verdict.
-
-**It over-reports on markdown, and the rate is measured.** On 2026-07-30 it flagged 13 violations on
-this file. Only 3 are real:
-
-| source | count | why it is not a finding |
-|---|---|---|
-| Table rows | 9 — 5 over-limit, 2 contractions, 1 modal, 1 rotation | A row is not a sentence, and a quoted bad example is not your prose |
-| A bullet list | 1 over-limit, at 69 words | Bullets carry no terminal punctuation, so the linter reads the whole list as one sentence |
-| Real prose findings | 3 | — |
-
-Two rules follow. Read the **per-100-word rate against the same file over time**, never the absolute
-count. Lint the prose, not the tables:
-
-```
-sed '/^|/d' FILE.md | python3 ~/.claude/scripts/ste-lint.py --type descriptive -
-```
-
-That drops this file from 13 to 4, and the one artifact left is the 69-word bullet list.
+evidence, never a compliance verdict. **It over-reports on markdown tables and bullet lists** — in the
+measured case only 3 of 13 hits were real. Strip the tables (`sed '/^|/d'`) and read the per-100-word
+rate over time, not the absolute count. Numbers and method: `docs/ste-lint-caveats.md`.

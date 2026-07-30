@@ -1,5 +1,9 @@
 ---
 description: iOS simulator invariant — one sim per app, resolve by name, never global resets.
+paths:
+  - "**/Dev/**"
+  - "**/*ios*/**"
+  - "**/*Xcode*/**"
 ---
 
 # iOS Simulators (one sim per app)
