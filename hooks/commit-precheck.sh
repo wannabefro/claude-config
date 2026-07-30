@@ -49,6 +49,19 @@ if ! repo_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then
   exit 0
 fi
 
+density="$HOME/.claude/scripts/comment-density.py"
+if [ -f "$density" ] && command -v python3 >/dev/null 2>&1; then
+  set +e
+  # Structure only: --max-density 101 disables the density check on a diff.
+  cmt_out=$(python3 "$density" --staged "$repo_root" --max-density 101 2>&1)
+  cmt_status=$?
+  set -e
+  if [ $cmt_status -eq 1 ]; then
+    cmt_out=$(trim_output "$cmt_out")
+    deny "Staged comments break rules/principles.md. Delete or shorten them, then commit.\n$cmt_out"
+  fi
+fi
+
 check_cmd=""
 if [ -x "$repo_root/.claude/pre-commit-check" ]; then
   check_cmd="$repo_root/.claude/pre-commit-check"

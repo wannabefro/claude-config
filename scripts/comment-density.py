@@ -108,12 +108,21 @@ def staged_added(repo):
     for name in names:
         if pathlib.Path(name).suffix not in SUFFIX:
             continue
+        if SKIP_PART & set(pathlib.Path(name).parts):
+            continue
         diff = subprocess.run(
             ["git", "-C", repo, "diff", "--cached", "--unified=0", "--", name],
             capture_output=True, text=True).stdout
-        added = [l[1:] for l in diff.split("\n")
-                 if l.startswith("+") and not l.startswith("+++")]
-        if added:
+        added, saw = [], False
+        for line in diff.split("\n"):
+            if line.startswith("@@"):
+                if saw:
+                    added.append("__hunk_break__")
+                continue
+            if line.startswith("+") and not line.startswith("+++"):
+                added.append(line[1:])
+                saw = True
+        if [l for l in added if l != "__hunk_break__"]:
             out[name] = "\n".join(added)
     return out
 
@@ -123,9 +132,10 @@ def report(named, max_density):
     print(f"{'density':>8} {'cmt':>5} {'code':>5} {'blk':>4} {'long':>5}  file")
     for name, text in named:
         r = scan(text)
-        if r["comment_lines"] + r["code_lines"] < 10:
+        sizeable = r["comment_lines"] + r["code_lines"] >= 10
+        flag = ((r["density"] > max_density and sizeable) or r["blocks"] or r["verbose"])
+        if not flag and not sizeable:
             continue
-        flag = (r["density"] > max_density or r["blocks"] or r["verbose"])
         bad += bool(flag)
         print(f"{r['density']:7.1f}% {r['comment_lines']:5d} {r['code_lines']:5d} "
               f"{len(r['blocks']):4d} {len(r['verbose']):5d}  {'! ' if flag else '  '}{name}")
@@ -154,6 +164,9 @@ run() {
 '''
 
 
+SCATTERED = "\n".join(["# one", "__hunk_break__"] * 4)
+
+
 def self_test():
     d = scan(DIRTY)
     assert len(d["blocks"]) == 1, d
@@ -162,7 +175,11 @@ def self_test():
     assert d["density"] > 50, d
     c = scan(CLEAN)
     assert c["blocks"] == [] and c["verbose"] == [] and c["density"] == 0.0, c
-    print(f"self-test OK: dirty {d['density']}% with 1 block of 4 and 1 long comment, clean 0.0%")
+    s = scan(SCATTERED)
+    assert s["blocks"] == [], f"hunk breaks must split runs: {s}"
+    assert s["comment_lines"] == 4, s
+    print(f"self-test OK: dirty {d['density']}% with 1 block of 4 and 1 long comment; "
+          f"clean 0.0%; 4 scattered comments give {len(s['blocks'])} blocks")
 
 
 def main():
