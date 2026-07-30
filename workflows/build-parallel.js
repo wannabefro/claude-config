@@ -9,37 +9,19 @@ export const meta = {
   ],
 }
 
-// There is deliberately no Verify phase. Verification is the implementer's own
-// gate — it must see its verify_command exit 0 before reporting green — so a
-// separate phase would either duplicate that or lie about it. `meta` used to
-// declare one ("one repair attempt") that no code implemented: the progress UI
-// showed an empty group and the metadata promised a retry that never existed.
+// No Verify phase exists — verification is each unit's own gate, its verify_command exiting 0.
 
-// The inner-loop gate is an EXECUTABLE done-criterion per unit, not a review.
-// Reviews belong in the outer loop (council-review), run once on the assembled
-// diff. Running a review per unit is what makes parallel building slower than
-// serial building, so it is deliberately absent here.
+// Reviews belong in the outer loop (council-review), run once on the assembled diff, not per unit.
 
 const PLAN = {
   type: 'object',
   required: ['route', 'reason', 'units'],
   properties: {
-    // Was a boolean `decomposable`. One bit could say "don't fan out" but not
-    // where to go instead, so the caller guessed — a regex on whether the task
-    // string happened to mention a plan path. The decomposer has already read
-    // the codebase; it is the thing best placed to make this call.
     route: {
       enum: ['parallel', 'ce-work', 'inline'],
       description: 'parallel = two or more units with disjoint files and no shared contract, at least two startable at once. ce-work = sequential or coupled but substantial: several steps, a plan document, needs discovery, wants its own quality gates. inline = one coherent change, or coupled reasoning where the thinking IS the work, or small enough that worktree and dispatch cost exceed the work itself.',
     },
     route_reason: { type: 'string', description: 'Why this route and not the other two — name the deciding property (shared file, shared contract, size, coupling), not a generic phrase' },
-    // Added 2026-07-28 after measuring what a worktree actually contains. A fresh
-    // worktree checks out tracked files only: in one repo that was 12M with NO
-    // node_modules against a 1.0G main checkout, so every verify_command that
-    // needs installed dependencies fails there for a reason unrelated to the
-    // unit's work. Where a worktree HAD been populated it cost 1.2G each, which
-    // is how 37 of them accumulated unnoticed. Isolation is only worth buying
-    // when the gate can still run inside it.
     workspace: {
       enum: ['shared', 'worktree'],
       description: 'shared = every unit builds in the existing checkout (default). worktree = each unit gets its own isolated checkout. Choose worktree ONLY if every verify_command can pass in a tree containing tracked files alone — no node_modules, .venv, vendor, Pods, build cache or any other ignored path. If any gate needs installed dependencies, choose shared: a worktree would fail it for reasons unrelated to the unit.',
@@ -54,13 +36,6 @@ const PLAN = {
         properties: {
           id: { type: 'string', description: 'short kebab-case slug' },
           title: { type: 'string' },
-          // Replaced `wave` (a single integer) on 2026-07-27. One number was doing
-          // three jobs — file-conflict grouping, logical ordering, and execution
-          // barrier — and the executor read it as a GLOBAL barrier, so every unit
-          // waited on every unit of the previous wave rather than on its own
-          // predecessors. Measured on a real 12-unit decomposition: 6 waves, peak
-          // concurrency 4 of 12, three waves holding a single unit, while only 3 of
-          // 52 files were actually contested.
           depends_on: {
             type: 'array',
             items: { type: 'string' },
@@ -68,10 +43,7 @@ const PLAN = {
           },
           mechanical: { type: 'boolean', description: 'true if the change is rote — rename, boilerplate, pattern already obvious. Routed to a cheaper tier.' },
           files: { type: 'array', items: { type: 'string' }, description: 'Repo-relative files this unit owns. Two units that could run concurrently must not share a file — either add a dependency between them or merge them.' },
-          // File overlap is not the only way two units collide. A unit can define a
-          // field/export/route that another reads while touching entirely different
-          // files — each verifies green in its own worktree, and the mismatch only
-          // appears at merge. Naming the contract is what makes that checkable.
+          // File overlap alone misses this: two units can collide on a name while touching different files entirely.
           provides: {
             type: 'array',
             items: { type: 'string' },
@@ -82,13 +54,7 @@ const PLAN = {
             items: { type: 'string' },
             description: 'Names from another unit\'s `provides` that this unit reads or depends on. If you list a name here that another unit provides, you MUST also list that unit in depends_on — otherwise you are asserting a contract nobody has built yet.',
           },
-          // `provides`/`consumes` catch two units disagreeing about a thing that
-          // exists. They cannot catch work spent on a thing that is scheduled to
-          // STOP existing. Real case: a 49-flow sweep ran for two hours to answer
-          // "does the level map still work?" while a later unit in the same plan
-          // deleted the level map and rewrote all 47 flows referencing it. The
-          // sweep was correct, bounded, and green. It was also worthless before
-          // it started, and the plan already said so.
+          // `provides`/`consumes` catch collisions, not work on a name a later unit is about to delete — `removes` covers that.
           removes: {
             type: 'array',
             items: { type: 'string' },
@@ -116,10 +82,7 @@ const UNIT = {
   },
 }
 
-// args arrives either as an object or as a JSON-encoded string depending on the
-// call shape. Taking `typeof args === 'string'` to mean "this is the task" made
-// a stringified object become the task text AND silently drop every flag on it —
-// which once turned an intended dry run into a real fan-out. Parse defensively.
+// args may arrive as a JSON-encoded string of an object, not just a plain task string — parse defensively.
 let opts = args
 if (typeof opts === 'string') {
   const trimmed = opts.trim()
@@ -140,10 +103,7 @@ if (!task) {
   return { error: 'build-parallel needs a task, plan path, or feature description as args.' }
 }
 
-// Decomposition is the ceiling on everything downstream, is cheap to inspect,
-// and is expensive to discover was wrong after N agents have written code — so
-// reporting the plan is the DEFAULT and fanning out is the opt-in. The reverse
-// default commits writers to a decomposition nobody has read.
+// Reporting the plan is the default; fanning out is opt-in, since a wrong split is cheap to catch unread.
 const build = opts.build === true
 
 phase('Decompose')
@@ -235,20 +195,15 @@ prefer the cheaper route: an under-parallelised build is slow, an over-paralleli
 )
 
 if (!plan) return { error: 'Decomposition failed — no plan returned.' }
-// Where to go when a fan-out is not the right shape. Naming the concrete route
-// is what lets the caller act without a round trip: with a plan path, ce-work
-// already knows how to execute it; without one, inline is cheaper than dispatch.
+// Naming the concrete fallback route lets the caller act without a round trip.
 const planPath = (task.match(/[\w./-]*docs\/plans\/[\w.-]+\.md/) || [])[0] || null
 const routeOf = (r) => r === 'ce-work'
   ? `ce-work${planPath ? ` with the explicit plan path: \`${planPath}\`` : ' (hand it the plan path or the task verbatim)'}`
   : 'build it inline in the main thread, or hand a single `implementer` the whole task'
-// The decomposer's choice wins; the regex is only a fallback for an older shape
-// that returned no route at all.
+// The decomposer's route always wins; the regex is only a fallback when none is returned.
 const fallbackRoute = routeOf(plan.route || (planPath ? 'ce-work' : 'inline'))
 
-// One unit is not a fan-out. Building it still pays for a worktree, an isolated
-// checkout and a dispatch, and buys no concurrency at all — so it falls back
-// rather than dressing a serial build up as a parallel one.
+// One unit isn't a fan-out — it pays worktree and dispatch cost for zero concurrency, so it falls back.
 if (plan.route === 'parallel' && plan.units && plan.units.length === 1) {
   log('single unit — no concurrency to gain, falling back to a serial build')
   return {
@@ -268,21 +223,14 @@ if (plan.route !== 'parallel' || !plan.units || !plan.units.length) {
     route: plan.route || 'inline',
     reason: plan.reason,
     route_reason: plan.route_reason,
-    // Units still travel even when nothing fans out: for ce-work they are a
-    // ready-made task list in dependency order, which is most of the value the
-    // decomposition produced.
+    // Units still travel even without a fan-out — for ce-work they're a ready-made, dependency-ordered task list.
     units: plan.units || [],
     fallback: fallbackRoute,
     recommendation: `Build this serially via ${fallbackRoute}. Fanning it out would cost more in merge conflicts than it saves.`,
   }
 }
 
-// Ids must be unique BEFORE anything is keyed by them. The scheduler memoises a
-// promise per id, so two units sharing an id collapse into a single build while
-// still being counted twice — the run reports units_green including a unit that
-// never ran, and hands back a merge_sequence naming a branch that does not
-// exist. The wave loop mapped over unit objects and so tolerated duplicates;
-// keying by id is what made this reachable, so it is checked here.
+// Ids must be unique — the scheduler keys a promise per id, so duplicates collapse but still count twice.
 const idCounts = new Map()
 for (const u of plan.units) idCounts.set(u.id, (idCounts.get(u.id) || 0) + 1)
 const duplicates = [...idCounts].filter(([, n]) => n > 1).map(([id, n]) => ({ id, count: n }))
@@ -298,8 +246,7 @@ if (duplicates.length) {
 const byId = new Map(plan.units.map((u) => [u.id, u]))
 const depsOf = (u) => (u.depends_on || []).filter((d) => d !== u.id)
 
-// A dependency on a unit that does not exist would silently never resolve, so
-// the scheduler would wait on it forever. Catch it before anything is built.
+// A dependency on a nonexistent unit would never resolve, so the scheduler would wait forever.
 const dangling = []
 for (const u of plan.units) {
   for (const d of depsOf(u)) if (!byId.has(d)) dangling.push({ unit: u.id, missing: d })
@@ -313,8 +260,7 @@ if (dangling.length) {
   }
 }
 
-// A cycle would deadlock the scheduler — each unit waiting on the other — which
-// presents as a hang rather than an error. Refuse up front.
+// A cycle would deadlock the scheduler as a silent hang, not an error — refuse it up front.
 const CYCLE_MARK = { visiting: 1, done: 2 }
 const mark = new Map()
 const cycles = []
@@ -338,11 +284,7 @@ if (cycles.length) {
   }
 }
 
-// Transitive closure: ancestors[id] is everything that must land before id.
-// Two units may run at the same time iff neither is an ancestor of the other,
-// and it is exactly those pairs that must not share a file. The old check asked
-// "same wave?", which both missed concurrent units in different waves and
-// flagged ordered units that were never actually concurrent.
+// Units may run concurrently only if neither is an ancestor of the other, and must not then share a file.
 const ancestors = new Map()
 const ancestorsOf = (id) => {
   if (ancestors.has(id)) return ancestors.get(id)
@@ -383,9 +325,7 @@ if (conflicts.length) {
   }
 }
 
-// Contract collisions. Distinct from file overlap: these units touch different
-// files, so every one of them verifies green in its own worktree and the drift
-// only appears at merge — the failure mode that motivated adding provides/consumes.
+// Distinct from file overlap: these units touch different files, so drift only appears at merge.
 const providers = new Map()
 for (const u of plan.units) {
   for (const s of (u.provides || [])) {
@@ -397,8 +337,7 @@ const contractIssues = []
 for (const [sym, ids] of providers) {
   for (let i = 0; i < ids.length; i++) {
     for (let k = i + 1; k < ids.length; k++) {
-      // Two units defining the same name is a collision even if ordered — the
-      // later one silently wins, which is not a decomposition, it's a coin toss.
+      // Two units defining the same name collide even if ordered — the later one silently wins.
       contractIssues.push({ kind: 'duplicate-provider', symbol: sym, units: [ids[i], ids[k]] })
     }
   }
@@ -419,19 +358,14 @@ for (const u of plan.units) {
     }
   }
 }
-// Work whose subject is scheduled to be destroyed. This is not a correctness
-// bug — every unit here would go green. It is spend on a question the plan has
-// already answered, and it is invisible to every other check precisely because
-// nothing fails. Ordering is the fix: do the demolition first, then verify once
-// against what actually survives.
+// This isn't a correctness bug — it's spend on a question the plan already answered, invisible because nothing fails.
 for (const remover of plan.units) {
   for (const s of (remover.removes || [])) {
     for (const victim of plan.units) {
       if (victim.id === remover.id) continue
       const touches = (victim.consumes || []).includes(s) || (victim.provides || []).includes(s)
       if (!touches) continue
-      // Safe only if the removal happens FIRST. Then the victim is written
-      // against the world that survives, which is the world that ships.
+      // Safe only if removal happens first — the victim is then written against the world that ships.
       if (ancestorsOf(victim.id).has(remover.id)) continue
       contractIssues.push({
         kind: 'invalidated-work',
@@ -455,9 +389,7 @@ if (contractIssues.length) {
   }
 }
 
-// Depth is derived from the graph, for reporting and merge order only — it never
-// gates execution. This is the number to watch: if it tracks the unit count, the
-// decomposer is still emitting a chain rather than a graph.
+// Depth is for reporting and merge order only — it never gates execution.
 const depth = new Map()
 const depthOf = (id) => {
   if (depth.has(id)) return depth.get(id)
@@ -477,9 +409,6 @@ if (!build) {
     decomposable: true,
     reason: plan.reason,
     units_total: plan.units.length,
-    // The three numbers that predict how parallel this will actually be. Read
-    // them before agreeing the split: critical_path near units_total means the
-    // decomposer produced a chain, and the fan-out will not buy much.
     starting_immediately: startable,
     critical_path: criticalPath,
     units: plan.units.map((u) => ({ ...u, depth: depthOf(u.id) })),
@@ -489,40 +418,16 @@ if (!build) {
   }
 }
 
-// Default shared, not worktree. An unset field must land on the choice that
-// still runs the gates; the failure mode of a wrong `worktree` is every unit
-// failing verification at once.
+// Defaults to shared — an unset workspace must land on the choice that still runs every gate.
 const useWorktrees = plan.workspace === 'worktree'
 log(`workspace: ${useWorktrees ? 'worktree per unit' : 'shared checkout'}${plan.workspace_reason ? ` — ${plan.workspace_reason}` : ''}`)
 
 log(`${plan.units.length} unit(s), ${startable} starting immediately, critical path ${criticalPath} — building`)
 
-// Dependency-gated dispatch. Each unit is a promise that awaits only its OWN
-// predecessors, so it starts the moment they are green rather than when a whole
-// cohort finishes. Replaces a `for (wave) { await parallel(...) }` loop whose
-// global barrier was the main thing capping concurrency.
-//
-// Raw promises rather than parallel(): parallel() is a barrier by construction,
-// which is the thing being removed. The runtime's concurrency cap lives on
-// agent() itself, so excess units queue for a slot exactly as before — nothing
-// here can oversubscribe the machine.
+// Raw promises, not parallel() — each unit starts the moment its own predecessors go green.
 const scheduled = new Map()
 
-// Depth limiting applies to WORKTREES ONLY, and this is the second reason the
-// shared checkout is now the default. Every worktree branches from the SAME base
-// commit and nothing merges mid-run, so a depth-2 unit would be built against a
-// tree that never contained its dependency's work — it verifies green against a
-// world that does not exist yet. Sequencing is not composition: waiting for a
-// dependency to go green does not put its code in your worktree. Measured
-// 2026-07-28 on an 8-unit run: 4 reported green, only the 2 roots were mergeable,
-// and a unit that depended on a DB mutation had been written against the old
-// schema throughout. Deeper units are returned as `deferred` — merge this layer,
-// then re-run from the new HEAD.
-//
-// In a SHARED checkout that failure cannot occur: the dependency wrote into this
-// same tree, so by the time the gate below passes, its work is present and the
-// full DAG runs in one pass. An audit of past runs put ~30% of units at depth>1,
-// and every one of them was a re-run this removes.
+// Worktree-only: every worktree branches from the same base commit, so a depth-2 unit sees no ancestor's work.
 const runUnit = (u) => {
   if (scheduled.has(u.id)) return scheduled.get(u.id)
   const p = (async () => {
@@ -537,9 +442,7 @@ const runUnit = (u) => {
     const deps = depsOf(u)
     const depOutcomes = await Promise.all(deps.map((d) => runUnit(byId.get(d))))
 
-    // A dependent must not build on top of a unit that never went green — it
-    // would produce work that looks finished and is founded on nothing. The
-    // wave loop only logged this and carried on into the next wave.
+    // A dependent must not build atop a unit that never went green — it would rest on nothing.
     const blockedBy = deps.filter((d, i) => !depOutcomes[i] || depOutcomes[i].status !== 'green')
     if (blockedBy.length) {
       log(`skip ${u.id} — dependency not green: ${blockedBy.join(', ')}`)
@@ -582,20 +485,14 @@ you do not own, that is a sibling's in-flight edit, not your bug — report \`bl
           label: `build:${u.id}`,
           phase: 'Build',
           agentType: 'implementer',
-          // Tier per unit: rote work does not need Sonnet. This is the lever that
-          // has been sitting unused.
           model: u.mechanical ? 'haiku' : 'sonnet',
-          // Only when the decomposer confirmed every gate can pass on tracked
-          // files alone. See the `workspace` field for why this is not the
-          // default any more.
+          // Only set when every gate can pass on tracked files alone — see `workspace`.
           ...(useWorktrees ? { isolation: 'worktree' } : {}),
           schema: UNIT,
         }
       )
     } catch (e) {
-      // One unit throwing must not reject the whole graph — its dependents get
-      // skipped by the not-green check above, and everything off that branch
-      // keeps building.
+      // One unit throwing must not reject the whole graph — its dependents get skipped, others keep building.
       log(`error ${u.id}: ${e && e.message}`)
       return { unit: u, status: 'error', result: null, error: String((e && e.message) || e) }
     }
@@ -628,13 +525,9 @@ return {
   units_green: green.length,
   critical_path: criticalPath,
   starting_immediately: startable,
-  // Merge order follows dependency depth, so a unit always merges after
-  // everything it was built on. Deliberately NOT merged automatically — an
-  // unattended N-way merge is exactly where parallel builds go wrong.
+  // Merge order follows dependency depth; merging stays manual — an unattended N-way merge is where parallel builds go wrong.
   merge_sequence: green
-    // Total order, not just depth. Depth alone leaves equal-depth units in
-    // Array.sort's arbitrary order, so the merge sequence differed run to run on
-    // the same plan — id breaks the tie and makes it reproducible.
+    // Total order, not just depth — id breaks ties so the merge sequence is reproducible across runs.
     .sort((a, b) => depthOf(a.unit.id) - depthOf(b.unit.id) || a.unit.id.localeCompare(b.unit.id))
     .map((r) => ({
       depth: depthOf(r.unit.id),
@@ -649,8 +542,7 @@ return {
     id: r.unit.id,
     title: r.unit.title,
     status: r.status,
-    // A skipped unit was never attempted, and saying why matters more than any
-    // verify output: the thing to fix is its dependency, not the unit itself.
+    // A skipped unit was never attempted — the fix is its dependency, not the unit itself.
     blocked_by: r.blocked_by,
     detail: r.status === 'deferred'
       ? r.deferred_because
@@ -659,15 +551,9 @@ return {
         : (r.result ? (r.result.verify_output || r.result.summary) : (r.error || 'agent returned nothing')),
     remaining: r.result ? r.result.remaining : undefined,
   })),
-  // Deferred is not a failure — it is the honest half of a layered build, and
-  // reporting it as attention-needed would read as 4 broken units rather than
-  // "this layer is done, merge it and go again".
+  // Deferred isn't a failure — it's the honest half of a layered build, not attention-needed.
   deferred: deferred.map((r) => ({ id: r.unit.id, title: r.unit.title, depth: depthOf(r.unit.id), depends_on: depsOf(r.unit) })),
-  // Emitted, never executed. At the moment a build ends, every worktree holds
-  // work that is NOT yet merged — deleting here would destroy it. And the
-  // agents leave changes uncommitted, so branch ancestry says "already merged"
-  // about a worktree containing an entire unit. The script compares file
-  // content instead; it is safe only AFTER merge_sequence has been applied.
+  // Emitted, never executed — worktrees hold unmerged work, and uncommitted branches make ancestry checks unreliable.
   cleanup: useWorktrees
     ? {
         when: 'after merging merge_sequence — never before',

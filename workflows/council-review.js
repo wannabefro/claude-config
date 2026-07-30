@@ -10,12 +10,8 @@ export const meta = {
   ],
 }
 
-// Diversity comes from the LENS first and the tier second. Two seats are special:
-//   · Codex (OpenAI) is the only member NOT from the Anthropic family, so it is
-//     the only one whose blind spots are uncorrelated with the rest. That is
-//     worth a standing seat — a unanimous Claude council can be unanimously wrong.
-//   · Fable is same-family and is deliberately NOT standing: it is the escalation
-//     seat, spent only where the council cannot resolve a finding on its own.
+// Codex is the only non-Anthropic seat, so it stands permanently.
+// Fable is same-family and seats only to break deadlocks.
 const COUNCIL = [
   { key: 'correctness',     model: 'opus',   brief:
     'Logic errors, off-by-one, null/undefined paths, race conditions, incorrect state transitions, error handling that swallows failures. Trace the actual control flow rather than reading for plausibility.' },
@@ -31,16 +27,13 @@ const COUNCIL = [
     'Whatever a Claude-family reviewer would miss. You have no assigned lens — you are here because you reason differently. Prioritise defects the other members are structurally unlikely to see: unstated assumptions, the problem being solved wrongly, interactions between the diff and code it does not touch.' },
 ]
 
-// Every finding is challenged from both tiers regardless of who raised it —
-// a different lens on the same tier is still an independent read.
+// Every finding is challenged by both tiers, regardless of who raised it.
 const CHALLENGERS = ['opus', 'sonnet']
 const ESCALATION_MODEL = 'fable'
 // Hard ceiling on the expensive seat: cost must not scale with finding count.
 const MAX_ESCALATIONS = 2
 
-// Findings per challenger agent. 4 is the point where the round stops scaling
-// linearly with finding count while a challenger can still hold each claim
-// separately in view. A 12-finding lens goes from 24 challenge agents to 6.
+// Batch size 4 caps challenge agents per lens; a 12-finding lens needs 6, not 24.
 const CHALLENGE_BATCH = 4
 
 const FINDINGS = {
@@ -62,10 +55,7 @@ const FINDINGS = {
         },
       },
     },
-    // Only the codex seat sets this. "Codex ran and found nothing" and "Codex
-    // never ran" are both an empty findings array, and conflating them lets a
-    // dead CLI read as a completed cross-family review — the exact silent pass
-    // rules/pipeline.md forbids. The seat must say which happened.
+    // Only the Codex seat sets this — it distinguishes a dead CLI from an empty honest review.
     tool_unavailable: {
       type: 'boolean',
       description: 'Codex seat only: true if the Codex CLI could not be run at all (failed preflight, hung, or produced no output on every attempt). Leave false/absent when Codex ran and simply had nothing to report.',
@@ -83,9 +73,7 @@ const CHALLENGE = {
   },
 }
 
-// One challenger agent returns a verdict per claim in its batch. `index` is what
-// maps a verdict back to its finding, so it is required — an unindexed verdict
-// cannot be attributed and is dropped.
+// `index` maps a verdict back to its finding; an unindexed verdict is dropped.
 const CHALLENGE_BATCH_SCHEMA = {
   type: 'object',
   required: ['verdicts'],
@@ -154,43 +142,18 @@ const rawTarget = (typeof args === 'string' ? args : argObj.target) || ''
 const target = rawTarget.trim()
   || 'the current branch: committed diff against the default branch, plus any uncommitted changes'
 
-// The installed CLI has no model-list subcommand, so this is passed through
-// unvalidated; omit it to use whatever ~/.codex/config.toml pins.
+// No model-list subcommand exists, so this passes through unvalidated; omit to use ~/.codex/config.toml's pin.
 const CODEX_MODEL = String(argObj.codexModel || '').trim()
 const CODEX_MODEL_FLAG = CODEX_MODEL ? ` -m ${CODEX_MODEL}` : ''
 
-// The outsider seat is the only member that shells out to a foreign CLI, so it is
-// the only one whose worst case is a hung process rather than a slow model. It is
-// also the last member the judge waits for, which makes it the council's critical
-// path. Measured 2026-07-27: a wedged Codex install cost 19.4 min of a 22.9 min
-// review and returned nothing — the agent correctly followed codex-exec-recovery,
-// retried, killed three stuck PIDs and reported empty, but nothing bounded how
-// long it could spend finding that out.
-//
-// setTimeout exists in this sandbox (probed); Date.now() and performance do not,
-// so the deadline is a timer, never a clock comparison.
-//
-// 15min, not the 8min this shipped with. This is a BACKSTOP, not the primary
-// bound — STEP 0's preflight and the two `timeout 300` attempts cap the failure
-// paths at roughly 310s (hang) and 610s (empty-output flake) on their own, and
-// those fire whatever this is set to. Set below the seat's own 610s worst case,
-// the race preempts the seat's honest self-report and every slow run is labelled
-// 'timed-out' instead of the more specific 'unavailable'/'empty'.
-//
-// Measured both ways on 2026-07-27: at 8min a HEALTHY Codex reviewing a real diff
-// was cut mid-review and the council lost its cross-family lens for no reason.
-// The council itself raised this against the 8min version, argued it away in
-// cross-examination, and was then contradicted by the very next run — which is
-// the more trustworthy evidence.
+// Use setTimeout, not Date.now/performance — only setTimeout exists in this sandbox; set above the 610s retry cap.
 const OUTSIDER_DEADLINE_MS = Number(argObj.outsiderDeadlineMs) > 0
   ? Number(argObj.outsiderDeadlineMs)
   : 15 * 60 * 1000
 
 const OUTSIDER_TIMED_OUT = { __outsiderTimedOut: true }
 
-// Resolves to OUTSIDER_TIMED_OUT if the seat overruns. The agent keeps running in
-// the background and keeps its concurrency slot; that is acceptable because the
-// cap is well above the seat count, and cancelling an agent is not offered.
+// Resolves to OUTSIDER_TIMED_OUT on overrun; the agent keeps its slot since cancellation isn't offered.
 const withDeadline = (p, ms) => {
   let timer
   return Promise.race([
@@ -202,29 +165,18 @@ const withDeadline = (p, ms) => {
   ])
 }
 
-// Distinguishes "Codex looked and found nothing" from "Codex never reported".
-// Both leave the council all-Anthropic in effect, but only the second means the
-// cross-family check did not happen — and rules/pipeline.md is explicit that an
-// empty Codex pass must be reported rather than quietly treated as a pass.
+// Distinguishes Codex finding nothing from Codex never reporting — only the latter must be flagged, per rules/pipeline.md.
 let outsiderStatus = 'not-seated'
 
-// Repo path matters for approval cost, not just correctness: `cd /some/path &&`
-// is a boundary crossing that gates the WHOLE compound command, so a review of
-// an out-of-session repo turns ~30 free read-only calls into ~30 approval
-// prompts — once per agent, multiplied by the fan-out. `git -C` and absolute
-// paths never change directory and stay auto-allowed.
+// `cd` gates the whole command and costs an approval prompt per agent; `git -C` and absolute paths don't.
 const repoPath = String(argObj.repoPath || '').trim()
 const bundlePath = String(argObj.bundlePath || '').trim()
 const G = repoPath ? `git -C "${repoPath}"` : 'git'
 
-// Bundle mode exists because instructing agents not to `cd` does not work — they
-// do it anyway, and each one costs an approval prompt. With a pre-built bundle
-// the members need no shell at all, and are dispatched as `council-reader`,
-// which has no Bash tool. Enforcement, not instruction.
+// Bundle mode removes the need for a shell entirely — members dispatch as `council-reader`, which has no Bash tool.
 const READER = bundlePath ? 'council-reader' : undefined
 
-// Optional: seat only some lenses, e.g. when one has already reported and you
-// want the rest without paying for it again.
+// Optional: seat only some lenses, e.g. to skip one that already reported.
 const wanted = Array.isArray(argObj.lenses) ? argObj.lenses : null
 const SEATED = wanted ? COUNCIL.filter((m) => wanted.includes(m.key)) : COUNCIL
 
@@ -281,18 +233,7 @@ not read. An empty findings list is a valid and useful result.
 
 let escalations = 0
 
-// ---- Triage -----------------------------------------------------------------
-// Seating all six lenses at effort:high on every diff is what made this the most
-// expensive review path available. One cheap read decides how much council the
-// diff has earned. Three properties make that safe to do on Haiku:
-//
-//   1. It can only ever REMOVE optional lenses. FLOOR is seated unconditionally.
-//   2. Any guardrail surface re-seats the full council — the cheap seat is not
-//      allowed to decide that auth or a migration is low-risk.
-//   3. It fails OPEN. A triage that errors, returns nothing, or returns junk
-//      seats everyone. Under-reviewing must never be the failure mode.
-//
-// An explicit `lenses` arg still wins: naming them is a deliberate choice.
+// Triage only REMOVES optional lenses and fails OPEN — errors or guardrail surfaces re-seat the full council.
 const FLOOR = ['correctness', 'security']
 
 const TRIAGE = {
@@ -313,9 +254,7 @@ const TRIAGE = {
 let seated = SEATED
 if (!wanted) {
   phase('Triage')
-  // try/catch, not just a null check: agent() returns null on a terminal error
-  // but can still throw, and an exception here would kill the whole review —
-  // the loudest possible way to fail closed on the one seat that must fail open.
+  // try/catch because agent() can throw, not just return null, and this seat must fail open.
   let triage = null
   try {
     triage = await agent(
@@ -369,8 +308,7 @@ Being wrong toward MORE review is cheap. Being wrong toward less is not.`,
 phase('Convene')
 log(`Convening ${seated.length} of ${COUNCIL.length} lenses on Opus + Sonnet; Fable held in reserve for deadlocks`)
 
-// Pipeline, not barrier: a lens's findings enter cross-examination the moment
-// that lens returns, so slow lenses never gate fast ones.
+// Pipeline, not barrier — a lens enters cross-examination the moment it returns, so slow lenses don't gate fast ones.
 const perLens = await pipeline(
   seated,
 
@@ -443,9 +381,7 @@ outcome; fabricating a review is not.`,
       outsiderStatus = !r ? 'failed'
         : r.tool_unavailable ? 'unavailable'
         : n ? 'reported' : 'empty'
-      // agent() returns null on a terminal error. Normalising it here gives this
-      // seat one shape on every path — timeout, failure, empty, reported — so a
-      // caller never has to know which of the four it got.
+      // Normalises agent()'s null-on-error into one shape — timeout, failure, empty, or reported — for every caller.
       return r || { findings: [] }
     })
     : agent(
@@ -464,17 +400,7 @@ ${rubric}`,
     }
     log(`${member.key}: ${found.length} finding(s) -> cross-examination`)
 
-    // Findings are challenged in BATCHES, not one agent per finding per family.
-    // Measured 2026-07-28 across 12 real runs: the per-finding fan-out made the
-    // challenge round 48 of 55 agents in one run and 50 of 60 in another — 84% of
-    // all workflow spend, median $75 a run against build's $14. The escalation
-    // cap worked (0 and 2 firings); this round had no cap at all, because it
-    // scales as findings x CHALLENGERS and nothing bounded findings.
-    //
-    // Batching keeps every property that made the round worth having: two
-    // independent model families still vote, the framing is still adversarial,
-    // and each finding still gets its own verdict. What it gives up is isolation
-    // between findings inside one batch, which is why batches stay small.
+    // Batches challengers instead of one agent per finding per family — unbatched, this was 84% of workflow cost.
     const batches = []
     for (let i = 0; i < found.length; i += CHALLENGE_BATCH) batches.push(found.slice(i, i + CHALLENGE_BATCH))
     if (found.length > CHALLENGE_BATCH) {
@@ -502,9 +428,7 @@ Return one verdict per claim, using the [index] shown above.`,
       ).then((r) => ({ bi, verdicts: (r && r.verdicts) || [] }))
     })))
 
-    // Regroup batch verdicts back onto individual findings. A verdict that never
-    // arrived is simply absent, and the existing cast.length logic already treats
-    // a short vote count as weaker evidence rather than as agreement.
+    // Regroup batch verdicts onto individual findings; a missing verdict reads as weaker evidence, not agreement.
     const votesFor = new Map()
     for (const bv of batchVotes.filter(Boolean)) {
       for (const v of bv.verdicts) {
@@ -524,13 +448,7 @@ CITED EVIDENCE: ${f.evidence || '(none given)'}`
       return Promise.resolve(votesFor.get(f) || []).then(async (votes) => {
         const cast = votes.filter(Boolean)
 
-        // A finding nobody voted on must not be silently dropped. `survives` is
-        // computed from `unanimousHold`, which is false at zero votes, so an
-        // unchallenged finding would disappear as though it had been refuted.
-        // Batching made that failure worse: both challengers for a batch dying
-        // takes CHALLENGE_BATCH findings with it, not one. Fail open instead and
-        // mark it, matching the rule that under-reviewing is never the failure
-        // mode — the judge sees it flagged as unverified rather than not at all.
+        // An unchallenged finding must surface, not vanish as refuted — mark it unverified for the judge.
         if (!cast.length) {
           log(`no challenger verdict for "${f.title}" — surfacing it unchallenged`)
           return { ...f, lens: member.key, survives: true, escalated: false,
@@ -542,11 +460,7 @@ CITED EVIDENCE: ${f.evidence || '(none given)'}`
         const unanimousHold = cast.length > 0 && refuted === 0
         const split = cast.length > 1 && !unanimousKill && !unanimousHold
 
-        // A split used to escalate, which fired Fable on ~40% of findings — with
-        // only two voters a tie is common, not exceptional. Ties now resolve as
-        // refuted, matching the rubric the challengers are given ("default to
-        // refuted when uncertain"). Fable is reserved for a contested CRITICAL
-        // and hard-capped, so its cost cannot scale with finding count.
+        // A tied verdict resolves as refuted, not escalated — Fable is reserved for a contested critical, and capped.
         const contestedCritical = f.severity === 'critical' && refuted > 0 && refuted < cast.length
         const stuck = contestedCritical && escalations < MAX_ESCALATIONS
         if (!stuck) {
@@ -584,8 +498,7 @@ each side got right and wrong. If it is real but mis-rated, correct the severity
   }
 )
 
-// The one place a barrier is correct: the judge needs every surviving finding at
-// once to dedupe across lenses and rank globally.
+// The judge needs every surviving finding at once, so a barrier is correct here.
 const all = perLens.flat().filter(Boolean)
 const survivors = all.filter((f) => f.survives)
 const killed = all.filter((f) => !f.survives)
@@ -593,10 +506,7 @@ log(`${all.length} raised · ${survivors.length} survived · ${killed.length} re
 
 phase('Verdict')
 
-// 'reported' and 'empty' both mean Codex ran. 'timed-out' and 'failed' mean the
-// council was effectively all-Anthropic, which is exactly the correlated-blind-spot
-// case the outsider seat exists to prevent — so it is stated, not inferred from a
-// zero in a findings count.
+// 'reported'/'empty' mean Codex ran; 'timed-out'/'failed' mean the council was effectively all-Anthropic — state it, don't infer it.
 const crossFamily = outsiderStatus === 'reported' || outsiderStatus === 'empty'
 
 const council = {
