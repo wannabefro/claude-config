@@ -3,6 +3,37 @@
 On-demand reference for `rules/principles.md`, which keeps the always-on directives. Read this when
 you want the numbers behind a rule, not on every session.
 
+## Comment growth: the three failure modes, and the measurement
+
+The rule in `rules/principles.md` states the limits. These are the shapes that break them. All three
+were observed in practice, and a rule that only said "comment sparingly" did not stop any of them.
+
+| failure mode | what it looks like | why the limit catches it |
+|---|---|---|
+| **Rationale blocks** | A multi-line comment that justifies the change: mechanism explanations, "why this is correct", cross-references to tickets or PRs beyond a single ID | The 3-line block cap. That content belongs in the PR description or the ticket, not the file |
+| **Sibling duplication** | You copy a block inside a file — a new target, env, or handler — and the copy inherits every comment from its sibling | The 15% density cap. The original a few lines up already explains it, so strip the inherited comments |
+| **Reviewer-directed comments** | Anything that explains the *diff* rather than the *code* | It reads as noise the moment it merges, and the 20-word limit makes it too small to write |
+
+### Measured 2026-07-30
+
+Across the 22 code files this repo owns (`hooks/`, `scripts/`, `workflows/`): **17.8% comment lines
+pooled, 22.4% in the median file, and 47 comment blocks of 4 or more lines.** 20 of the 22 files break
+at least one limit.
+
+The worst cases, and they are all rationale blocks:
+
+| file | density | worst block |
+|---|---|---|
+| `hooks/delegate-prompt-nudge.sh` | 48.1% | — |
+| `hooks/worktree-codegraph.sh` | 47.6% | — |
+| `hooks/bash-safety.sh` | 43.9% | 4 lines |
+| `workflows/council-review.js` | 19.5% | **23 lines, 239 words** at line 162 |
+| `workflows/build-parallel.js` | 22.4% | 14 blocks, 33 long comments |
+
+A per-commit trend was attempted and it does not support a claim. Only three commits predate
+2026-07-27, and two of those are bulk vendoring with almost no comments, so the older baseline is not
+comparable. The standing density above is the number to act on.
+
 ## The house style is already good — this is the baseline it should stay at
 
 Measured 2026-07-28 across six repos (5,117 tests). Do not "improve" the style away from this. A

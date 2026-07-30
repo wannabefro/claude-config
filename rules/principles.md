@@ -1,8 +1,29 @@
 ---
-description: Cross-project engineering principles — conflict resolution, test invariants, ambiguity handling.
+description: Cross-project engineering principles — comment limits, conflict resolution, test invariants, ambiguity handling.
 ---
 
 # Engineering Principles
+
+## Comment sparingly — a comment is prose, so STE governs it
+
+Default to zero comments. Each comment must earn its place. This is a hard default, and it covers
+every file type, including YAML and config.
+
+Three countable limits, taken from `rules/simplified-technical-english.md`:
+
+1. Write one sentence in one comment. Keep it to **20 words or fewer**.
+2. Never write a block of **more than 3 comment lines**. A longer block is a rationale block, and it
+   belongs in the PR description.
+3. Keep a file at **15% comment lines or fewer**. When you edit a file, match or reduce its density.
+
+Add a comment only when it says what the code cannot: why a non-obvious choice was made, a workaround
+and its cause, an invariant, or a genuine gotcha. Never restate the line, label an obvious section, or
+explain the diff. Delete a stale comment rather than update it.
+
+`scripts/comment-density.py` measures all three. It takes files, directories, or `--staged`, and it
+exits 1 on a breach. **A rule alone did not work** — this repo measured 17.8% comment lines on
+2026-07-30, with 47 blocks over the limit. The three failure modes that produced it, and the numbers:
+`docs/principles-rationale.md`.
 
 ## Surface conflicts, don't average them
 
