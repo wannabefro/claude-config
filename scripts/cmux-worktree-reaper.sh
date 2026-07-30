@@ -15,13 +15,15 @@ mkdir -p "$STATE"
 printf '%s  listener up\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
 
 # Refuse to start a second subscriber; two of them race on the cursor file.
-mine=$$
-others=$(pgrep -f "cmux events --name workspace.closed" 2>/dev/null | grep -v "^$mine$" | head -1)
-if [ -n "$others" ]; then
-  printf '%s  another subscriber already runs (pid %s) — exiting\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$others" >>"$LOG"
+# A pid file, not pgrep: a pgrep pattern also matches the process doing the check.
+PIDFILE="$STATE/worktree-reaper.pid"
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+  printf '%s  already running (pid %s) — exiting\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(cat "$PIDFILE")" >>"$LOG"
   exit 0
 fi
+printf '%s' "$$" > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
 
 # cmux's socketControlMode defaults to cmuxOnly, so only a process started
 # inside cmux may connect. Exit 0 so launchd's KeepAlive stops retrying.

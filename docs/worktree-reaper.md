@@ -50,10 +50,15 @@ Every verdict below is from a real run, recorded in `hooks/state/worktree-reaper
 | Synthetic worktree, 1 unpushed commit | KEEP |
 | Synthetic worktree, no upstream | KEEP |
 | Synthetic worktree, clean and pushed | REAPED, branch kept |
-| **A real cmux workspace, opened then closed** | **REAPED about 20s later, branch kept** |
+| A real cmux workspace, closed, listener started by hand | REAPED, branch kept |
+| A real cmux workspace, closed, listener started by the `SessionStart` hook | **REAPED after about 100s, branch kept** |
+| The same, while a shell held the worktree as its cwd | **KEEP — a process still runs inside it** |
 
-The end-to-end case is the one that matters: a real `workspace.closed` event reached the listener and
-the worktree went away. Allow roughly 20 seconds beyond the debounce, because `lsof +D` is slow.
+The last two are the cases that matter. The first proves the whole path works from the hook that now
+starts it. The second proves gate 4 stops a real live process, and it was found by accident: the test
+harness had `cd`-ed into the worktree and stayed there.
+
+Budget the debounce plus roughly 10 seconds. Measured 100s end to end at `REAPER_DEBOUNCE=90`.
 
 ## The launchd agent cannot reach cmux — read this first
 
@@ -72,30 +77,40 @@ looping every 30 seconds.
 This is why testing by hand proved nothing: a session running in a cmux workspace is inside cmux and
 connects fine. **Only the launchd path was broken, and only launchd exposes it.**
 
-Two ways to fix it, and the choice is a security decision:
+**Chosen 2026-07-30: start it inside cmux.** The rejected alternative was
+`socketControlMode: "password"` plus `CMUX_SOCKET_PASSWORD`, which keeps the launchd design but makes
+the control socket reachable by any local process holding the password. `socketControlMode` accepts
+`off`, `cmuxOnly`, `automation`, `password`, `allowAll`, `openAccess`, `fullOpenAccess`,
+`notifications`, and `full`; `password` is the narrowest one that would work.
 
-| route | change | cost |
-|---|---|---|
-| Password mode | Set `socketControlMode: "password"` and a `socketPassword`, then pass `CMUX_SOCKET_PASSWORD` to the agent | The control socket becomes reachable by any local process holding the password |
-| Start it inside cmux | Launch the listener from `~/.config/worktrunk/open-cmux.sh`, which already runs inside cmux | No security change. The listener lives only while cmux does, which matches when it is needed |
+So the launchd agent is gone and `hooks/start-worktree-reaper.sh` runs at `SessionStart` instead. It
+exits immediately unless `CMUX_WORKSPACE_ID` is set, so it only ever starts from inside cmux, where the
+process inherits `CMUX_SOCKET_CAPABILITY`. A detached child keeps that access — verified, a
+`nohup`-detached process listed windows successfully.
 
-`socketControlMode` accepts `off`, `cmuxOnly`, `automation`, `password`, `allowAll`, `openAccess`,
-`fullOpenAccess`, `notifications`, and `full`. `password` is the narrowest one that works.
+The hook fires on every session rather than only on worktree creation, which is why it lives here
+instead of in `~/.config/worktrunk/open-cmux.sh`. That file is also untracked, so it would not sync.
+
+**Single-flight uses a pid file, never `pgrep`.** A `pgrep -f "cmux events …"` pattern also matches the
+command line of the process doing the check, so the listener reported a phantom pid and refused to
+start. `hooks/state/worktree-reaper.pid` plus `kill -0` is deterministic.
 
 The listener refuses to start when another subscriber is already running, because two subscribers race
 on the cursor file. An orphaned subscriber caused exactly that confusion during development.
 
 ## Operating it
 
+It starts itself at `SessionStart` inside cmux. To drive it by hand:
+
 ```
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.local.cmux-worktree-reaper.plist
-launchctl bootout   gui/$(id -u)/dev.local.cmux-worktree-reaper
+bash ~/.claude/hooks/start-worktree-reaper.sh     # start if not already running
+kill $(cat ~/.claude/hooks/state/worktree-reaper.pid)
 tail -f ~/.claude/hooks/state/worktree-reaper.log
 ```
 
-The plist lives outside this repo because it is machine-specific, and it sets `REAPER_DEBOUNCE=90`.
-The cursor file `hooks/state/worktree-reaper.cursor` makes a restart resume from the last event, so a
-close that happened while the agent was down is still processed.
+`REAPER_DEBOUNCE` defaults to 90 seconds. The cursor file
+`hooks/state/worktree-reaper.cursor` makes a restart resume from the last event, so a close that
+happened while the listener was down is still processed.
 
 To check a path by hand without removing anything:
 
