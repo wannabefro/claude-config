@@ -55,6 +55,36 @@ Every verdict below is from a real run, recorded in `hooks/state/worktree-reaper
 The end-to-end case is the one that matters: a real `workspace.closed` event reached the listener and
 the worktree went away. Allow roughly 20 seconds beyond the debounce, because `lsof +D` is slow.
 
+## The launchd agent cannot reach cmux — read this first
+
+`cmux.json` sets `socketControlMode: "cmuxOnly"`, and `capabilities` reports
+`"access_mode": "cmuxOnly"`. Only a process started **inside** cmux may connect.
+A launchd agent is not, so every call returns:
+
+```
+Error: ERROR: Access denied - only processes started inside cmux can connect
+```
+
+The CLI then reports it as a Foundation JSON parse error, which hides the cause. The listener now
+probes `list-windows` first and exits 0 on access denial, so `KeepAlive` stops retrying instead of
+looping every 30 seconds.
+
+This is why testing by hand proved nothing: a session running in a cmux workspace is inside cmux and
+connects fine. **Only the launchd path was broken, and only launchd exposes it.**
+
+Two ways to fix it, and the choice is a security decision:
+
+| route | change | cost |
+|---|---|---|
+| Password mode | Set `socketControlMode: "password"` and a `socketPassword`, then pass `CMUX_SOCKET_PASSWORD` to the agent | The control socket becomes reachable by any local process holding the password |
+| Start it inside cmux | Launch the listener from `~/.config/worktrunk/open-cmux.sh`, which already runs inside cmux | No security change. The listener lives only while cmux does, which matches when it is needed |
+
+`socketControlMode` accepts `off`, `cmuxOnly`, `automation`, `password`, `allowAll`, `openAccess`,
+`fullOpenAccess`, `notifications`, and `full`. `password` is the narrowest one that works.
+
+The listener refuses to start when another subscriber is already running, because two subscribers race
+on the cursor file. An orphaned subscriber caused exactly that confusion during development.
+
 ## Operating it
 
 ```

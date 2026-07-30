@@ -14,6 +14,28 @@ mkdir -p "$STATE"
 
 printf '%s  listener up\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
 
+# Refuse to start a second subscriber; two of them race on the cursor file.
+mine=$$
+others=$(pgrep -f "cmux events --name workspace.closed" 2>/dev/null | grep -v "^$mine$" | head -1)
+if [ -n "$others" ]; then
+  printf '%s  another subscriber already runs (pid %s) — exiting\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$others" >>"$LOG"
+  exit 0
+fi
+
+# cmux's socketControlMode defaults to cmuxOnly, so only a process started
+# inside cmux may connect. Exit 0 so launchd's KeepAlive stops retrying.
+probe=$(CMUX_QUIET=1 "$CMUX" list-windows 2>&1 | head -1)
+case "$probe" in
+  *"Access denied"*)
+    printf '%s  BLOCKED — %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$probe" >>"$LOG"
+    printf '%s  a launchd agent is not "inside cmux". Set socketControlMode plus a\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
+    printf '%s  password, or start this listener from inside cmux. See docs/worktree-reaper.md\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
+    exit 0 ;;
+esac
+
 CMUX_QUIET=1 "$CMUX" events \
   --name workspace.closed --reconnect --cursor-file "$CURSOR" --no-ack --no-heartbeat 2>>"$LOG" |
 while IFS= read -r line; do
