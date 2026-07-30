@@ -45,6 +45,14 @@ These two look similar and behave oppositely:
 
 Measured: the same 6.9 KB brief went from two killed multi-minute runs to a complete 13-finding review in under 300s once MCP was off and the prompt forbade exploration.
 
+## Failure mode 0b — blocked on stdin (the one that looks most like a hang)
+
+**Symptom:** zero output forever from a backgrounded or piped run, while the same command works when you type it. The giveaway line is `Reading additional input from stdin...`.
+
+**Cause:** `codex exec` reads stdin whenever stdin is not a TTY, even with a prompt argument. A background task, a pipe, and a subshell all qualify, so it waits for input that never comes.
+
+**Fix:** redirect stdin: `codex exec ... < /dev/null`. `codex-run.sh` does this since 2026-07-30. Measured that day: a trivial probe hung at 0 bytes with inherited stdin and answered in 24s with `< /dev/null`.
+
 ## Failure mode 1 — genuinely stalled (bare `codex exec`, zero bytes, process alive)
 
 **Symptom:** you are watching a bare `codex exec` directly and it has printed nothing for several minutes while still running.
@@ -52,6 +60,8 @@ Measured: the same 6.9 KB brief went from two killed multi-minute runs to a comp
 **Cause:** hung on tool use — an MCP server or a file/tool call wedged.
 
 **Fix:** kill it, then rerun with MCP off (`-c mcp_servers={}`) **and** everything it needs pasted inline so the run requires no tool use. Inlining alone is not enough while MCP is still enabled.
+
+**Quiet is not stalled on a large brief.** The wrapper's 120s default stall window is calibrated for a small prompt. A 31 KB review brief emits its preamble in about 20s, then goes silent while it reasons — measured 2026-07-30 at roughly 150s of silence before the answer, so the default killed three healthy runs in a row. Past about 10 KB of brief, pass `-s 420 -t 900`. Raise the window before you conclude the run is hung.
 
 ## Failure mode 2 — prompt-echo only (exits 0 fast, output is just the echo)
 

@@ -95,7 +95,8 @@ run_at() {
   local effort="$1"
   : > "$out"
   ( cd "$DIR" && timeout "$TIMEOUT" codex exec --skip-git-repo-check \
-      "${MCP_ARGS[@]}" -c "model_reasoning_effort=$effort" "$PROMPT" > "$out" 2>&1 ) &
+      "${MCP_ARGS[@]}" -c "model_reasoning_effort=$effort" "$PROMPT" \
+      < /dev/null > "$out" 2>&1 ) &
   local pid=$! last=0 quiet=0 elapsed=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 5
