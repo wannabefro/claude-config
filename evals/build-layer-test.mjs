@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 const SRC = readFileSync(new URL('../workflows/build-parallel.js', import.meta.url), 'utf8')
 const sl = (a,b)=>{const i=SRC.indexOf(a),j=SRC.indexOf(b,i);if(i<0||j<0)throw new Error(a);return SRC.slice(i,j)}
 const depthBlk = sl('const depth = new Map()','const startable')
-const schedBlk = sl('// Depth limiting applies to WORKTREES ONLY','const results = await Promise.all')
+const schedBlk = sl('const runUnit = (u) => {','const results = await Promise.all')
 
 // 8 units: 2 roots, 6 at depth>=2 — the shape from the reported run
 const units=[

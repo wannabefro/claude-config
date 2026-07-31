@@ -11,7 +11,7 @@ function slice(startMark, endMark) {
 }
 
 const depsBlock = slice('const ancestors = new Map()', 'const owners = new Map()')
-const contractBlock = slice('// Contract collisions.', 'if (contractIssues.length) {')
+const contractBlock = slice('const providers = new Map()', 'if (contractIssues.length) {')
 
 function run(units) {
   const plan = { units }
