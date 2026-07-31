@@ -80,6 +80,34 @@ So when you write a test for a function, add two cases beyond the main path:
 Run the probe before claiming a suite is thorough. `/dogfood` documents the invocation, including the
 `node_modules` symlink a worktree needs.
 
+**`mutation-probe.py` is JS and TypeScript only.** Its operators mutate `===` and `!==`, so it cannot
+read Go at all. For Go use **gremlins**, at `~/go/bin/gremlins` and already on `PATH`:
+
+```
+gremlins unleash --timeout-coefficient 10 .
+gremlins unleash --timeout-coefficient 10 --diff main -E '\.pb\.go$' .
+```
+
+**Two flags are not optional, and both fail silently.** Verified 2026-07-31 against a planted weak
+boundary test:
+
+| trap | what happens |
+|---|---|
+| `./...` | Prints `No results to report` and exits 0. **Pass `.`** — with `./...` even `--dry-run` finds nothing |
+| Default timeout | Every mutant came back `TIMED OUT`, giving `Test efficacy: 0.00%`. That reads as a broken suite and means unmeasured |
+
+With `.` and `--timeout-coefficient 10` the same run reported `Killed: 2, Lived: 2`, efficacy 50%, and
+named `LIVED CONDITIONALS_BOUNDARY` twice — the planted gap. The test checked lengths 2 and 10, never
+3 or 30, so `<` survived becoming `<=`. That is the boundary cluster above, found automatically.
+
+It mutates only covered lines, and `test_efficacy = killed / (killed + lived)`. Aim for 90% on
+guardrail code and 70–80% elsewhere. Chosen over `go-mutesting` on maintenance: gremlins last shipped
+2026-06-26, go-mutesting 2024-07-04.
+
+**No skill for this is worth installing.** Every gremlins-based skill ships inside a plugin of 47 or
+about 120 skills, and Claude Code cannot enable one skill from a plugin — so the always-on context
+cost is 46 or 119 unwanted descriptions. The binary plus these four lines is the whole value.
+
 ### The house style is already good — keep it there
 
 Write short tests: two assertions, almost no module mocking, little shared setup, and a long
