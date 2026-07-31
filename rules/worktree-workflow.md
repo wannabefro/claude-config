@@ -23,10 +23,11 @@ file-targeting Bash. Don't edit or `cd` into a sibling worktree or the parent cl
 ask me if you need another worktree's state. Never `git worktree remove/prune/move`, never
 `git -C <other-worktree>`, and never force-push a branch that may be checked out elsewhere.
 
-**One exception, and it is not a session.** The `dev.local.cmux-worktree-reaper` launchd agent removes
-a worktree after its last cmux workspace closes. It refuses a primary checkout, a worktree still in
-use, and anything holding uncommitted or unpushed work, and it never deletes a branch. Design and
-verified verdicts: `docs/worktree-reaper.md`. This grants a session nothing.
+**One exception, and only you trigger it.** The cmux **Drop worktree** button removes the current
+worktree merged or not, via `scripts/drop-worktree.sh`. It refuses a primary checkout, stashes
+uncommitted work first, and always keeps the branch, so nothing is destroyed. Design and verified
+cases: `docs/worktree-button.md`. This grants a session nothing — do not run it on my behalf unless I
+ask for that worktree to go.
 
 Setup internals — config paths, cmux pre-start/EPIPE rationale, worktree pre-trust, the `wt`
 shell-function requirement, AI-commit-message toggle → `~/.claude/docs/worktree-mechanics.md`.
