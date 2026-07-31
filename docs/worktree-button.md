@@ -43,58 +43,66 @@ Four cases, each a real repo with a real remote:
 The script needs no cmux wiring. It only reads `CMUX_WORKSPACE_ID` to close the tab afterwards, and it
 says so in the log when that variable is absent.
 
-## The action field names are undocumented — read them from the binary
+## Read the docs, not the binary — the sources that answer this
 
-The first wiring did not appear in the Command Palette. Three of the four keys were invented, because
-**nothing validates them.** `actions` is `additionalProperties: true` in the schema, so a wrong field
-name is accepted in silence. `docs/configuration.md` has 11 JSON examples and not one uses `actions`.
+Three rounds of guessing cost this. The answers were in two places the whole time:
 
-The real key list is in the app binary, as the Swift `CodingKeys` table for
-`CmuxConfigActionDefinition`:
-
-```
-strings /Applications/cmux.app/Contents/MacOS/cmux | grep -n newWorkspaceMenu
-```
-
-Print about 30 lines around the hit. The action fields are:
-
-| field | note |
+| source | what it gives |
 |---|---|
-| `title` | The menu label. **Not `label`** — that was the first bug |
-| `subtitle`, `keywords` | Palette subtitle and extra search terms |
-| `palette` | Command Palette visibility. **Type unknown — do not set it** |
-| `shortcut` | The key binding **belongs here**. A String, per its own error message |
-| `icon`, `tooltip` | SF Symbol name and hover text |
-| `confirm` | Prompts before it runs. **Type unknown — do not set it** |
-| `type`, `command`, `builtin`, `agent`, `workspace`, `commandName`, `args`, `restart`, `target` | The runnable half |
-| `terminalCommandTarget` | `currentTerminal` or `newTabInCurrentPane` |
+| `skills/cmux-customization/SKILL.md` in the cmux repo | The `actions` contract in prose, plus a worked Command Palette example |
+| `dogfood/directory-actions/**/cmux.json` in the cmux repo | Working configs the cmux team maintains — real field names, real types |
+
+`cmux docs settings` points at neither. It offers `configuration.md`, which has 11 JSON examples and
+**not one uses `actions`**. The skills directory is where the action documentation lives.
+
+Nothing catches a wrong field either: `actions` is `additionalProperties: true` in the schema, so a
+bad name passes, and a bad *type* fails the decode and drops the whole entry in silence.
+
+## The action shape, from the dogfood configs
+
+```jsonc
+"actions": {
+  "dropWorktree": {
+    "type": "command",
+    "title": "Drop worktree",              // NOT "label"
+    "subtitle": "…",
+    "icon": { "type": "symbol", "name": "trash" },   // an OBJECT, not a string
+    "command": "bash \"$HOME/.claude/scripts/drop-worktree.sh\"",
+    "target": "newTabInCurrentPane",       // NOT "terminalCommandTarget"
+    "shortcut": "ctrl+alt+shift+w",        // NOT shortcuts.bindings
+    "palette": true                        // a Bool; entries show unless false
+  }
+}
+```
+
+`icon` takes three forms: `{ type: "symbol", name: … }`, `{ type: "emoji", value: … }`, and
+`{ type: "image", path: … }`. **A bare string is the bug that cost the most** — it type-mismatches, so
+the entry never decodes and the action never appears anywhere.
 
 `shortcuts.bindings` cannot hold a custom id. Its `propertyNames` is a **closed enum of 140 built-in
-action ids**, and `dropWorktree` is not one, so the binding was invalid. Put the key on the action.
+action ids**. The key belongs on the action, as `shortcut`.
 
-**Set only the fields whose type you know.** A Swift decoder ignores an unknown key but fails on a
-wrong-typed one, and a failed decode drops the whole entry — which looks identical to the bug it
-would be hiding. `title` being required explains the original absence on its own, because `label`
-left it nil. So `palette` and `confirm` stay out until cmux writes them itself.
+## `ui.surfaceTabBar.buttons` replaces the default tab bar
 
-**Make cmux author the entry.** The `+` button's right-click menu has **Save Workspace as Layout**
-(`menu.newWorkspace.saveWorkspaceAsLayout`), and `CmuxConfigActionSaver` writes the result into
-`actions`. That yields a canonical entry with real field names and real types. It is a menu item
-only — no RPC and no `workspace-action` name reaches it, so a person has to click it.
-
-The button itself comes from `ui.surfaceTabBar.buttons`, which the schema calls the preferred form of
-the legacy root-level `surfaceTabBarButtons`. An entry needs an `id` and an `action` reference.
+It is an array of **action-id strings**, not objects. It replaces the defaults rather than adding to
+them, so list the built-ins you want to keep: `cmux.newTerminal`, `cmux.newBrowser`,
+`cmux.splitRight`, `cmux.splitDown`.
 
 ## No CLI path validates any of this — measured
 
 `cmux config validate` and `cmux config check` both alias to `cmux config doctor`, which checks JSONC
-syntax only. Verified 2026-07-31 by a differential test: `ui.surfaceTabBar.buttons[0].action` was set
-to `definitelyNotAnAction`, and `doctor`, `reload-config`, and `log show` all reported success.
+syntax only. Verified 2026-07-31 by a differential test: a button's action was set to
+`definitelyNotAnAction`, and `doctor`, `reload-config`, and `log show` all reported success.
 
-**So a clean reload is not evidence.** The binary holds the error strings (`does not match any loaded
-action`, `action '%@' ignored because it does not define a runnable action`), but they reach neither
-the CLI nor unified logging, and there is no config log under `~/Library/Logs` or `~/.cmuxterm`.
-Confirm by eye: the surface tab bar, the Command Palette, or `ctrl+alt+shift+w`.
+`cmux capabilities` lists 255 RPC methods, and **none enumerates the action registry or the palette**.
+So there is no way to ask the app what it loaded.
+
+**A clean reload is therefore not evidence.** The binary holds the error strings (`does not match any
+loaded action`, `action '%@' ignored because it does not define a runnable action`), but they reach
+neither the CLI nor unified logging, and no config log exists under `~/Library/Logs` or `~/.cmuxterm`.
+
+**The lesson is upstream of all that: copy a working config instead of validating a guess.** The
+dogfood tree is the oracle, and it costs one fetch.
 
 ## Why the automatic reaper was removed
 
