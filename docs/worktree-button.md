@@ -43,11 +43,48 @@ Four cases, each a real repo with a real remote:
 The script needs no cmux wiring. It only reads `CMUX_WORKSPACE_ID` to close the tab afterwards, and it
 says so in the log when that variable is absent.
 
-**Not verified: that the button appears in the cmux UI.** `cmux config doctor` reports the JSONC valid
-and the `actions` key recognised, and `cmux reload-config` accepts it. But `actions` is free-form in the
-schema, `cmux workspace-action --action dropWorktree` answers `Unknown workspace action` because that
-command only takes built-in ids, and `cmux shortcuts` prints only `OK`. No CLI path confirms the
-surface. Look in the Command Palette, or press `ctrl+alt+shift+w`.
+## The action field names are undocumented — read them from the binary
+
+The first wiring did not appear in the Command Palette. Three of the four keys were invented, because
+**nothing validates them.** `actions` is `additionalProperties: true` in the schema, so a wrong field
+name is accepted in silence. `docs/configuration.md` has 11 JSON examples and not one uses `actions`.
+
+The real key list is in the app binary, as the Swift `CodingKeys` table for
+`CmuxConfigActionDefinition`:
+
+```
+strings /Applications/cmux.app/Contents/MacOS/cmux | grep -n newWorkspaceMenu
+```
+
+Print about 30 lines around the hit. The action fields are:
+
+| field | note |
+|---|---|
+| `title` | The menu label. **Not `label`** — that was the first bug |
+| `subtitle`, `keywords` | Palette subtitle and extra search terms |
+| `palette` | Command Palette visibility. Absent, it may never surface |
+| `shortcut` | The key binding **belongs here** |
+| `icon`, `tooltip` | SF Symbol name and hover text |
+| `confirm` | Prompts before it runs — wanted for a destructive action |
+| `type`, `command`, `builtin`, `agent`, `workspace`, `commandName`, `args`, `restart`, `target` | The runnable half |
+| `terminalCommandTarget` | `currentTerminal` or `newTabInCurrentPane` |
+
+`shortcuts.bindings` cannot hold a custom id. Its `propertyNames` is a **closed enum of 140 built-in
+action ids**, and `dropWorktree` is not one, so the binding was invalid. Put the key on the action.
+
+The button itself comes from `ui.surfaceTabBar.buttons`, which the schema calls the preferred form of
+the legacy root-level `surfaceTabBarButtons`. An entry needs an `id` and an `action` reference.
+
+## No CLI path validates any of this — measured
+
+`cmux config validate` and `cmux config check` both alias to `cmux config doctor`, which checks JSONC
+syntax only. Verified 2026-07-31 by a differential test: `ui.surfaceTabBar.buttons[0].action` was set
+to `definitelyNotAnAction`, and `doctor`, `reload-config`, and `log show` all reported success.
+
+**So a clean reload is not evidence.** The binary holds the error strings (`does not match any loaded
+action`, `action '%@' ignored because it does not define a runnable action`), but they reach neither
+the CLI nor unified logging, and there is no config log under `~/Library/Logs` or `~/.cmuxterm`.
+Confirm by eye: the surface tab bar, the Command Palette, or `ctrl+alt+shift+w`.
 
 ## Why the automatic reaper was removed
 
