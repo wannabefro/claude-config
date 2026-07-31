@@ -62,15 +62,25 @@ Print about 30 lines around the hit. The action fields are:
 |---|---|
 | `title` | The menu label. **Not `label`** — that was the first bug |
 | `subtitle`, `keywords` | Palette subtitle and extra search terms |
-| `palette` | Command Palette visibility. Absent, it may never surface |
-| `shortcut` | The key binding **belongs here** |
+| `palette` | Command Palette visibility. **Type unknown — do not set it** |
+| `shortcut` | The key binding **belongs here**. A String, per its own error message |
 | `icon`, `tooltip` | SF Symbol name and hover text |
-| `confirm` | Prompts before it runs — wanted for a destructive action |
+| `confirm` | Prompts before it runs. **Type unknown — do not set it** |
 | `type`, `command`, `builtin`, `agent`, `workspace`, `commandName`, `args`, `restart`, `target` | The runnable half |
 | `terminalCommandTarget` | `currentTerminal` or `newTabInCurrentPane` |
 
 `shortcuts.bindings` cannot hold a custom id. Its `propertyNames` is a **closed enum of 140 built-in
 action ids**, and `dropWorktree` is not one, so the binding was invalid. Put the key on the action.
+
+**Set only the fields whose type you know.** A Swift decoder ignores an unknown key but fails on a
+wrong-typed one, and a failed decode drops the whole entry — which looks identical to the bug it
+would be hiding. `title` being required explains the original absence on its own, because `label`
+left it nil. So `palette` and `confirm` stay out until cmux writes them itself.
+
+**Make cmux author the entry.** The `+` button's right-click menu has **Save Workspace as Layout**
+(`menu.newWorkspace.saveWorkspaceAsLayout`), and `CmuxConfigActionSaver` writes the result into
+`actions`. That yields a canonical entry with real field names and real types. It is a menu item
+only — no RPC and no `workspace-action` name reaches it, so a person has to click it.
 
 The button itself comes from `ui.surfaceTabBar.buttons`, which the schema calls the preferred form of
 the legacy root-level `surfaceTabBarButtons`. An entry needs an `id` and an `action` reference.
