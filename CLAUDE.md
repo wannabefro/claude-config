@@ -40,3 +40,10 @@ lacks. Verified 2026-07-29 with `rtk rewrite`: it touches `cat` and `ls`, and no
 clusters as `--replace=n` and prints every match replaced by the literal `n`. It looks like a
 corrupt file, not a wrong flag: it cost five bad searches and two wrong accusations against rtk in
 one session. `bash-safety.sh` now denies the clustered `-r<letter>` form.
+
+**`curl` is allowed; write to a file, not to stdout.** Two layers, and only one is gone. The
+`Bash(curl *)` deny was removed 2026-07-31, because it never removed the capability — it just pushed
+every fetch into `node https.get` inside `ctx_execute`, which is the same network access with less
+visibility. context-mode's routing hook still redirects curl whose **body reaches stdout**, and no
+env var turns that off. So use `curl -fsSL <url> -o <file>`, then read the file. `wget` stays denied,
+and `bash-safety.sh` still blocks `curl … | sh`.

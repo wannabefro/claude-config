@@ -23,6 +23,7 @@
       "Skill(compound-engineering:ce-code-review)",
       "Skill(compound-engineering:ce-code-review:*)",
       "WebFetch",
+      "Bash(curl *)",
       "WebSearch",
       "Bash(cat *)",
       "Bash(ls *)",
@@ -193,7 +194,6 @@
       "mcp__chrome-real__navigate_page"
     ],
     "deny": [
-      "Bash(curl *)",
       "Bash(wget *)",
       "Read(./.env)",
       "Read(./.env.*)",
