@@ -25,6 +25,20 @@ exits 1 on a breach. **A rule alone did not work** — this repo measured 17.8% 
 2026-07-30, with 47 blocks over the limit. The three failure modes that produced it, and the numbers:
 `docs/principles-rationale.md`.
 
+## Copy a working config, don't validate a guess
+
+For an undocumented config surface, find a real working example before you write anything. Look in the
+tool's own repo: its `skills/`, its `docs/`, and any `dogfood/`, `examples/`, `fixtures/` or test
+tree. A shipped config the maintainers keep green beats any inference.
+
+**Never infer a schema from `strings` on a binary.** It gives field *names* and no *types*, and a
+wrong type fails the decode where a wrong name is merely ignored. Measured 2026-07-31 on a cmux
+action: three rounds of binary inference each produced a still-wrong shape, and one fetch of
+`dogfood/directory-actions/.cmux/cmux.json` settled it — `icon` takes an object, not a string.
+
+Check first whether a wrong value is even observable. If no CLI validates it and no log records it,
+every guess costs a human round trip, so buy the example instead.
+
 ## Surface conflicts, don't average them
 
 When two patterns in the codebase contradict, pick one — prefer the more recent or more tested — and
