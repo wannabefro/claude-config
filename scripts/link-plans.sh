@@ -36,6 +36,21 @@ if [ -L "$src" ]; then
   exit 0
 fi
 
+# A repo may deliberately keep its plans IN GIT, and this script must not
+# overrule that. patina does: on 2026-08-01 a pull replaced its symlink with a
+# real directory holding two tracked plan files, because the remote tracks that
+# path. Without this guard the `rm -rf` below deletes tracked files and silently
+# untracks the plans — reversing the repo owner's decision, from a script that
+# `rules/pipeline.md` tells every session to run before writing a plan.
+# Tracked plans win. Say so and stop, rather than "fixing" it.
+if [ -n "$is_git" ] && [ -d "$src" ]; then
+  tracked=$(git -C "$repo" ls-files -- docs/plans 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${tracked:-0}" -gt 0 ]; then
+    say "SKIP $name — $tracked plan(s) tracked in git; this repo keeps plans in its history"
+    exit 0
+  fi
+fi
+
 n=0; [ -d "$src" ] && n=$(find "$src" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
 
 # Only touch repos that actually hold plans — symlinking ~60 empty repos would be
