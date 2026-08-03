@@ -39,6 +39,24 @@ action: three rounds of binary inference each produced a still-wrong shape, and 
 Check first whether a wrong value is even observable. If no CLI validates it and no log records it,
 every guess costs a human round trip, so buy the example instead.
 
+**The same rule covers a library.** Read its documentation and its types before you conclude it cannot
+do something, and check what the project already depends on before you add a package or write your own.
+"I assumed it lacked that" and "I inferred the field names" are one mistake.
+
+## Build the smallest thing that works, then add to it
+
+Two triggers, both visible in a diff:
+
+1. **A parameter, flag, or config key that nothing currently reads** — delete it. Add it when the
+   second caller exists.
+2. **A step that leaves the product broken until a later step lands** — reorder so every step ends
+   green.
+
+**Delete an obsolete path instead of adding a fallback beside it, where you own every consumer.**
+Guardrail surfaces are the carve-out: `rules/shipping.md` sends migrations, schema, public API, and
+permissions to cross-family review because the old path is still live. `~/.claude` counts too — it is
+public and synced, so a deleted path breaks the machine that has not pulled.
+
 ## Surface conflicts, don't average them
 
 When two patterns in the codebase contradict, pick one — prefer the more recent or more tested — and
