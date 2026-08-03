@@ -113,7 +113,9 @@ def scan(text):
 
 
 def files_from(paths):
-    out = []
+    # A named file must pass SUFFIX too. Markdown headings match MARKER as `#` comments,
+    # which scored CLAUDE.md at 30.6% and flagged three prose files in one day.
+    out, skipped = [], []
     for raw in paths:
         p = pathlib.Path(raw)
         if p.is_dir():
@@ -121,8 +123,8 @@ def files_from(paths):
                     if q.is_file() and q.suffix in SUFFIX
                     and not SKIP_PART & set(q.parts)]
         elif p.is_file():
-            out.append(p)
-    return out
+            (out if p.suffix in SUFFIX else skipped).append(p)
+    return out, skipped
 
 
 def staged_added(repo):
@@ -240,7 +242,12 @@ def main():
             print("no staged lines in a checked language")
             return 0
     elif a.paths:
-        named = [(str(p), p.read_text(errors="ignore")) for p in files_from(a.paths)]
+        keep, skipped = files_from(a.paths)
+        for p in skipped:
+            print(f"skipped {p} — not a checked language ({p.suffix or 'no suffix'})")
+        named = [(str(p), p.read_text(errors="ignore")) for p in keep]
+        if not named:
+            return 0
     else:
         ap.print_help()
         return 2
