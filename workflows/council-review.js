@@ -342,26 +342,48 @@ ${bundlePath ? bundlePath + '/01-the-diff.patch' : '(build it yourself)'} — us
   git diff >> /tmp/council-diff.txt
 If the diff is enormous, narrow it to the most consequential files and say which you dropped.
 
-STEP 2 — run Codex in the FOREGROUND with the diff INLINED in the prompt. Codex hangs when a run
-needs tool use, so it must not have to read files itself. Wrap it in \`timeout\` so a hang costs
-you the cap and not the council's wall clock:
+STEP 2 — run Codex through the wrapper, with the diff INLINED and exploration FORBIDDEN.
 
-  timeout 300 codex exec --sandbox read-only${CODEX_MODEL_FLAG} -c model_reasoning_effort=high "Review this diff and list only
-  defects you can substantiate with a concrete failure scenario. For each: title, repo-relative
-  file, line if known, severity (critical|major|minor), and the specific inputs or state that
-  produce the wrong outcome. Ignore style. Reply as JSON: {\\"findings\\":[...]}.
+Two things kill this seat, and both are in your control:
 
-  <paste the full contents of /tmp/council-diff.txt here>"
+  (a) Codex explores the repo instead of reviewing. Measured 2026-08-03: with the diff already
+      inlined, it still ran \`sed -n '1,220p' package.json\` and friends until the timeout killed
+      it — twice, burning the whole budget for zero output. The prompt MUST forbid it outright.
+  (b) The run is killed before it speaks. At high reasoning effort it can think for 4-5 minutes
+      before emitting a byte. A 300s cap is not enough; silence is not a hang.
+
+Use the wrapper, which enforces the timeout and the quiet threshold and gives you an exit code to
+branch on. Do NOT hand-roll \`timeout … codex exec\`:
+
+  cat > /tmp/codex-brief.txt <<'EOF'
+  Review this diff and list only defects you can substantiate with a concrete failure scenario.
+  For each: title, repo-relative file, line if known, severity (critical|major|minor), and the
+  specific inputs or state that produce the wrong outcome. Ignore style.
+  Reply as JSON: {"findings":[...]}.
+
+  HARD CONSTRAINT: Do NOT read files, run shell commands, or search the repo. Everything you need
+  is below. A run that explores the repo is a failed run.
+
+  <paste the full contents of /tmp/council-diff.txt here>
+  EOF
+  ~/.claude/scripts/codex-run.sh -t 900 -s 480 -f /tmp/codex-brief.txt > /tmp/codex-out.txt 2>/tmp/codex-err.txt
+  echo "EXIT:$?"
+
+Branch on the exit code, never on how the output looks:
+  0 — Codex reviewed. Parse the JSON after the echoed prompt and relay its findings.
+  3 — CLI unavailable → \`{"findings": [], "tool_unavailable": true}\`.
+  4 — stalled and killed → retry ONCE, then \`tool_unavailable: true\` if it stalls again.
+  5 — empty pass → \`{"findings": [], "tool_unavailable": true}\`. Codex produced no review.
 
 Never use run_in_background, and never poll a backgrounded run with a \`while kill -0\` loop or a
 Monitor — a backgrounded Codex run hangs reporting "still running", and the polling is what turns a
 hang into a twenty-minute one.
 
-STEP 3 — check for the empty-output flake. The run is empty if stdout ends at the echoed prompt with
-no model output after it. If so, retry ONCE, again under \`timeout 300\`. If the retry is also empty,
-return an empty findings list and say Codex produced no output — do NOT substitute your own review.
+STEP 3 — the wrapper already detects the empty-output flake and the stall for you; that is what
+exit 5 and exit 4 mean. Retry ONCE on either, then report \`tool_unavailable: true\` — do NOT
+substitute your own review.
 
-BUDGET — you have at most TWO \`codex exec\` invocations, both under \`timeout\`, plus the preflight.
+BUDGET — you have at most TWO wrapper invocations plus the preflight.
 That is the whole allowance. When it is spent, return what you have. Never kill stray processes and
 start again: if Codex is leaving processes behind, that is a machine problem to report, not one to
 work around inside a review.
