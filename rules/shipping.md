@@ -22,13 +22,18 @@ invocation is a bug.
 
 ## Commits & PRs
 
-- **Reach GitHub through `gh`, never ssh** — API work (`gh pr`, `gh api`) *and* git remote transport.
-  For transport that means the https URL, which picks up gh as credential helper:
-  `git <push|fetch> https://github.com/<owner>/<repo>.git <refspec>`. Default, not fallback: it works
-  on every machine, whereas ssh works on some. Never diagnose an ssh agent to unblock a push.
+- **Reach GitHub's API through `gh`** — `gh pr`, `gh api`, and the push confirmation below. That half
+  is universal; never hand-roll an API call.
+- **Transport follows the machine — check `git remote -v`, don't assume.** Where the remotes are ssh,
+  use them: `git push origin <refspec>`. A machine-local overlay in `rules/` may state this outright;
+  it is gitignored, so it is simply absent on a public clone. The https form
+  (`git <push|fetch> https://github.com/<o>/<r>.git <refspec>`) picks up gh as credential helper and
+  is the fallback for a machine with no key, not the default. It also fails outright when gh is
+  authenticated as an account without write access to that owner.
 - **A failed `fetch` is the dangerous one** — push fails loudly, fetch leaves `origin/*` silently
   frozen, and anything reading it (worktree bases, ahead/behind, "is this merged") is then wrong
-  without saying so. Fetching by URL does *not* update the tracking ref; refresh it explicitly:
+  without saying so. `git fetch origin` through a named remote *does* update the tracking ref.
+  Fetching by **URL** does not, so refresh it explicitly in that case:
   `git fetch https://github.com/<o>/<r>.git <branch>:refs/remotes/origin/<branch> --force`.
   Confirm a push landed against the remote (`gh api repos/<o>/<r>/commits/<branch>`), never against
   a local `origin/*` that may not have moved for months. Rationale: `docs/shipping-rationale.md`.
