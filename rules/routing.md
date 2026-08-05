@@ -41,3 +41,28 @@ evidence and method in `docs/routing-rationale.md`.
 **CodeRabbit's CLI is machine-local; its GitHub app is not.** `coderabbit:code-review` needs a
 `coderabbit` binary that exists on only some machines — never route to it unhanded. `autofix` needs
 only `gh`. Don't offer to install the CLI to unblock a review; use `/council`.
+
+**Check for the binary before concluding the skill is gone.** Measured 2026-08-05: `Skill` returned
+`Unknown skill: coderabbit:code-review` while the plugin was enabled in `settings.json`
+(`coderabbit@sam: true`) and `skills/code-review/SKILL.md` was present in the cache. So an unresolved
+skill name proves nothing about the tool. `command -v coderabbit` answered, and the binary worked.
+Run it directly rather than reporting the review as unavailable:
+
+```
+coderabbit review --agent --type committed --base origin/main --dir <service-dir>
+```
+
+`--agent` emits one JSON object per line and a final `{"type":"complete","findings":N}`, which is the
+only form worth parsing. Without `--base` it reviews the working tree, so on a clean tree after a
+commit it finds nothing and that reads as a pass. `--dir` scopes a monorepo review to one service.
+
+**Two review lenses can be silently absent, and both fail in a way that looks like a clean pass:**
+
+| lens | how it fails | what you must do |
+|---|---|---|
+| Codex (`codex-run.sh`) | **exits 0** with `Your workspace is out of credits` in the body | grep the body; never read exit 0 alone as a completed pass |
+| Cursor Bugbot | reports `bucket=skipping`, `state=NEUTRAL` on a push | that is *no review*, not a pass — `gh pr checks` shows it as non-pass |
+
+**`fable` is not dispatchable on this account.** An `Agent` call with `model: "fable"` fails with
+"model may not exist or you may not have access". Don't offer it as a reviewer; use a different model
+in a fresh context, and say plainly that same-family review is not a cross-family pass.
