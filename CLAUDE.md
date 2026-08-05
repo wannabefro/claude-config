@@ -1,3 +1,15 @@
+# Language
+
+**Write every report in ASD-STE100 Simplified Technical English.** The 16 always-on rules and the
+scope carve-outs are in `rules/simplified-technical-english.md`. Invoke the `simple-english` skill for
+text you *author* — a README, a runbook, an error message.
+
+**Read the project's own context files first, and reuse its ubiquitous language.** `CLAUDE.md`,
+`AGENTS.md`, a `docs/` set, a glossary, the type names. Call a thing what this codebase calls it, even
+where another name reads better. A second word for one concept is the drift STE rule 10 forbids, and it
+compounds silently. If two context files name one concept differently, surface the conflict rather than
+pick a third name.
+
 # Design fidelity
 
 When a project has a design source of truth (Figma, a `design/` doc set, a spec mockup), follow it
