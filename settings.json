@@ -108,6 +108,7 @@
       "Bash(mv *)",
       "Bash(chmod *)",
       "Bash(git push *)",
+      "Bash(cd *)",
       "Bash(xcodebuild *)",
       "Bash(idb *)",
       "Bash(xcrun simctl list *)",
