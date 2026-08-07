@@ -83,8 +83,13 @@ There is no substitute for the council's shape: 15–25 agents, adversarial cros
 sized seating. Do not pretend a smaller pass is one. **Say plainly that the council did not convene**,
 then get the best coverage still available:
 
+**The cross-family pass in step 2 is the floor, not an optional extra.** Step 1 alone is a
+same-family review, and a second family is the whole reason the council exists. Run step 2 on every
+degraded review. If it returns 3, 4, 5 or 6, name that in the verdict — a review missing its only
+non-Claude lens is never reported as complete.
+
 1. **`ce-code-review`** on the same diff. It is the closest same-family stand-in and it carries the
-   persona tiers, so it is the bulk of the value.
+   persona tiers, so it recovers most of the seating — but none of the cross-family lens.
 2. **One cross-family pass** — the lens the council exists for, and the one `ce-code-review` cannot
    supply on its own:
 
@@ -98,8 +103,8 @@ then get the best coverage still available:
    > HARD CONSTRAINT: Do NOT read files, run shell commands, or search the repo. Everything you need
    > is below. A run that explores the repo is a failed run.
 
-   Branch on its exit code — `3` unavailable, `4` stalled, `5` empty. **None of those is a review**;
-   report the gap rather than counting it as one.
+   Branch on its exit code — `3` unavailable, `4` stalled, `5` empty, `6` refused (out of credits).
+   **None of those is a review**; report the gap rather than counting it as one.
 3. **On a guardrail surface** — auth, payments, migrations or schema, data mutations, public API,
    permissions — say explicitly that the diff did not get the review the shipping rules require, and
    let the user decide whether to ship on the reduced pass. That call is theirs, not yours.

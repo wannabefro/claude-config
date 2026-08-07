@@ -16,6 +16,7 @@
 #   3  CLI unavailable (preflight failed; do NOT retry, do NOT go hunting)
 #   4  stalled (no output for the stall window; killed)
 #   5  empty (ran, exited 0, produced no assistant turn even at high effort)
+#   6  refused (provider returned no capacity, e.g. out of credits — NOT a review)
 #
 # Why each guard exists, measured on this machine:
 #  * Preflight. A wedged syspolicyd left `codex --version` itself hanging for
@@ -124,6 +125,11 @@ answered() {
     | grep -qv -F -x "$PROMPT"
 }
 
+# Codex exits 0 on a refusal. Match the exact phrase, or a rate-limit review fails.
+refused() {
+  grep -qiF 'workspace is out of credits' "$out"
+}
+
 run_at medium; rc=$?
 if [ "$rc" -eq 99 ]; then
   echo "codex-run: STALLED — no output for ${STALL}s, killed." >&2
@@ -132,6 +138,13 @@ if [ "$rc" -eq 99 ]; then
   echo "codex-run: no file reads. Waiting longer does not help." >&2
   cat "$out"
   exit 4
+fi
+
+if refused; then
+  echo "codex-run: REFUSED — the provider returned no capacity, not a review." >&2
+  echo "codex-run: this does NOT satisfy a cross-model pass. Report the gap." >&2
+  cat "$out"
+  exit 6
 fi
 
 if ! answered; then

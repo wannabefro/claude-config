@@ -79,8 +79,9 @@ guardrail surfaces (auth, payments, migrations/schema, data mutations, public AP
 plan large enough that a wrong shape is expensive to find mid-build.
 
 Run it through `scripts/codex-run.sh` and branch on the exit code, not the output. An **empty pass
-(exit 5) does not satisfy this**, and neither does an unavailable CLI (exit 3) — report either rather
-than finalising. Never recurse into multiple cross-reviews unless asked.
+(exit 5) does not satisfy this**, and neither does an unavailable CLI (exit 3) or a refusal for lack
+of credits (exit 6) — report any of them rather than finalising. Never recurse into multiple
+cross-reviews unless asked.
 
 ## Autonomy: after plan approval, not before
 

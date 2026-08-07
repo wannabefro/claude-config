@@ -60,7 +60,7 @@ commit it finds nothing and that reads as a pass. `--dir` scopes a monorepo revi
 
 | lens | how it fails | what you must do |
 |---|---|---|
-| Codex (`codex-run.sh`) | **exits 0** with `Your workspace is out of credits` in the body | grep the body; never read exit 0 alone as a completed pass |
+| Codex | the CLI **exits 0** with `Your workspace is out of credits` in the body | `codex-run.sh` now catches that phrase and exits **6**; branch on the code, do not grep |
 | Cursor Bugbot | reports `bucket=skipping`, `state=NEUTRAL` on a push | that is *no review*, not a pass — `gh pr checks` shows it as non-pass |
 
 **`fable` is not dispatchable on this account.** An `Agent` call with `model: "fable"` fails with
