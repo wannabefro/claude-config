@@ -30,14 +30,19 @@ worktree agents, which is expensive to start and expensive to undo. Read `critic
 
 ## Where plans live
 
-`docs/plans/` is a **symlink into iCloud** (`.../CloudDocs/claude-plans/<repo>/`), globally ignored
-via `~/.config/git/ignore`. Plans are durable — measured, 83 of 122 re-read more than 20 times and
-half revised after creation — but they stay out of every repo's history.
+Plans live in `docs/plans/`, ignored globally via `~/.config/git/ignore`, so they stay out of every
+repo's history. Plans are durable — measured, 83 of 122 re-read more than 20 times and half revised
+after creation.
 
-A fresh worktree won't have the symlink, because ignored paths aren't checked out. Re-create it with
-`~/.claude/scripts/link-plans.sh <path> --apply` (idempotent) before writing a plan there, or the
-plan lands in a real directory that syncs nowhere.
+**Where that directory actually points is machine-specific.** Some machines symlink it into cloud
+storage to sync plans across devices; others keep it as a plain local directory. A gitignored
+overlay in `rules/` states which, and it wins — **check it before creating or re-creating any
+symlink**, because a machine that has opted out of cloud sync must stay opted out.
+`~/.claude/scripts/link-plans.sh <path> --apply` creates the cloud symlink, so it is only correct on
+a machine whose overlay asks for it. Where no overlay says otherwise, `mkdir -p docs/plans` is all a
+fresh worktree needs.
 
+A fresh worktree starts without the directory either way, because ignored paths aren't checked out.
 This is one instance of a general rule, and the reason `/build` now defaults to a **shared checkout**
 rather than a worktree per unit: a worktree contains tracked files only. No `node_modules`, no
 `.venv`, no `Pods`, no build cache, no ignored symlink. `/build`'s decomposer returns `workspace`,
