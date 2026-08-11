@@ -120,9 +120,13 @@ run_at() {
 }
 
 # An assistant turn is anything beyond the echoed prompt and rmcp/oauth noise.
+
+# No `grep -q`: its early exit SIGPIPEs upstream, so pipefail reports 141.
 answered() {
-  grep -vE '^\s*$|rmcp|oauth|OAuth|^user$|^codex$|tokens used|^\[|ERROR codex_' "$out" \
-    | grep -qv -F -x "$PROMPT"
+  local rest
+  rest=$(grep -vE '^\s*$|rmcp|oauth|OAuth|^user$|^codex$|tokens used|^\[|ERROR codex_' "$out" \
+    | grep -v -F -x "$PROMPT")
+  [ -n "$rest" ]
 }
 
 # Codex exits 0 on a refusal. Match the exact phrase, or a rate-limit review fails.
