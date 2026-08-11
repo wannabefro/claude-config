@@ -22,6 +22,19 @@ When *you* make a design decision with no source of truth to follow, **show me a
 review it from my phone, or a screenshot of the running UI. Even a single-screen choice. For a
 non-visual architecture decision, a diagram is the equivalent.
 
+# After a review, fix the obvious things
+
+When a review I asked for comes back — `/council`, `ce-code-review`, a reviewer agent — implement the
+clear-cut findings in the same turn. Do not hand me a list to approve first.
+
+Obvious means all three: the finding names a real defect, the fix is contained, and no design or
+product decision is in question. Everything else waits — an interface change, a disagreement between
+reviewers, or a fix larger than the finding.
+
+Report what you fixed and what you left, and say why you left it.
+
+Incoming feedback on an open PR is a different path. `rules/shipping.md` governs that one.
+
 # Gotchas
 
 Rationale and measurements for each item below: `docs/gotchas.md`.
