@@ -4,11 +4,14 @@
 Non-blocking. Always exits 0; it only adds hookSpecificOutput.additionalContext.
 
 Why this exists: Claude Code auto-loads CLAUDE.md, never AGENTS.md. A repo bridges
-that with a CLAUDE.md holding `@AGENTS.md`, but the loader walks from the working
-directory upward and never descends, so a bridge below cwd does not fire. Measured
-over 56 transcripts: 16 of 21 sessions that edited a governed file never opened the
-AGENTS.md, and the misses concentrate in subdirectories, not repo roots.
+that with a CLAUDE.md holding `@AGENTS.md`, which arrives as a nested_memory
+attachment — but not reliably, and not always before the edit it should inform.
+Measured over 56 transcripts: 16 of 21 sessions that edited a governed file never
+opened the AGENTS.md. A probe of 9 of them found the attachment absent entirely in
+one case whose cwd sat exactly on the file, and late in two others. So this asks
+the transcript what arrived rather than inferring it from directory structure.
 """
+import glob
 import json
 import os
 import re
@@ -49,21 +52,39 @@ def nearest_agents_md(target, root):
     return None
 
 
-def already_loaded(agents_md, cwd):
-    """True only when a stub imports it AND the CLAUDE.md walk actually reaches that stub.
+def transcript(data):
+    path = data.get("transcript_path") or ""
+    if path and os.path.isfile(path):
+        return path
+    sid = data.get("session_id") or ""
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,64}", sid):
+        return None
+    for cand in glob.glob(os.path.expanduser("~/.claude/projects/*/%s.jsonl" % sid)):
+        return cand
+    return None
 
-    The walk climbs from cwd to the filesystem root; it never descends. So a stub
-    below cwd is not loaded, which is where the measured misses concentrate.
+
+def already_delivered(agents_md, data):
+    """True when a nested_memory attachment for this exact path already landed.
+
+    Claude Code attaches AGENTS.md as a `nested_memory` event, not a Read call, and
+    it does so per edited subtree. Filesystem structure does not predict it: a
+    repo-root file can never arrive while cwd sits exactly on it, and a file well
+    outside the cwd chain can arrive anyway. Only the transcript is authoritative.
     """
-    d = os.path.dirname(agents_md)
-    sibling = os.path.join(d, "CLAUDE.md")
+    path = transcript(data)
+    if not path:
+        return False
     try:
-        if not IMPORT_RE.search(open(sibling, errors="replace").read()):
+        if os.path.getsize(path) > 64 * 1024 * 1024:
             return False
+        text = open(path, errors="replace").read()
     except Exception:
         return False
-    cwd = os.path.realpath(cwd or os.getcwd())
-    return cwd == d or cwd.startswith(d + os.sep)
+    if "nested_memory" not in text:
+        return False
+    needle = '"path":"%s"' % agents_md
+    return any("nested_memory" in ln and needle in ln for ln in text.splitlines())
 
 
 def main():
@@ -84,7 +105,7 @@ def main():
 
     root = git_root(os.path.dirname(target) or ".")
     agents_md = nearest_agents_md(target, root)
-    if not agents_md or already_loaded(agents_md, data.get("cwd", "")):
+    if not agents_md or already_delivered(agents_md, data):
         sys.exit(0)
 
     sid = data.get("session_id", "nosession")
@@ -108,8 +129,8 @@ def main():
 
     shown = agents_md.replace(os.path.expanduser("~"), "~")
     msg = (
-        "%s governs the file you are about to edit, and the CLAUDE.md walk does not "
-        "reach it — that walk climbs from the working directory and never descends. "
+        "%s governs the file you are about to edit, and this session has not been "
+        "given it — no nested_memory attachment for that path appears in the transcript. "
         "Its content follows. Reuse its ubiquitous language and follow its rules. "
         "Where it disagrees with a general habit of yours, it wins, and say so rather "
         "than averaging the two.%s\n\n--- %s ---\n%s"

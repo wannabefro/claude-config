@@ -11,19 +11,23 @@ compounds silently. If two context files name one concept differently, surface t
 pick a third name.
 
 **`AGENTS.md` is the one the platform does not load for you.** Claude Code reads `CLAUDE.md` and never
-`AGENTS.md`. A repo bridges that with a `CLAUDE.md` holding `@AGENTS.md`, and 887 of 928 do. **The
-bridge is conditional, and this is the part that bites:** the loader walks from the working directory
-*upward* and never descends, so a stub in a subdirectory below cwd never fires. A repo-root
-`AGENTS.md` therefore arrives without any `Read`; a subdirectory one does not.
+`AGENTS.md`. A repo bridges that with a `CLAUDE.md` holding `@AGENTS.md`, and 887 of 928 do. The
+bridge delivers as a `nested_memory` attachment, not as a `Read` — so "I never read it" is not by
+itself evidence that it was missing.
 
-Measured 2026-08-28 over 56 transcripts: of 21 sessions that edited a file governed by an `AGENTS.md`,
-16 never opened it. The misses are subdirectories, not repo roots. `hooks/agents-md-context.py`
-injects the nearest governing `AGENTS.md` at the edit, once per file per session, and stays silent
-only when that file's directory is cwd or an ancestor of it — the case the walk really does cover.
+**Do not predict that attachment from the directory layout.** A probe of 9 sessions on 2026-08-28
+found it absent for a repo-root `AGENTS.md` while cwd sat exactly on that directory, present for a
+file well outside the cwd chain, and twice arriving only *after* the edit it should have informed.
+Measured over 56 transcripts: of 21 sessions that edited a governed file, 16 never opened it, and 8
+of those had no reachable bridge at all.
 
-`scripts/agents-md-coverage.py` finds the `AGENTS.md` with no stub at all and exits 1 on any. Run it
-rather than trust a number above, because repos change. Where an `AGENTS.md` and a habit of yours
-disagree, the repo file wins — and say so, rather than averaging the two.
+`hooks/agents-md-context.py` therefore asks the transcript instead of guessing: it injects the nearest
+governing `AGENTS.md` before an edit unless a `nested_memory` attachment for that exact path already
+landed, once per file per session. `scripts/agents-md-coverage.py` finds the files with no bridge at
+all and exits 1 on any. Run it rather than trust a number above, because repos change.
+
+Where an `AGENTS.md` and a habit of yours disagree, the repo file wins — and say so, rather than
+averaging the two.
 
 **Write a comment or a docstring on one line.** Only a very good reason earns a second line: a
 workaround whose cause needs naming, or an invariant the reader cannot infer. The countable limits
