@@ -38,7 +38,7 @@ WORDS = re.compile(r"[A-Za-z][A-Za-z'-]*")
 OPT_OUT = re.compile(r"comment-density:\s*ignore-file")
 
 MAX_DENSITY = 15.0
-MAX_BLOCK = 3
+MAX_BLOCK = 2
 MAX_WORDS = 20
 
 

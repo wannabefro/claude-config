@@ -13,8 +13,8 @@ Three countable limits, taken from `rules/simplified-technical-english.md`:
 
 1. Write one sentence in one comment. Keep it to **20 words or fewer**.
 2. Write a comment or a docstring on **one line**. A second line needs a very good reason. A block
-   of **more than 3 lines** is a hard breach: that is a rationale block, and it belongs in the PR
-   description.
+   of **more than 2 lines** is a hard breach: that is a rationale block, and it belongs in the PR
+   description. `comment-density.py` gates at 2, so a third line fails a commit.
 3. Keep a file at **15% comment lines or fewer**. When you edit a file, match or reduce its density.
 
 Add a comment only when it says what the code cannot: why a non-obvious choice was made, a workaround
