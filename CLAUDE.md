@@ -10,6 +10,17 @@ where another name reads better. A second word for one concept is the drift STE 
 compounds silently. If two context files name one concept differently, surface the conflict rather than
 pick a third name.
 
+**`AGENTS.md` is the one the platform does not load for you.** Claude Code auto-loads `CLAUDE.md`.
+A repo usually bridges that by making `CLAUDE.md` an 11-byte `@AGENTS.md` import stub, and measured
+2026-08-28 across the work repos, 887 of 928 are bridged that way. The other 41 have no stub, so
+nothing opens them unless you do. `hooks/agents-md-context.py` injects exactly those at the moment of
+the edit, once per file per session. A silent hook means a stub already covered the file. It does not
+mean no `AGENTS.md` governs it.
+
+`scripts/agents-md-coverage.py` regenerates the list and exits 1 on any gap. Run it rather than trust
+the number above, because repos change. Where an `AGENTS.md` and a habit of yours disagree, the repo
+file wins — and say so, rather than averaging the two.
+
 **Write a comment or a docstring on one line.** Only a very good reason earns a second line: a
 workaround whose cause needs naming, or an invariant the reader cannot infer. The countable limits
 and the checker are in `rules/principles.md`.
