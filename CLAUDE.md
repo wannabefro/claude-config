@@ -10,6 +10,10 @@ where another name reads better. A second word for one concept is the drift STE 
 compounds silently. If two context files name one concept differently, surface the conflict rather than
 pick a third name.
 
+**Write a comment or a docstring on one line.** Only a very good reason earns a second line: a
+workaround whose cause needs naming, or an invariant the reader cannot infer. The countable limits
+and the checker are in `rules/principles.md`.
+
 # Design fidelity
 
 When a project has a design source of truth (Figma, a `design/` doc set, a spec mockup), follow it
