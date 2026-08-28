@@ -75,7 +75,8 @@ def main():
     if data.get("tool_name", "") not in WRITE_TOOLS:
         sys.exit(0)
 
-    target = (data.get("tool_input") or {}).get("file_path", "")
+    ti = data.get("tool_input") or {}
+    target = ti.get("file_path") or ti.get("notebook_path") or ""
     if not target or not os.path.isabs(target) or VENDOR_RE.search(target):
         sys.exit(0)
     if os.path.basename(target) in ("AGENTS.md", "CLAUDE.md"):
