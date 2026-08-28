@@ -108,9 +108,11 @@ fi
 # settings.json is committed with a __CLAUDE_HOME__ placeholder. Configure the
 # per-machine clean/smudge filter (definition lives in local .git/config, never
 # committed) and re-checkout so the working copy carries this machine's real
-# ~/.claude paths in hook commands.
+# ~/.claude paths in hook commands. Clean also drops any marketplace that
+# settings.local.json already defines, because the CLI keeps re-adding private
+# ones to settings.json and this repo is public.
 log "Configuring path filter and materializing settings.json for $TARGET"
-git -C "$TARGET" config filter.claudehome.clean  "sed \"s#$TARGET#__CLAUDE_HOME__#g\""
+git -C "$TARGET" config filter.claudehome.clean  "python3 $TARGET/scripts/settings-clean.py $TARGET"
 git -C "$TARGET" config filter.claudehome.smudge "sed \"s#__CLAUDE_HOME__#$TARGET#g\""
 rm -f "$TARGET/settings.json"
 git -C "$TARGET" checkout -- settings.json
