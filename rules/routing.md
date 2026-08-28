@@ -42,6 +42,22 @@ evidence and method in `docs/routing-rationale.md`.
 `coderabbit` binary that exists on only some machines — never route to it unhanded. `autofix` needs
 only `gh`. Don't offer to install the CLI to unblock a review; use `/council`.
 
+**When Codex cannot answer, CodeRabbit is the cross-family lens.** Codex stays first choice, because
+it reasons about the diff rather than pattern-matching it. But an unavailable CLI (exit 3) or a
+refusal for lack of credits (exit 6) used to be a dead end, and it is not one: both are a different
+family from Claude, so either satisfies the cross-family requirement in `rules/shipping.md`.
+
+| `codex-run.sh` exit | what to do |
+|---|---|
+| 0 | the pass happened; use it |
+| 3 unavailable, 6 out of credits | `command -v coderabbit`; if present, run CodeRabbit instead |
+| 4 stalled, 5 empty | re-run once per `codex-exec-recovery`, then fall back the same way |
+
+Branch on the exit code, never on the output, and check for the binary the way the next section
+says. Say which lens ran and why. "Codex was out of credits, so CodeRabbit reviewed it" is a different
+claim from "Codex reviewed it", and a guardrail diff deserves the true one. If neither lens is
+available, report that plainly rather than presenting a Claude-only review as cross-family.
+
 **Check for the binary before concluding the skill is gone.** Measured 2026-08-05: `Skill` returned
 `Unknown skill: coderabbit:code-review` while the plugin was enabled in `settings.json`
 (`coderabbit@sam: true`) and `skills/code-review/SKILL.md` was present in the cache. So an unresolved
@@ -49,8 +65,17 @@ skill name proves nothing about the tool. `command -v coderabbit` answered, and 
 Run it directly rather than reporting the review as unavailable:
 
 ```
-coderabbit review --agent --type committed --base origin/main --dir <service-dir>
+coderabbit review --agent --committed --base origin/main --dir <service-dir> -c AGENTS.md
 ```
+
+**`--type committed` was removed.** Verified against 0.7.5 on 2026-08-28: the selector is now the
+boolean `--committed`, or `--uncommitted` for staged and tracked edits. The old form fails, and it
+fails at the one moment you need the fallback. `--show-prompts` is refused alongside `--agent`, so it
+is not a way to dry-run the agent invocation.
+
+`-c/--config` takes extra instruction files, so hand it the project's own `AGENTS.md` or `CLAUDE.md`.
+Without it CodeRabbit reviews against its defaults and not against the repo's rules, which is the same
+gap `hooks/agents-md-context.py` closes for you.
 
 `--agent` emits one JSON object per line and a final `{"type":"complete","findings":N}`, which is the
 only form worth parsing. Without `--base` it reviews the working tree, so on a clean tree after a
