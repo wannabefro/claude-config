@@ -3,11 +3,11 @@
 
 Non-blocking. Always exits 0; it only adds hookSpecificOutput.additionalContext.
 
-Why this exists: Claude Code auto-loads CLAUDE.md, not AGENTS.md. A repo usually
-bridges that by making CLAUDE.md an `@AGENTS.md` import stub, and most do. The
-rest are invisible unless something opens them, and a rule alone does not survive
-a long session. This fires at the edit, the last moment the content changes
-anything. scripts/agents-md-coverage.py lists the unbridged ones.
+Why this exists: Claude Code auto-loads CLAUDE.md, never AGENTS.md. A repo bridges
+that with a CLAUDE.md holding `@AGENTS.md`, but the loader walks from the working
+directory upward and never descends, so a bridge below cwd does not fire. Measured
+over 56 transcripts: 16 of 21 sessions that edited a governed file never opened the
+AGENTS.md, and the misses concentrate in subdirectories, not repo roots.
 """
 import json
 import os
@@ -49,13 +49,21 @@ def nearest_agents_md(target, root):
     return None
 
 
-def covered_by_stub(agents_md):
-    """True when a sibling CLAUDE.md imports it, so Claude Code already has it."""
-    sibling = os.path.join(os.path.dirname(agents_md), "CLAUDE.md")
+def already_loaded(agents_md, cwd):
+    """True only when a stub imports it AND the CLAUDE.md walk actually reaches that stub.
+
+    The walk climbs from cwd to the filesystem root; it never descends. So a stub
+    below cwd is not loaded, which is where the measured misses concentrate.
+    """
+    d = os.path.dirname(agents_md)
+    sibling = os.path.join(d, "CLAUDE.md")
     try:
-        return bool(IMPORT_RE.search(open(sibling, errors="replace").read()))
+        if not IMPORT_RE.search(open(sibling, errors="replace").read()):
+            return False
     except Exception:
         return False
+    cwd = os.path.realpath(cwd or os.getcwd())
+    return cwd == d or cwd.startswith(d + os.sep)
 
 
 def main():
@@ -75,7 +83,7 @@ def main():
 
     root = git_root(os.path.dirname(target) or ".")
     agents_md = nearest_agents_md(target, root)
-    if not agents_md or covered_by_stub(agents_md):
+    if not agents_md or already_loaded(agents_md, data.get("cwd", "")):
         sys.exit(0)
 
     sid = data.get("session_id", "nosession")
@@ -99,10 +107,11 @@ def main():
 
     shown = agents_md.replace(os.path.expanduser("~"), "~")
     msg = (
-        "%s governs the file you are about to edit, and no sibling CLAUDE.md "
-        "imports it, so Claude Code did not load it. Its content follows. Reuse its "
-        "ubiquitous language and follow its rules; where it conflicts with a "
-        "general habit of yours, it wins.%s\n\n--- %s ---\n%s"
+        "%s governs the file you are about to edit, and the CLAUDE.md walk does not "
+        "reach it — that walk climbs from the working directory and never descends. "
+        "Its content follows. Reuse its ubiquitous language and follow its rules. "
+        "Where it disagrees with a general habit of yours, it wins, and say so rather "
+        "than averaging the two.%s\n\n--- %s ---\n%s"
         % (shown,
            " Content is truncated — Read the file for the rest." if truncated else "",
            shown, body)
