@@ -24,6 +24,19 @@ Hand implementers an **executable definition of done** — a failing test or exa
 prose. Escalate review topology (SDD's 2-stage, `/council`), not the model. Never hand-roll a review
 loop.
 
+**Haiku needs all four, or use Sonnet.** One file, and you already know which. A verify command that
+fails now and passes when done. No API or contract decision left open. An edit that transforms rather
+than invents — a rename, a mechanical refactor, a known pattern applied.
+
+Pass `model: "haiku"` per dispatch. It outranks `route` and the frontmatter pin, so this needs no
+change to `tier-router.json`, and the `deny` list blocks only Opus and Fable.
+
+**A Haiku failure is evidence about the unit, not the model.** The Opus rule says too much reasoning
+means the unit was not well specified. The same holds downward: decompose further, do not upgrade.
+Speed is also the wrong reason. Median dispatch is 246s, and tool round trips dominate that. A
+smaller model does not reduce them. Measure first-pass review success over 15-20 dispatches before you
+move anything into the `haiku` list.
+
 ## Before spending: is the question still worth answering?
 
 **The most expensive failure is not a stuck agent or a wrong answer. It is a correct, bounded,
