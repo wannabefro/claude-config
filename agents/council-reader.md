@@ -4,7 +4,7 @@ description: >-
   Read-only council member for workflow-driven review. Deliberately has NO Bash
   tool, so it cannot change directory, shell out, or run git — which is what
   keeps a large fan-out from generating one approval prompt per agent per
-  command. Dispatched by the council-review workflow against a pre-built review
+  command. Dispatched by the review and council workflows against a pre-built canonical
   bundle; not intended for direct use.
 tools:
   - Read

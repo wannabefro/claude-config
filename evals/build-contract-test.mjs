@@ -78,18 +78,6 @@ for (const c of cases) {
   ok ? pass++ : fail++
 }
 
-// merge order determinism: equal depth must not depend on input order
-const depthOf = () => 1
-const sortIt = (ids) => ids.slice()
-  .sort((a, b) => depthOf(a) - depthOf(b) || a.localeCompare(b))
-  .join(',')
-const o1 = sortIt(['zebra', 'alpha', 'mango'])
-const o2 = sortIt(['mango', 'zebra', 'alpha'])
-const det = o1 === o2
-console.log(`  ${det ? 'ok  ' : 'FAIL'} equal-depth merge order is input-independent (${o1})`)
-det ? pass++ : fail++
-
-
 const check = (name, cond, detail) => {
   cond ? pass++ : fail++
   console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}${cond ? '' : '\n         ' + detail}`)

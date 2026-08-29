@@ -2,11 +2,11 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "cleanupPeriodDays": 14,
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "ENABLE_TOOL_SEARCH": "auto:5",
     "MCP_TIMEOUT": "60000",
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "3",
     "NODE_OPTIONS": ""
   },
   "permissions": {
@@ -147,13 +147,13 @@
       "mcp__plugin_playwright_playwright__browser_navigate",
       "mcp__plugin_playwright_playwright__browser_snapshot",
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
-      "mcp__claude-design__read_file",
-      "mcp__claude-design__list_files",
       "mcp__Claude_Browser__get_page_text",
       "Bash(rtk grep *)",
       "Bash(unset NODE_OPTIONS)",
       "Bash(unset NODE_OPTIONS *)",
       "Bash(codex exec --sandbox read-only *)",
+      "Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)",
+      "Bash(bash __CLAUDE_HOME__/scripts/codex-run.sh *)",
       "Bash(pbcopy)",
       "Bash(pbpaste)",
       "Bash(launchctl list *)",
@@ -200,22 +200,41 @@
       "Read(./.env.*)",
       "Read(**/.env)",
       "Read(**/.env.*)",
+      "Read(**/*.env)",
+      "Read(**/*.env.*)",
+      "Read(./.envrc)",
+      "Read(**/.envrc)",
       "Read(./secrets/**)",
       "Read(**/secrets/**)",
+      "Read(**/secrets*)",
+      "Read(**/secret*)",
+      "Read(**/license.dat)",
       "Read(**/*.pem)",
       "Read(**/*.key)",
+      "Read(**/*.crt)",
+      "Read(**/*.cer)",
+      "Read(**/*.der)",
       "Read(**/*.p12)",
       "Read(**/*.pfx)",
-      "Read(**/id_rsa*)",
-      "Read(**/id_ed25519*)",
-      "Read(**/id_ecdsa*)",
+      "Read(**/*.jks)",
+      "Read(**/*.keystore)",
+      "Read(**/*.mobileprovision)",
+      "Read(**/*.asc)",
+      "Read(**/*.gpg)",
+      "Read(**/*.tfstate*)",
+      "Read(**/id_*)",
       "Read(**/credentials)",
       "Read(**/credentials.*)",
       "Read(**/.aws/**)",
       "Read(**/.ssh/**)",
       "Read(**/.gnupg/**)",
+      "Read(**/.docker/**)",
+      "Read(**/.kube/**)",
+      "Read(**/.config/gcloud/**)",
       "Read(**/.netrc)",
       "Read(**/.npmrc)",
+      "Read(**/.pypirc)",
+      "Read(**/.terraformrc)",
       "mcp__serena__open_dashboard"
     ],
     "ask": [
@@ -413,11 +432,10 @@
     "codex@openai-codex": true,
     "compound-engineering@compound-engineering-plugin": true,
     "context-mode@context-mode": true,
-    "context7@claude-plugins-official": false,
+    "context7@claude-plugins-official": true,
     "explanatory-output-style@claude-plugins-official": false,
-    "feature-dev@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": false,
     "gopls-lsp@claude-plugins-official": true,
-    "impeccable@impeccable": false,
     "linear@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
     "plugin-dev@claude-plugins-official": false,
@@ -427,14 +445,13 @@
     "sentry@claude-plugins-official": false,
     "skill-creator@claude-plugins-official": false,
     "slack@claude-plugins-official": false,
-    "superpowers@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
-    "looper@sam": true,
+    "looper@sam": false,
     "coderabbit@sam": true,
     "find-skills@sam": false,
     "gh-stack@sam": true,
-    "open-knowledge@sam": false,
-    "tier-router@claude-tier-router": true
+    "open-knowledge@sam": false
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {
@@ -447,12 +464,6 @@
       "source": {
         "source": "github",
         "repo": "mksglu/context-mode"
-      }
-    },
-    "impeccable": {
-      "source": {
-        "source": "github",
-        "repo": "pbakaus/impeccable"
       }
     },
     "learning-opportunities": {
@@ -478,17 +489,11 @@
         "source": "directory",
         "path": "__CLAUDE_HOME__/marketplace"
       }
-    },
-    "claude-tier-router": {
-      "source": {
-        "source": "github",
-        "repo": "wannabefro/claude-tier-router"
-      }
     }
   },
   "outputStyle": "Lean Engineer",
   "alwaysThinkingEnabled": true,
-  "effortLevel": "high",
+  "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
   "autoDreamEnabled": true,

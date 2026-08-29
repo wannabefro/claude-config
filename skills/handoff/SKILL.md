@@ -57,7 +57,7 @@ Things the next session needs to decide or ask the user. Write "none" if there a
 
 ## Skills to invoke
 
-1–3 skills the receiving session should use (e.g. `superpowers:systematic-debugging`, `/codex:rescue`, `/pr-watch`). Write "none" if there are none.
+1–3 skills the receiving session should use (for example `/plan`, `/build`, `/codex:rescue`, or `/pr-watch`). Write "none" if there are none.
 
 ## References
 

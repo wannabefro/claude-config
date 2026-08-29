@@ -1,59 +1,83 @@
 # Claude Code setup (`~/.claude`)
 
-Version-controlled personal Claude Code configuration: skills, hooks, rules,
-agents, commands, output styles, and `settings.json`. **This repo is the source
-of truth** — it supersedes the old GoogleDrive skill-sync (GDrive is now just a
-cold backup). Designed to **rehydrate a working setup on a fresh machine**.
+This repository stores the portable Claude Code configuration. It includes
+rules, commands, agents, hooks, workflows, skills, and settings. It does not
+store credentials, plugin caches, runtime state, conversations, app data, or
+absolute host commands.
 
-> Public-safe: employer-internal config and machine-specific paths are kept out
-> of tracked files (local-only `settings.local.json`, `.git/info/exclude`
-> overlays, and a `__CLAUDE_HOME__` placeholder via a git clean/smudge filter).
-
-## Bootstrap a new machine
+## Bootstrap a Mac
 
 ```bash
 git clone <this-repo> /tmp/claude-setup
-/tmp/claude-setup/install.sh          # backup-first, idempotent
-# or:  /tmp/claude-setup/install.sh --check   # just report missing prereqs
+/tmp/claude-setup/install.sh --check
+/tmp/claude-setup/install.sh
 ```
 
-`install.sh` backs up any existing `~/.claude`, adopts the repo in place
-(overwrites tracked config only — your transcripts and the `plugins/` cache are
-left untouched), and configures a git clean/smudge filter that materializes the
-committed `__CLAUDE_HOME__` placeholder in `settings.json` to the new machine's
-real `~/.claude` paths. macOS-first.
+The installer is backup-first and idempotent. It preserves the clean/smudge
+`__CLAUDE_HOME__` filter, which materializes each Mac's local path in
+`settings.json` and the implementer instructions. It never installs tools and
+it never syncs credentials. Runtime probes require Node 20–24 LTS (Node 24 is
+recommended), a working Codex CLI, and Perl. The wrappers use Perl's portable
+alarm timeout, so GNU `timeout` is not required.
 
-## Prerequisites (install separately — `install.sh` reports, never installs)
+The policy is fixed: Claude Opus xhigh performs planning, architecture,
+design, diagnosis, review, integration, and final verification. Codex
+`gpt-5.6-luna` xhigh is the only automatic implementation writer. Sonnet and
+`gpt-5.6-terra` are manual fast lanes. Fable is a manual long-horizon option
+after host access is verified. Haiku is limited to deterministic plumbing.
+Unavailable models never trigger a silent fallback.
+
+`/implement` handles one coherent, clearly scoped unit through exactly one
+Luna implementer. `/build` is for structured work: it chooses `serial` or
+`parallel`, freezes the split, ownership, contracts, exact working directory,
+and verification gates before approval, then starts every ready independent
+unit concurrently up to three. Shared parallel execution is guarded by
+private per-unit worktrees and canonical physical path checks; shared checkout
+fan-out is blocked. Completed patches integrate serially in dependency order.
+Approval uses a cryptographic plan identity,
+an index/working-tree/untracked fingerprint, and rejects tampering or any
+stale checkout. `/review` and `/council` share one
+canonical assembled-diff bundle, including staged, unstaged, and full
+untracked-file content. Compound Engineering stays installed as an explicit
+toolbox for brainstorm, plan, debug, simplify, review, and compound learning.
+It is not the scheduler.
+
+## Prerequisites
+
+Install these tools separately. `install.sh` reports missing tools and never
+installs them.
 
 | Tool | Purpose |
 |---|---|
-| `git`, `gh` (authed) | repo + GitHub |
-| `node` / `fnm` | MCP servers, JS hooks |
-| `rg`, `jq` | hooks, search |
-| `codex` | cross-family review/rescue |
-| `rtk` | token-saving command proxy |
-| `cmux`, `wt` (worktrunk) | worktree workflow |
-| `bd` (beads) | dependency-aware backlog/issue tracker (optional) |
+| `git`, `gh` | repository and GitHub operations |
+| Node 20–24 LTS, Perl, `rg`, `jq` | hooks and local checks |
+| `codex` | Luna implementation and cross-family review |
+| `rtk`, `cmux`, `wt` | local workflow support |
+| `bd` | optional dependency-aware backlog |
 
-## What rehydrates automatically vs. manually
+## Host-local services
 
-- **Automatic:** plugins re-fetch from `enabledPlugins` + `extraKnownMarketplaces`
-  in `settings.json` on first launch (the 1.7G `plugins/` cache is intentionally
-  not committed). Skills are real files in `skills/` and travel with the clone.
-- **Manual:** MCP server **auth** — none is committed. Re-authenticate:
-  context-mode, codegraph, serena, context7, github, linear, slack, sentry,
-  chrome-real, playwright (plus any CI/observability or employer-internal
-  servers configured in your local settings overlay).
-- **Verify after launch:** `/plugins` and the live MCP list should match
-  `settings.json`. If a plugin is missing, check its marketplace entry.
+MCP authentication remains local to each Mac. Re-authenticate only the
+services required by that host. GitHub connector auth is separate from
+terminal Git and `gh` auth. Remote Control and macOS permissions also require
+local setup.
 
-## Notes
+Open Design is optional and does not block core coding readiness. Use the
+signed `0.21.0` artifact, architecture hash, bundle identifier, and signing
+identity in `manifests/design.json`. Configure its MCP only from the exact
+snippet generated by the signed app. Do not sync its app data, conversations,
+credentials, absolute command, or `.od` state. Bare `/usr/bin/od` is Apple's
+octal-dump command, not Open Design. See `docs/design-workflow.md`.
 
-- **Not tracked:** `projects/` (transcripts + auto-memory), `plugins/`,
-  `settings.local.json`, `remote-settings.json`, caches, `*.jsonl`, and nested
-  runtime state (`hooks/state/`, `__pycache__/`). See `.gitignore` (allowlist).
-- **Skills migrated off GoogleDrive** into `skills/` as real files. The 3
-  cross-runtime skills (`autofix`, `code-review`, `find-skills`) were copied
-  from `~/.agents/skills`; that original still exists for Codex/Gemini, so the
-  two copies can **diverge** — edit one source deliberately.
-- **Plan/design docs** under `docs/plans/` are intentionally untracked.
+After bootstrap, start a new Claude Code session. Plugins, permissions, model
+settings, and MCP discovery are session-scoped. Verify `/plugins`, the MCP
+list, `/implement`, `/build`, and `/review` after the restart.
+
+## Currentness
+
+Compound Engineering `3.23.4` and Open Design `0.21.0` are current pins under
+review. Check maintained official sources and reproducible evaluations each
+quarter. Migrate deliberately, preserve useful knowledge, remove conflicts
+only after review, and never migrate because of hype.
+
+See `docs/workflow-migration.md` for the policy.

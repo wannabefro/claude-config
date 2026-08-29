@@ -10,6 +10,33 @@ where another name reads better. A second word for one concept is the drift STE 
 compounds silently. If two context files name one concept differently, surface the conflict rather than
 pick a third name.
 
+# Model routing
+
+Claude Opus xhigh owns requirements, architecture, design direction, diagnosis,
+review, integration, and final verification. Codex `gpt-5.6-luna` xhigh is the
+only implementation writer. Use `/implement` for one coherent, clearly scoped
+unit. Use `/build` for structured multi-unit or genuinely parallel work.
+
+`/build` uses one Luna implementer for serial work or at most three disjoint
+Luna implementers for parallel work. Freeze the graph, interfaces, write
+scopes, acceptance criteria, and verify commands before dispatch. Never use a
+Claude write fallback when Luna is unavailable. Compound Engineering remains
+an explicit on-demand toolbox, not the scheduler.
+
+After implementation, use `/review` for the assembled diff. It selects a
+mechanical, normal, or guardrail tier. Mechanical changes need exact gates and
+an Opus diff inspection. Normal changes need one independent Opus xhigh review
+and one Codex `gpt-5.6-sol` xhigh outsider review. Guardrail changes use the
+full `/council`. An explicit `/council` always seats the full council, even for
+a mechanical diff.
+
+Authoritative routing contract: Opus xhigh owns judgment and serial integration;
+Luna xhigh is the only writer; active implementation concurrency is at most 3.
+Haiku is limited to deterministic plumbing. Sonnet and `gpt-5.6-terra` are
+manual opt-in fast lanes only. Fable is a manual long-horizon escalation only
+after host availability is verified. No route silently changes model, effort,
+or writer family. If Opus or Luna is unavailable, report the limitation.
+
 # Design fidelity
 
 When a project has a design source of truth (Figma, a `design/` doc set, a spec mockup), follow it

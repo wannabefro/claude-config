@@ -11,7 +11,6 @@
 !/install.sh
 !/CLAUDE.md
 !/settings.json
-!/tier-router.json
 !/statusline.sh
 
 # --- curated directories (subtree rides along once the dir is un-ignored) ---
@@ -26,6 +25,7 @@
 !/workflows/
 !/evals/
 !/scripts/
+!/manifests/
 
 # --- nested re-ignores ---
 # Un-ignoring a directory pulls in its WHOLE subtree, so generated/runtime state

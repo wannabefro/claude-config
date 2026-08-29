@@ -3,13 +3,13 @@
 # When a PR is about to be opened/readied on a guardrail-critical diff, pause
 # and remind to run the review council before it goes up for review.
 #
-# Both tiers route to /council. It already classifies risk itself and forces the
-# full six-lens seating — including the Codex outsider — on exactly these
-# surfaces, so the cheap seat can never decide a migration is low-risk. The
-# floor/escalate split below therefore only shapes the WORDING; it no longer
-# picks a different review path. It used to send the escalate tier to
-# /sam-review and the floor tier to /codex:adversarial-review, which pointed the
-# one enforcing gate at paths that were never taken.
+# Both tiers identified here require the explicit full /council — including the
+# Codex outsider — on these surfaces. /review owns classification for ordinary
+# diffs; this hook only enforces the guardrail gate. The floor/escalate split
+# below therefore shapes the WORDING; it does not pick a different review path.
+# It used to send the escalate tier to /sam-review and the floor tier to
+# /codex:adversarial-review, which pointed the one enforcing gate at paths that
+# were never taken.
 #
 # Non-evidence-based: emits permissionDecision "ask" (a confirmable pause, NOT a
 # hard block). Approve to proceed if the review already ran. Silent on
@@ -41,7 +41,7 @@ else
 fi
 [ -z "$files" ] && exit 0
 
-# Highest-stakes subset → wording escalates; both tiers route to /council.
+# Highest-stakes subset → wording escalates; both tiers still require /council.
 escalate_re='(^|/)(migrations?|migrate)(/|_|\.)|payment|billing|charge|stripe|invoice|(^|/)auth(n|z)?(/|_|\.)|authentic|authoriz|(^|/)permission|(^|/)security(/|_|\.)'
 # Broader guardrail-critical floor → at least the Codex adversarial pass.
 floor_re="${escalate_re}|(^|/)api(/|_|\.)|serializ|(^|/)schema|(^|/)models?(/|_|\.)|middleware|webhook|(^|/)iam(/|_|\.)|public"
@@ -59,7 +59,7 @@ hits="$(printf '%s\n' "$files" | grep -Ei "${floor_re}" | head -5 | paste -sd ',
 if [ "$tier" = "escalate" ]; then
   msg="Guardrail-critical diff (payments/migrations/auth/security touched: ${hits}). Run /council before this PR is review-ready. If it already ran this session, approve to proceed."
 else
-  msg="Guardrail-critical diff (touched: ${hits}). Run /council before this PR is review-ready — its triage will size the seating. If it already ran this session, approve to proceed."
+  msg="Guardrail-critical diff (touched: ${hits}). Run the full /council before this PR is review-ready. If it already ran this session, approve to proceed."
 fi
 
 jq -nc --arg m "$msg" '{

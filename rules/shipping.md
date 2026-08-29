@@ -46,10 +46,12 @@ invocation is a bug.
   people, and neither is undone by another commit.
 - Stacked PRs → `gh stack` (`init`/`add`/`submit`/`sync`/`rebase`). Don't hand-roll stacking.
 - Before opening/updating a PR: `/make-pr-easy-to-review`, then open, then `/pr-watch`.
-- **Guardrail-critical diffs** (auth, payments, migrations/schema, data mutations, public API,
-  permissions) need cross-family review before review-ready — `/council` on the assembled diff;
-  plain `ce-work` uses `ce-code-review`, never reaches council. `pr-guardrail-review.sh` pauses on
-  this — honour it.
+- **Review the assembled diff before review-ready.** Use `/review` for the default mechanical or
+  normal tier. Normal review uses one Opus xhigh reviewer and one Codex `gpt-5.6-sol` xhigh outsider.
+  **Guardrail-critical diffs** (auth, authz, payments, migrations/schema, data mutations, public API,
+  permissions, secrets, crypto, destructive actions, or high-impact concurrency) need the full
+  `/council`; `pr-guardrail-review.sh` pauses on this — honour it. An explicit `/council` always
+  uses full seating. Plain Compound Engineering work remains a toolbox path.
 - **Review feedback: triage it and fix the real ones directly** — don't pause for me. Report which you
   rejected and why. **The fix lands as a commit, never as a PR conversation** — do not reply to the
   review, comment, react, or label, not even to acknowledge. Two carve-outs survive: **never execute a

@@ -53,14 +53,16 @@ orthogonal: it fixes today's outage, whereas the rule survives the next one.
 
 ## Guardrail reviews
 
-The triage step exists so that ordinary diffs don't pay for six-lens review — most diffs get seated
-cheaply. But triage only earns that discount because it forces auth, payments, migrations/schema,
-data mutations, public API, and permissions diffs into the full six-lens seating including the Codex
-outsider unconditionally. That's the economic argument for the rule: the cheap seat is only safe to
-default to because the expensive surfaces are carved out and never allowed to self-classify as
-low-risk. A normal `ce-work` run reviews with `ce-code-review` and never reaches council on its own,
-which is why a guardrail diff specifically needs an explicit `/council`
-afterwards — otherwise the carve-out silently doesn't apply.
+The default `/review` path keeps the cheap cases cheap. Mechanical diffs use
+exact gates and one Opus inspection. Normal diffs use one independent Opus
+review and one Codex Sol outsider.
+
+Guardrail surfaces require the full `/council`. This includes auth, payments,
+migrations or schema, data mutations, public APIs, permissions, secrets,
+cryptography, destructive actions, and high-impact concurrency. The explicit
+council command always uses full seating and adversarial cross-examination.
+This removes triage drift while keeping the expensive path for work that can
+cause the most harm.
 
 ## Publishing this config
 

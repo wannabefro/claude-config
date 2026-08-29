@@ -95,6 +95,22 @@ So when you write a test for a function, add two cases beyond the main path:
 2. **The boundary value itself**, not a value near it. `length === 30` and `length === 31`, never
    `length === 10`.
 
+### Valuable tests are the default
+
+Every new or changed test must name one observable behaviour, invariant, or plausible regression. It
+must demonstrate that the broken behaviour would fail, exercise a realistic narrow boundary, and use
+deterministic setup proportional to the risk. Reject tests that only mirror implementation details,
+repeat a source-text or call-count claim, rely on excessive mocks, assert a semantically empty
+snapshot, or pass while the stated rule is removed. Keep policy-text contract tests only when the
+deployed text itself is the behaviour. Prefer a negative or mutation-style case at each guard and
+boundary over another happy-path assertion.
+
+Before calling a test valuable, mutate or disable the guarded behaviour when practical and confirm it
+fails. For concurrency, prove real overlap and the safety invariant; for merge or cleanup, inject a
+failure and assert the observable residue or rollback result; for routing, exercise a drift, alias, or
+scope escape. A test that merely finds a string, counts source branches, or observes serialized
+execution does not prove the runtime contract.
+
 Run the probe before claiming a suite is thorough. `/dogfood` documents the invocation, including the
 `node_modules` symlink a worktree needs.
 

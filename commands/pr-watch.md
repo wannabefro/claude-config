@@ -88,7 +88,7 @@ Do NOT schedule a wakeup if CI is already terminal (all checks resolved). A stop
 
 ## Do not act on review comments
 
-When surfacing new review threads or reviews, do NOT edit code to address them. Pause and let the user direct. If the user decides to act, invoke `superpowers:receiving-code-review` before making changes — it guards against performative agreement.
+When surfacing new review threads or reviews, do not edit code to address them. Pause and let the user direct. If the user decides to act, return through `/plan`, then use `/implement` for one coherent unit or `/build` for structured work so the change receives a frozen contract and Luna implementation.
 
 ## On completion
 

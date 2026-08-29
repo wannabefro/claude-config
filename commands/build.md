@@ -1,202 +1,93 @@
 ---
-description: The entry point for executing any approved work — routes to parallel fan-out, ce-work, or inline, and when it fans out builds the units concurrently in isolated worktrees behind executable verify commands
-argument-hint: "[what to build — a feature description, or a path to a plan doc. Any size.]"
+description: Execute structured multi-unit work through the Opus decomposer and Codex Luna implementation route.
+argument-hint: "[feature description or plan path]"
 ---
 
-Build in parallel: **$ARGUMENTS**
+Build the approved work: **$ARGUMENTS**
 
-**This is the entry point for executing any approved work — always start here.** Don't decide the
-shape first: the decomposer reads the codebase and returns a `route`, and only one of the three
-routes costs anything to be wrong about.
+Use `/build` for structured work: multiple units, dependencies, shared
+contracts, coupled multi-file work, or genuinely parallel work. For one
+coherent unit with no shared contract or guardrail surface, use `/implement`.
+Opus xhigh must freeze the dependency graph, interfaces, file ownership,
+acceptance criteria, private worktree workspace, and exact verify commands before
+any worker starts. The index, tracked working tree, and relevant untracked state
+are fingerprinted at approval and checked again before dispatch.
 
-**Step 0 — preflight, one command.** The `Workflow` tool can be removed from the tool set entirely by
-managed policy, in which case it is not registered, not deferred, and `ToolSearch` cannot find it.
-Check before you plan around it:
+## Step 0 — Workflow preflight
 
-```
+Run:
+
+```bash
 ~/.claude/scripts/workflow-available.sh build-parallel.js
 ```
 
-Branch on the exit code, not on whether you can see the tool:
+If the exit code is `0`, call `build-parallel.js`. If the exit code is `1`,
+report that Workflow is disabled and apply the degraded checks below. If the
+exit code is `2`, report the missing script and stop.
 
-| exit | meaning | what you do |
-|---:|---|---|
-| 0 | available | continue to Step 1 |
-| 1 | disabled by managed policy | **take the Degraded route below.** Do not hunt for the tool, do not edit `policy-limits.json`, do not retry |
-| 2 | allowed but the script is missing | report that and stop — this one *is* fixable locally |
+## Step 1 — Decompose with Opus
 
-Say which branch you took in one line, so a decomposition that never ran is never mistaken for one
-that returned `inline`.
+Call the Workflow tool with:
 
-**Step 1 — only on exit 0.** Call the `Workflow` tool with:
-
-```
-{ "scriptPath": "~/.claude/workflows/build-parallel.js",
-  "args": { "task": "$ARGUMENTS" } }
+```json
+{
+  "scriptPath": "~/.claude/workflows/build-parallel.js",
+  "args": { "task": "$ARGUMENTS" }
+}
 ```
 
-Pass `args` as a real object, never a JSON-encoded string — a stringified object arrives as one
-string and every flag on it is silently dropped. One Opus decomposer runs; no implementer, no
-worktree.
+Pass `args` as an object. The result must use `route: "parallel"` or
+`route: "serial"`.
 
-**Step 2 — depends on the route, and only `parallel` waits.**
+`serial` means one `implementer` starts immediately in one deterministic private
+worktree. The implementer is an Opus dispatcher and verifier; Codex
+`gpt-5.6-luna` xhigh performs the writes. A final fingerprint/HEAD check runs
+before that dispatch, and the helper rejects any post-write path outside the
+declared ownership before integration.
+`parallel` means the split needs approval before dispatch. Show the returned
+`plan_payload`, `plan_id`, `plan_hash`, frozen `base_commit`, and working-tree
+fingerprint, then show each unit's exact files,
+contracts, dependencies, acceptance criteria, absolute working directory,
+workspace, and verify command. After approval, re-run with the exact frozen
+payload and integrity fields:
 
-- `inline` → **just build it, this turn.** No second invocation, no asking. The decomposition already
-  cost a round trip; making the user confirm a serial build wastes another.
-- `ce-work` → **invoke `ce-work` now, this turn**, with the plan path if there is one, otherwise the
-  task plus the returned `units` as its task list.
-- `parallel` → **stop and show me the split**: units, file ownership, `verify_command`s, `workspace`,
-  and lead with `critical_path` / `starting_immediately`. Then re-invoke with `"build": true` once I
-  agree. This is the only route that waits, because it is the only one that spawns N implementers —
-  expensive to start and expensive to undo.
+```json
+{
+  "task": "$ARGUMENTS",
+  "build": true,
+  "plan_payload": "<the exact returned payload>",
+  "plan_id": "<the exact returned plan_id>",
+  "plan_hash": "<the exact returned plan_hash>"
+}
+```
 
-## Degraded route — Workflow disabled by policy (exit 1)
+Do not call the decomposer again, edit the payload, or reconstruct it from the
+display. The workflow rejects missing, stale, or tampered payloads before any
+unit starts. The scheduler allows no more than three active Luna units, starts
+every currently-ready independent unit concurrently, creates one exact private
+git worktree per unit, and integrates completed patches serially in dependency
+order. A worktree preparation or ownership check failure blocks the fan-out;
+shared-checkout execution is never a fallback.
 
-You route by hand. **Do the file-ownership check anyway** — it is the part of the decomposer that
-catches the expensive mistake, and it is cheap to do manually.
+## Degraded route
 
-1. **Build the file→units map** from the plan's `**Files:**` lists, or from the task if there is no
-   plan.
-2. **Any file claimed by two units that could run concurrently is a refusal**, exactly as it would be
-   under the tool. Measured on a real plan: `router.go` was claimed by three units and `settings.go`
-   by two, so a fan-out would have collided on four of six units.
-3. **Route on what survives:**
-   - two or more units, disjoint files, no shared contract → **still do not fan out.** The tool is
-     what makes a fan-out safe: schema-enforced units, refusal on contested files, `depends_on`
-     scheduling. Without it, run them sequentially in dependency order and say why.
-   - otherwise → `ce-work` with the plan path when the work is substantial, or just build it inline.
-4. **Report the routing decision and the evidence for it** — the collision table, not a bare verdict.
-   The user needs to see the boundary check happened.
+When Workflow is disabled, perform the same file ownership and contract checks
+manually. Freeze and recheck the index, tracked working tree, and relevant
+untracked fingerprint before dispatch. Canonicalize each owned path, reject
+symlink aliases, create exact private worktrees, and reject any patch that
+escapes its unit's owned paths.
+Preserve the approved absolute working directory and start every currently
+ready independent unit concurrently, up to three. Do not write in the main
+thread. Report missing verify commands and unavailable Luna runtime.
 
-Two things the degraded route does *not* get, and both are worth saying out loud: no `verify_command`
-per unit, and no `invalidated-work` check. So read the plan for units that verify something a later
-unit deletes, and order the remover first yourself.
+## After implementation
 
-Everything below about worktrees, `deferred`, merge sequences and cleanup applies to the tool path
-only. On the degraded route you are building in the working tree, serially, and there is nothing to
-merge.
+Inspect `git status --short` and the complete diff. Integrate in dependency
+order under Opus xhigh. Do not merge automatically. Run `/review` once on the
+assembled diff. If it classifies the diff as guardrail, run the full `/council`
+before final verification under Opus.
 
-## Shared checkout or worktree
-
-The decomposer returns `workspace`, and **`shared` is the default** — every unit builds in the
-existing checkout. That is safe because concurrent units are already forbidden from sharing a file or
-a contract, and both rules are enforced in code rather than left to prose.
-
-`worktree` is chosen only when every `verify_command` can pass in a tree of tracked files alone.
-A worktree checks out **nothing that is ignored**: no `node_modules`, no `.venv`, no `vendor`, no
-`Pods`, no build cache, and not the ignored `docs/plans` symlink either. Measured 2026-07-28 — one
-repo's worktree was 12M against a 1.0G main checkout with no `node_modules` at all, so every gate
-needing an install would have failed there for reasons unrelated to the unit; another repo's
-worktrees had been populated and cost 1.2G each, which is how 37 accumulated unnoticed.
-
-Two things follow from `shared`, and both are worth saying in the report:
-
-- **The whole DAG builds in one pass.** `deferred` only exists for worktrees, where a dependency's
-  work lives on an unmerged branch. In a shared tree the dependency wrote here, so depth-2 and
-  deeper units build normally. An audit put ~30% of units at depth>1 — those re-runs disappear.
-- **There is nothing to merge and nothing to clean up.** The work is already in the working tree.
-  Check `git status` before committing if any unit failed: its partial edits are there too.
-
-Invoking this command is the explicit opt-in the Workflow tool requires.
-
-## Why this and not ce-work's own parallel strategy
-
-`ce-work` can parallelize, but the choice lives in prose and the model resolves it — measured across
-this machine's transcripts it picked parallel in 2 of 11 sessions, so in practice work runs serial
-without anyone deciding it should. Here the split is computed: units are schema-enforced, units that
-could run concurrently are refused in code if they share a file, and `decomposable: false` is a
-visible typed outcome rather than a silent fallback to serial.
-
-Each unit declares `depends_on` and starts the moment *its own* dependencies are green — not when a
-whole cohort finishes. That distinction is most of the parallelism: on a real 12-unit decomposition
-the previous wave-barrier scheduler ran 6 sequential stages at peak concurrency 4 of 12, while only
-3 of 52 files were actually contested.
-
-Use `ce-work` when the work is genuinely coupled, and for the shipping tail.
-
-## Before you run it
-
-If `$ARGUMENTS` is vague, ask what "done" looks like first. The decomposer needs enough to write a
-real `verify_command` per unit, and a fan-out built on guessed boundaries produces merge conflicts
-that cost more than the parallelism saves.
-
-## Reporting the result
-
-- **It returns a `route`, and that is the answer — act on it, don't re-litigate it.** The decomposer
-  has read the codebase, so it is better placed to make this call than a guess from the task string:
-
-  | route | meaning | what you do |
-  |---|---|---|
-  | `parallel` | ≥2 units, disjoint files, no shared contract | re-invoke with `"build": true` |
-  | `ce-work` | sequential or coupled but substantial | hand `ce-work` the plan path, or the task plus the returned `units` as its task list |
-  | `inline` | one coherent change, or coupled reasoning, or too small to dispatch | just build it |
-
-  Relay `route_reason` in one line and get on with it — no stopping to ask, no re-running to force a
-  split. On `ce-work` and `inline` the `units` still come back in dependency order; that ordering is
-  most of what the decomposition bought, so use it rather than re-deriving it. A one-unit result
-  reports `inline` for the same reason: one unit pays worktree and dispatch cost for zero concurrency.
-- Structural refusals (`conflicts`, `contract_issues`) get **one** re-decomposition, not a
-  negotiation. If the second attempt collides the same way, the work is genuinely coupled — take the
-  `fallback` route and say so. Two failed decompositions cost more than the parallelism was worth.
-- **On the step-1 report, lead with `critical_path` and `starting_immediately`, not the unit count.**
-  Those two numbers are how parallel the build will actually be. Twelve units with a critical path of
-  10 is a chain wearing a fan-out's clothing — say so and offer to re-decompose, because the fix is
-  cheap now and expensive after the agents run.
-- If it returns `conflicts`, two units that could run at the same time claim the same file. Report the
-  overlap and offer to re-run with them merged or with a real dependency declared between them.
-- If it returns `contract_issues`, units disagree about a shared name while touching different files.
-  This is the one worth explaining rather than just relaying: `unordered-contract` means a unit reads
-  a name another unit defines with no dependency between them, so both verify green in isolation and
-  only disagree once merged. `duplicate-provider` means two units define the same name and the later
-  merge silently wins. Neither is visible in the file lists. Offer to re-decompose with the
-  dependency declared, or with the name owned by exactly one unit.
-  `invalidated-work` is the third kind and the one to read carefully, because it is not a
-  correctness problem at all — both units would go green. It means a unit is scheduled to spend real
-  time on a name another unit deletes or rewrites, so its result is worthless before it starts. Say
-  which unit is about to be wasted and on what. The fix is to order the remover first, **or to drop
-  the verifying unit entirely** when it existed only to check something being removed. Never relay
-  this as "a warning we can proceed past" — proceeding is precisely the spend it caught.
-- If it returns `cycles`, `dangling`, or `duplicates`, the dependency graph is malformed — relay it
-  and re-run. `duplicates` is the one most likely to look like a tool malfunction rather than a
-  decomposer slip; it is not, and the decomposition is cheap to redo.
-- If it returns `deferred` — only possible on `workspace: "worktree"` — that is **not** a failure:
-  there, only depth-1 units are buildable in one pass, because every worktree branches from the same
-  base and nothing merges mid-run, so a deeper unit would be written against a tree that never
-  contained its dependency's work. Report it as "layer complete", give the merge sequence, and say
-  the next layer needs a re-run from the new HEAD.
-- On success: report `units_green / units_total`, then the **merge sequence**, which is in dependency
-  order so a unit always merges after whatever it was built on. Nothing is merged automatically — an
-  unattended N-way merge is where parallel builds go wrong.
-- Report `needs_attention` honestly and prominently, and distinguish the two kinds: a unit that
-  **failed** its own verify command, versus one that was **skipped** because a dependency never went
-  green. A skipped unit is untouched work, not broken work — fix its blocker and it still needs
-  building.
-
-## After it succeeds
-
-Run `/council` **once** on the assembled diff — after merging `merge_sequence` on the worktree route,
-or directly on the working tree on the shared one. Its triage sizes the seating, so an ordinary build
-pays for two lenses and a guardrail surface seats all six. Do not review per unit: the per-unit gate
-is the `verify_command`, and putting a review inside the loop is what makes parallel building slower
-than serial building.
-
-**Cleanup applies to the worktree route only** — on `shared`, `cleanup.command` is null and there is
-nothing to collect. Where it does apply the result carries the command in its `cleanup` field, and
-running it is part of finishing a build, not an optional tidy-up. Left alone these accumulate: 37
-stale worktrees and 33 orphan branches had built up across four repos before anyone counted.
-
-`~/.claude/scripts/clean-build-worktrees.sh <repo> --apply`. Worktrees are **not**
-removed automatically, and must not be — agents leave their work uncommitted, so the branch sits at
-the base commit and `git branch -d` will call an entire unmerged unit "already merged". The script
-compares file content against the main tree instead, removes only what is byte-identical or empty,
-and keeps anything that still differs. Run it after merging, not before.
-
-On a layered build (`deferred` non-empty) run it **between layers**, not only at the end — each
-re-run creates a worktree per unit, so a plan four layers deep otherwise leaves four sets behind.
-
-## Where this sits
-
-`ce-brainstorm` -> `ce-plan` produces the plan; this executes the parts of it that decompose. The
-plan's own unit list is input, not gospel — the decomposer reads the codebase and will contradict it
-when the plan's file boundaries don't survive contact (on its first real run it found one file
-claimed by five separate units).
+Compound Engineering remains available for explicit brainstorm, plan, debug,
+simplify, review, and compound learning. It never replaces the Luna writer
+boundary. Any CE execution that reaches code changes returns through
+`/implement` or `/build`, according to scope.

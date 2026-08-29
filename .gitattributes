@@ -3,3 +3,4 @@
 # filter restores it on checkout. install.sh configures the filter per machine
 # (the filter definition lives in local .git/config, never committed).
 settings.json filter=claudehome
+agents/implementer.md filter=claudehome

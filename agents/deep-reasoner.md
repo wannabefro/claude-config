@@ -12,7 +12,7 @@ description: >-
   for routine multi-step work; both are cheaper and this agent is wasted on
   them. NOT for writing production code (use implementer).
 model: opus
-effort: high
+effort: xhigh
 tools:
   - Read
   - Grep

@@ -1,99 +1,24 @@
 # Routing rationale
 
-Background for the tie-breaks and delegation table in `rules/routing.md`. That file stays
-directive-only; this doc holds the "why" trimmed out of it.
+The default route separates judgment from implementation. Opus xhigh owns
+planning, architecture, design, diagnosis, review, integration, and final
+verification. Codex Luna xhigh owns all implementation writes through one
+fixed wrapper.
 
-## Tie-break reasoning
+Compound Engineering remains installed because its planning, debug,
+simplification, review, and learning skills retain project value. It is an
+explicit toolbox and never acts as the scheduler or writer.
 
-- `ce-debug` / `diagnose` / `superpowers:systematic-debugging` → `ce-debug`: its output feeds
-  `ce-work` directly, so a diagnosis produced by either alternative still has to be re-shaped before
-  `ce-work` can consume it.
-- `/council` / `ce-code-review` → `/council` is the default review path. `ce-code-review` is only
-  correct inside a blank `ce-work` run, where it is hardwired and cannot be overridden from outside
-  — and there you do *not* also run council (that would double-review the same diff).
-- `ce-plan` / `superpowers:writing-plans` / `Plan` agent → `ce-plan`, because the plan file is the
-  durable checkpoint that survives context loss; `Plan` is reserved for architecture-only design
-  with no execution plan to write.
-- `dogfood` / `verify-this` → resolved by retirement rather than tie-break: `verify-this` is retired
-  (below), so `dogfood` takes both jobs. Until 2026-07-27 the table split them — `dogfood` exercises
-  a change in its real runtime, `verify-this` proves one specific measurable claim — but the split
-  never got used, and leaving the row in while the skill was retired made the file contradict itself.
+The removed tier router could override an agent's model without a visible
+decision. One coherent unit now uses `/implement`; structured work uses the
+two visible build shapes and a hard three-worker ceiling. The implementer
+frontmatter and wrapper provide the single writer boundary.
 
-## Delegation reasoning
+`/review` is the default assembled-diff route. Mechanical changes use gates and
+one Opus inspection. Normal changes use one Opus reviewer and one Codex Sol
+outsider. Guardrail changes use the explicit full `/council`, which no longer
+uses triage to reduce seating.
 
-- Read-heavy gathering routes to `Explore` for codebase questions and `general-purpose` for
-  multi-step audits — both keep verbose intermediate work out of the main thread's context.
-- Every approved plan starts at `/build` because it computes the decomposition instead of assuming
-  it: `decomposable:false` is a legitimate, real answer for coupled work, not a fallback failure —
-  coupled units still get built, just serially instead of fanned out.
-- Well-specified units (or units `/build` marked coupled) go to `implementer`; the dispatcher reviews
-  the returned diff rather than trusting it uninspected.
-- `/council` is the default review for any diff you own because Haiku triage sizes the seating
-  automatically — an ordinary diff pays for two lenses, a guardrail diff (auth, payments,
-  migrations, data mutation, public API) seats the full six including the Codex outsider.
-- `ce-code-review` only applies inside a blank `ce-work` run, where it is already hardwired; fighting
-  that wiring from outside just produces a second, redundant review pass.
-- `/codex:rescue` is for the same bug after two failed Claude attempts — a same-family third attempt
-  rarely finds what two already missed, so the cross-family lens goes in instead.
-- `/codex:rescue --background` is for large bounded tasks that would otherwise eat the main thread's
-  context for an extended run.
-
-## Retired skills — evidence
-
-## CodeRabbit's two halves
-
-The plugin ships two skills with very different portability, and conflating them is what makes
-CodeRabbit feel unreliable across machines:
-
-- `autofix` reads CodeRabbit's review threads off an open PR using `gh` alone — verified, no
-  `coderabbit` invocation anywhere in the skill. The GitHub app is account-level, so this works on
-  every machine and needs no local install.
-- `code-review` shells out to a `coderabbit` binary and a per-machine `coderabbit auth login`. It is
-  absent on at least one machine (checked 2026-07-27: not in `/opt/homebrew/bin`, `/usr/local/bin`,
-  or `~/.local/bin`).
-
-`settings.json` is synced, so `"coderabbit@sam": true` enables the plugin everywhere — the plugin's
-presence is uniform while the binary's is not. The skill fails politely (it prints an install
-message) but only after a review has already been routed to it.
-
-Its description claims to be the "default code-review skill" and to trigger autonomously on any
-review request. That would hijack generic review wording on every machine, working or not. The
-description can't be usefully edited — it lives in `plugins/cache/` and a plugin update overwrites
-it — so the precedence is asserted in `rules/routing.md` instead, which survives.
-
-The CLI is left uninstalled deliberately: `/council` never seated CodeRabbit, `sam-review` (the only
-route that made it an "Always" lens) is retired below, and `autofix` covers the PR-thread case
-without it. Installing it would add a per-machine auth step to unblock a path nothing routes to.
-
-## Measuring skill use (2026-07-28)
-
-`scripts/audit-skills.py` counts **invocations**, not name mentions — a skill named in prose or in
-another skill's routing table is not a use, and conflating the two is how a dead route looks alive.
-Two signals count: a `Skill` tool call (`tool_use` block, `input.skill`) and a slash-command
-expansion (`<command-name>`), from any thread including subagents. It also reports each skill's age
-from git, because a skill added last week with 0 uses is untested, not unused.
-
-Result across 895 transcripts: 12 of 19 local skills/commands had **zero** invocations, all of them
-35 days old. The work is overwhelmingly done by plugin skills — `ce-plan` 64, `ce-work` 35,
-`ce-brainstorm` 18 — while local ones barely register. Agents told the same story: `implementer`
-218, `Explore` 121, against `test-writer` 0 and `spec-deriver` 2.
-
-Deleted the zero-use set, with three deliberate exceptions:
-
-- `ci-triage` and `pr-watch` are live routes in `rules/shipping.md`. Zero uses reflects how rarely
-  CI and PR events occur in this repo, not deadness — absence of a trigger, not absence of value.
-- `handoff` / `resume-handoff` are a pair for context exhaustion. Rare by design; deleting one half
-  would leave the other incoherent.
-- `deep-reasoner` was 28 hours old. Untested, not unused.
-
-The `self-consistency` cluster went as a unit — the skill, the `spec-deriver` and `test-writer`
-agents that existed only to serve it, and `self-consistency-nudge.sh`, a hook that was registered
-nowhere and pointed at a skill already retired. Deleting the skill alone would have left three
-orphans behind.
-
-**Retired 2026-07-27:** `sam-review`, `self-consistency`, `best-of-n`, `verify-this` went unused
-across 43 measured sessions, and two of them (`sam-review` and `best-of-n`) were the skills the repo's
-own hooks pointed at — so the non-use wasn't for lack of a wired-up trigger, it reflects that the
-routing table's other entries covered the same ground more often. The skills remain on disk and can
-still be invoked by name deliberately; they are simply no longer part of the default routing
-decision. Cross-family second opinions go to `/codex:*` or the council's outsider seat instead.
+CodeRabbit remains available for its GitHub review-thread path. Its marketplace
+entry uses strict component validation. The CLI stays a host-local optional
+dependency and never becomes an automatic model route.

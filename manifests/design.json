@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "product": "open-design",
+  "stable_version": "0.21.0",
+  "stable_tag": "open-design-v0.21.0",
+  "source_commit": "dbbd3b42eab9609065637452b347f903d7125ecd",
+  "metadata_url": "https://releases.open-design.ai/stable/latest/metadata.json",
+  "releases": {
+    "arm64": {
+      "url": "https://releases.open-design.ai/stable/versions/0.21.0/open-design-0.21.0-mac-arm64.dmg",
+      "sha256": "b553f49c1fbdc7dcca4ca225d682ad5d672e0a1363653ce953eceecd76e53326"
+    },
+    "x86_64": {
+      "url": "https://releases.open-design.ai/stable/versions/0.21.0/open-design-0.21.0-mac-x64.dmg",
+      "sha256": "f73241ee3f0c8eb6ae7c63089cf0c3037fa0d39d9d40ba427fc2322ac95fbd03"
+    }
+  },
+  "bundle_id": "io.open-design.desktop",
+  "signing_identity": "Developer ID Application: Wei Huang (236R69AWW2)",
+  "team_id": "236R69AWW2"
+}

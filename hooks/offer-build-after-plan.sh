@@ -52,9 +52,8 @@ if [ "$declared" -gt 0 ] && [ "$free" -lt 2 ]; then
   jq -n --arg p "$plan" --arg u "$units" '{
     hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext:
       ("Plan " + $p + " has " + $u + " units but declares fewer than two that can start " +
-       "immediately — it is a dependency chain, so /build would buy little. Do NOT offer /build. " +
-       "Offer ce-work with the explicit plan path instead, and say in one clause why " +
-       "(chain, not parallelisable).") } }'
+       "immediately — it is a dependency chain, so parallel build would buy little. Offer /build " +
+       "with the explicit plan path and select its serial route (chain, not parallelisable).") } }'
   exit 0
 fi
 

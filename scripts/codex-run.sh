@@ -1,29 +1,35 @@
 #!/usr/bin/env bash
-# Bounded codex exec with the two known failure modes handled.
+# Bounded Codex planning/review pass with one fixed model and effort.
 #
-#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-M] [-N] "<prompt>"
+#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-N] "<prompt>"
 #   codex-run.sh -f brief.md -N        # brief inlined from a file, no exploring
 #   … | codex-run.sh -f - -N           # same, from stdin
 #
 # Use a file to CARRY the prompt, never to REFER to one. `-f` reads the file and
-# inlines it, so Codex needs no tool call. Naming a path inside the prompt makes
+# sends it through stdin, so the CLI never receives a giant prompt in argv and
+# Codex needs no tool call. Naming a path inside the prompt makes
 # Codex open it, and tool use is the measured failure mode. `-N` appends the
 # no-exploration constraint; omit it for a rescue that must read the repo.
 #
+# Planning, diagnosis, and review always use gpt-5.6-sol at xhigh effort. The
+# script makes one attempt only: an empty pass is reported, not retried at a
+# different model or effort.
+#
 # Exit codes are the point — a caller can branch on them instead of guessing
 # from output shape:
-#   0  answered
+#   0  answered with a real assistant result
 #   3  CLI unavailable (preflight failed; do NOT retry, do NOT go hunting)
 #   4  stalled (no output for the stall window; killed)
-#   5  empty (ran, exited 0, produced no assistant turn even at high effort)
+#   5  empty (ran, exited 0, produced no assistant result)
 #   6  refused (provider returned no capacity, e.g. out of credits — NOT a review)
+#   7  runtime failure (CLI exited non-zero before producing an answer)
 #
 # Why each guard exists, measured on this machine:
 #  * Preflight. A wedged syspolicyd left `codex --version` itself hanging for
 #    13d; every downstream call then burned its full timeout. 10s is generous
 #    for a version string, and failing here is decisive rather than a retry.
-#  * Effort. Default reasoning effort on gpt-5.5 is `none`, which consumes the
-#    prompt and exits 0 with no turn. Always pass medium; retry once at high.
+#  * Model, effort, and sandbox. The fixed Sol/xhigh/read-only arguments prevent
+#    default-model inheritance and avoid silent effort fallback or writes.
 #  * Stall window. Silence inside the run means hung, not thinking. Note the
 #    run is buffered to a temp file, so the CALLER sees nothing until the end
 #    — that is normal, and is why the heartbeat below exists. Never infer a
@@ -39,10 +45,13 @@
 #  * Never background. A backgrounded run leaves the async rescue wrapper
 #    reporting "still running" forever with no rollout file.
 set -uo pipefail
+umask 077
 
 TIMEOUT=600
 STALL=120
 DIR="."
+BUNDLE=""
+SECRET_FILE=""
 MCP=0
 FROM_FILE=""
 NO_EXPLORE=0
@@ -51,6 +60,8 @@ while [ $# -gt 0 ]; do
     -t) TIMEOUT="$2"; shift 2 ;;
     -s) STALL="$2"; shift 2 ;;
     -d) DIR="$2"; shift 2 ;;
+    -B) BUNDLE="$2"; shift 2 ;;
+    -S) SECRET_FILE="$2"; shift 2 ;;
     -M) MCP=1; shift ;;
     -f) FROM_FILE="$2"; shift 2 ;;
     -N) NO_EXPLORE=1; shift ;;
@@ -67,7 +78,11 @@ if [ -n "$FROM_FILE" ]; then
   fi
   [ -n "$PROMPT" ] || { echo "codex-run: $FROM_FILE is empty" >&2; exit 2; }
 else
-  PROMPT="${1:?usage: codex-run.sh [-t SECS] [-s SECS] [-d DIR] [-M] [-N] (-f FILE|-|\"<prompt>\")}"
+  if [ $# -lt 1 ]; then
+    echo 'usage: codex-run.sh [-t SECS] [-s SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-N] (-f FILE|-|"<prompt>")' >&2
+    exit 2
+  fi
+  PROMPT="$1"
 fi
 
 if [ "$NO_EXPLORE" -eq 1 ]; then
@@ -78,7 +93,40 @@ search the repo. Everything you need is stated above. A run that explores the
 repo is a failed run."
 fi
 
-if ! timeout 10 codex --version >/dev/null 2>&1; then
+CODEX_BIN="${CODEX_BIN:-codex}"
+if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
+  echo "codex-run: CLI unavailable (approved Codex command was not found)." >&2
+  echo "codex-run: do not retry or hunt processes — report it unavailable." >&2
+  exit 3
+fi
+
+if [ -n "$BUNDLE" ]; then
+  SECRET_SCANNER="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/review-secret-scan.sh"
+  [ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
+  "$SECRET_SCANNER" "$BUNDLE" >/dev/null || {
+    echo 'codex-run: review bundle failed the secret scan; refusing cross-provider transfer.' >&2
+    exit 8
+  }
+fi
+if [ -n "$SECRET_FILE" ]; then
+  SECRET_SCANNER="${SECRET_SCANNER:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/review-secret-scan.sh}"
+  [ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
+  "$SECRET_SCANNER" --file "$SECRET_FILE" >/dev/null || {
+    echo 'codex-run: planning brief failed the secret scan; refusing cross-provider transfer.' >&2
+    exit 8
+  }
+fi
+
+PERL_BIN=/usr/bin/perl
+if [ ! -x "$PERL_BIN" ]; then
+  PERL_BIN=$(command -v perl 2>/dev/null || true)
+fi
+if [ -z "$PERL_BIN" ] || [ ! -x "$PERL_BIN" ]; then
+  echo "codex-run: portable timeout runtime (perl) unavailable." >&2
+  exit 3
+fi
+
+if ! "$PERL_BIN" -e 'alarm shift; exec @ARGV' 10 "$CODEX_BIN" --version >/dev/null 2>&1; then
   echo "codex-run: CLI unavailable (preflight timed out or failed)." >&2
   echo "codex-run: do not retry or hunt processes — report it unavailable." >&2
   echo "codex-run: if this persists, a wedged syspolicyd has caused it before:" >&2
@@ -86,19 +134,45 @@ if ! timeout 10 codex --version >/dev/null 2>&1; then
   exit 3
 fi
 
-out=$(mktemp)
-trap 'rm -f "$out"' EXIT
+out=$(mktemp "${TMPDIR:-/tmp}/claude-codex-run.XXXXXXXX")
+last_message=$(mktemp "${TMPDIR:-/tmp}/claude-codex-last-message.XXXXXXXX")
+prompt_input=$(mktemp "${TMPDIR:-/tmp}/claude-codex-input.XXXXXXXX")
+printf '%s' "$PROMPT" > "$prompt_input"
+trap 'rm -f "$out" "$last_message" "$prompt_input"' EXIT
 
 MCP_ARGS=()
 [ "$MCP" -eq 0 ] && MCP_ARGS=(-c 'mcp_servers={}')
 
-run_at() {
-  local effort="$1"
+run_once() {
   : > "$out"
-  ( cd "$DIR" && timeout "$TIMEOUT" codex exec --skip-git-repo-check \
-      "${MCP_ARGS[@]}" -c "model_reasoning_effort=$effort" "$PROMPT" \
-      < /dev/null > "$out" 2>&1 ) &
+  : > "$last_message"
+  (
+    cd "$DIR" || exit 1
+    exec "$PERL_BIN" -e 'setpgrp(0, 0); alarm shift; exec @ARGV' "$TIMEOUT" "$CODEX_BIN" exec \
+      --skip-git-repo-check \
+      --model gpt-5.6-sol \
+      --sandbox read-only \
+      "${MCP_ARGS[@]}" \
+      -c 'model_reasoning_effort=xhigh' \
+      --output-last-message "$last_message" \
+      -
+  ) < "$prompt_input" > "$out" 2>&1 &
   local pid=$! last=0 quiet=0 elapsed=0
+  local group_pid self_group
+  group_pid=''
+  self_group=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)
+  for _ in 1 2 3 4 5; do
+    group_pid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+    [ -n "$group_pid" ] && [ "$group_pid" != "$self_group" ] && break
+    sleep 0.05
+  done
+  kill_group() {
+    if [[ "$group_pid" =~ ^[0-9]+$ ]] && [ "$group_pid" != '0' ] && [ "$group_pid" != "$self_group" ]; then
+      kill -KILL -- "-$group_pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    else
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  }
   while kill -0 "$pid" 2>/dev/null; do
     sleep 5
     elapsed=$((elapsed+5))
@@ -107,26 +181,26 @@ run_at() {
     # Output is buffered, so without this the caller cannot tell a working run
     # from a hung one and kills a healthy pass. Measured: that happened twice.
     if [ $((elapsed % 30)) -eq 0 ]; then
-      echo "codex-run: ${effort} effort, ${elapsed}s elapsed, ${now} bytes, ${quiet}s quiet" >&2
+      echo "codex-run: Sol xhigh, ${elapsed}s elapsed, ${now} bytes, ${quiet}s quiet" >&2
     fi
     if [ "$quiet" -ge "$STALL" ]; then
-      kill -9 "$pid" 2>/dev/null
+      kill_group
       wait "$pid" 2>/dev/null
       return 99
     fi
   done
   wait "$pid" 2>/dev/null
-  return $?
+  local rc=$?
+  # Perl's alarm kills the leader at the hard timeout; reap the whole private
+  # process group so descendants cannot survive a timeout.
+  if [ "$rc" -eq 142 ]; then kill_group; fi
+  return "$rc"
 }
 
-# An assistant turn is anything beyond the echoed prompt and rmcp/oauth noise.
-
-# No `grep -q`: its early exit SIGPIPEs upstream, so pipefail reports 141.
 answered() {
-  local rest
-  rest=$(grep -vE '^\s*$|rmcp|oauth|OAuth|^user$|^codex$|tokens used|^\[|ERROR codex_' "$out" \
-    | grep -v -F -x "$PROMPT")
-  [ -n "$rest" ]
+  # --output-last-message is the authoritative assistant-result channel. A
+  # header, echoed prompt, or telemetry line can never satisfy this check.
+  [ -s "$last_message" ] && awk 'NF { found=1; exit } END { exit(found ? 0 : 1) }' "$last_message"
 }
 
 # Codex exits 0 on a refusal. Match the exact phrase, or a rate-limit review fails.
@@ -134,36 +208,38 @@ refused() {
   grep -qiF 'workspace is out of credits' "$out"
 }
 
-run_at medium; rc=$?
+run_once; rc=$?
 if [ "$rc" -eq 99 ]; then
   echo "codex-run: STALLED — no output for ${STALL}s, killed." >&2
   echo "codex-run: MCP is already off unless you passed -M; if you did, drop it." >&2
   echo "codex-run: otherwise re-run with the code/context INLINE so the run needs" >&2
   echo "codex-run: no file reads. Waiting longer does not help." >&2
-  cat "$out"
+  cat "$out" >&2
   exit 4
+fi
+
+if [ "$rc" -ne 0 ]; then
+  echo "codex-run: RUNTIME FAILURE — Codex exited with status $rc before returning a review." >&2
+  cat "$out" >&2
+  exit 7
 fi
 
 if refused; then
   echo "codex-run: REFUSED — the provider returned no capacity, not a review." >&2
   echo "codex-run: this does NOT satisfy a cross-model pass. Report the gap." >&2
-  cat "$out"
+  cat "$out" >&2
   exit 6
 fi
 
 if ! answered; then
-  run_at high; rc=$?
-  if [ "$rc" -eq 99 ]; then
-    echo "codex-run: STALLED at high effort — killed. Inline the context and retry." >&2
-    cat "$out"; exit 4
-  fi
-  if ! answered; then
-    echo "codex-run: EMPTY — ran and exited $rc with no assistant turn, at medium and high." >&2
-    echo "codex-run: report this as an empty pass. It does NOT satisfy a cross-model review." >&2
-    cat "$out"
-    exit 5
-  fi
+  echo "codex-run: EMPTY — one fixed gpt-5.6-sol xhigh pass produced no assistant result (exit $rc)." >&2
+  echo "codex-run: report this as an empty pass. No model or effort fallback was attempted." >&2
+  cat "$out" >&2
+  exit 5
 fi
 
-cat "$out"
+# The provider's transport stream contains headers, telemetry, and sometimes
+# echoed input. Only the explicit assistant-result file is authoritative and
+# may be returned on stdout to the caller.
+cat "$last_message"
 exit 0

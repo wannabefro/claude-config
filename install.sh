@@ -33,6 +33,7 @@ prereq_hint() {
     git)   echo "xcode-select --install   # or: brew install git" ;;
     gh)    echo "brew install gh && gh auth login" ;;
     node)  echo "brew install fnm && fnm install --lts   # or: brew install node" ;;
+    perl)  echo "xcode-select --install   # or: brew install perl" ;;
     rg)    echo "brew install ripgrep" ;;
     jq)    echo "brew install jq" ;;
     codex) echo "npm install -g @openai/codex" ;;
@@ -43,11 +44,35 @@ prereq_hint() {
     *)     echo "see README" ;;
   esac
 }
-PREREQS="git gh node rg jq codex rtk cmux wt bd"
+PREREQS="git gh node perl rg jq codex rtk cmux wt bd"
 missing=""
 for t in $PREREQS; do
-  if command -v "$t" >/dev/null 2>&1; then printf '  ✓ %s\n' "$t"
-  else printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"; missing="$missing $t"; fi
+  if ! command -v "$t" >/dev/null 2>&1; then
+    printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
+    missing="$missing $t"
+    continue
+  fi
+  if [ "$t" = node ]; then
+    node_version="$(node --version 2>/dev/null || true)"
+    node_major="${node_version#v}"
+    node_major="${node_major%%.*}"
+    if ! case "$node_major" in ''|*[!0-9]*) false ;; *) [ "$node_major" -ge 20 ] && [ "$node_major" -le 24 ] ;; esac \
+      || ! node -e 'process.exit(0)' >/dev/null 2>&1; then
+      printf '  ✗ node  (unsupported or failed runtime; use Node 20–24 LTS, preferably 24)\n'
+      missing="$missing node-runtime"
+    else
+      printf '  ✓ node %s (supported runtime)\n' "$node_version"
+    fi
+  elif [ "$t" = codex ]; then
+    if ! /usr/bin/perl -e 'alarm shift; exec @ARGV' 10 codex --version >/dev/null 2>&1; then
+      printf '  ✗ codex  (CLI runtime probe failed)\n'
+      missing="$missing codex-runtime"
+    else
+      printf '  ✓ codex (CLI runtime probe passed)\n'
+    fi
+  else
+    printf '  ✓ %s\n' "$t"
+  fi
 done
 [ -n "$missing" ] && log "Missing:$missing — run the install hints shown above."
 if [ "$CHECK_ONLY" -eq 1 ]; then log "--check done."; exit 0; fi
@@ -105,25 +130,28 @@ else
 fi
 
 # --- materialize home paths via the templating filter -----------------------
-# settings.json is committed with a __CLAUDE_HOME__ placeholder. Configure the
+# settings.json and implementer instructions are committed with a
+# __CLAUDE_HOME__ placeholder. Configure the
 # per-machine clean/smudge filter (definition lives in local .git/config, never
 # committed) and re-checkout so the working copy carries this machine's real
 # ~/.claude paths in hook commands.
-log "Configuring path filter and materializing settings.json for $TARGET"
+log "Configuring path filter and materializing home paths for $TARGET"
 git -C "$TARGET" config filter.claudehome.clean  "sed \"s#$TARGET#__CLAUDE_HOME__#g\""
 git -C "$TARGET" config filter.claudehome.smudge "sed \"s#__CLAUDE_HOME__#$TARGET#g\""
-rm -f "$TARGET/settings.json"
-git -C "$TARGET" checkout -- settings.json
+rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
+git -C "$TARGET" checkout -- settings.json agents/implementer.md
 
 log "Done. Next steps:"
 cat <<'EOF'
-  1. Launch Claude Code — plugins rehydrate automatically from settings.json
-     (enabledPlugins + extraKnownMarketplaces). No plugin cache is committed.
-  2. Install any prereqs reported missing above.
-  3. Re-authenticate MCP servers (they carry no committed credentials):
-     context-mode, codegraph, serena, context7, github, linear, slack,
-     sentry, chrome-real, playwright, plus any CI/observability or
-     employer-internal servers configured in your local settings overlay.
-  4. Verify rehydration: `claude` then check /plugins and the MCP server list
-     against settings.json. GoogleDrive is no longer required for skills.
+  1. Install any prerequisites reported missing above. This config never installs tools.
+  2. Start a NEW Claude Code session. Model, plugin, permission, and MCP discovery are session-scoped.
+  3. Confirm the policy: Opus xhigh plans, reviews, integrates, and verifies; Codex gpt-5.6-luna xhigh writes.
+     `/implement` handles one coherent unit. `/build` handles structured work and allows at most three Luna implementers.
+     `/review` selects mechanical, normal, or guardrail review; explicit `/council` always uses full seating.
+  4. Re-authenticate only the MCP servers required on this Mac. Credentials and OAuth state are not synced.
+     GitHub connector authentication is separate from terminal Git and gh authentication.
+  5. Check Remote Control and required macOS permissions on this Mac.
+  6. Open Design is optional. If present, verify the signed manifest artifact and configure MCP only from
+     the exact signed-app-generated snippet. Do not assume bare `od` is Open Design; /usr/bin/od is Apple octal dump.
+  7. Verify `/plugins`, the MCP list, `/implement`, `/build`, and `/review` after the new session starts. See docs/design-workflow.md.
 EOF
