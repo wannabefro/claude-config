@@ -46,6 +46,16 @@ if [ -z "$CODEX_BIN" ] || [ ! -x "$CODEX_BIN" ]; then
   echo "luna-run: approved Codex CLI is unavailable" >&2
   exit "$MISSING_RUNTIME"
 fi
+# Resolve the approved command once. Tests inject a fake approved command by
+# placing it first in PATH; callers cannot replace the runtime with an env var.
+CODEX_BIN=$(realpath "$CODEX_BIN" 2>/dev/null) || {
+  echo "luna-run: approved Codex CLI path could not be resolved" >&2
+  exit "$MISSING_RUNTIME"
+}
+[ -x "$CODEX_BIN" ] || {
+  echo "luna-run: resolved Codex CLI is not executable" >&2
+  exit "$MISSING_RUNTIME"
+}
 
 PERL_BIN=/usr/bin/perl
 if [ ! -x "$PERL_BIN" ]; then
@@ -101,8 +111,23 @@ process_group() {
 # sandbox. `mcp_servers={}` disables MCP for this implementation run.
 # The watcher owns the child process group: a timed-out Codex process cannot
 # leave a descendant alive to keep writing in the private worktree.
-out=$(mktemp "${TMPDIR:-/tmp}/claude-luna-run.XXXXXXXX")
-cleanup_out() { rm -f -- "$out"; }
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-luna-run.XXXXXXXX") || {
+  echo "luna-run: private runtime directory could not be created" >&2
+  exit "$MISSING_RUNTIME"
+}
+run_owner=$(stat -f '%u' "$run_dir" 2>/dev/null || stat -c '%u' "$run_dir" 2>/dev/null || true)
+run_mode=$(stat -f '%Lp' "$run_dir" 2>/dev/null || stat -c '%a' "$run_dir" 2>/dev/null || true)
+if [ "$run_owner" != "$(id -u)" ] || [ "$run_mode" != '700' ]; then
+  rm -rf -- "$run_dir"
+  echo "luna-run: private runtime directory is not owner-private" >&2
+  exit "$MISSING_RUNTIME"
+fi
+out="$run_dir/output"
+cleanup_out() {
+  if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
+    rm -rf -- "$run_dir"
+  fi
+}
 trap cleanup_out EXIT HUP INT TERM
 (
   cd "$WORKING_DIRECTORY" || exit "$USAGE"

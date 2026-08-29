@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 
 const root = mkdtempSync(join(tmpdir(), 'claude-review-bundle-'))
 const repo = join(root, 'repo')
-const out = join(root, 'bundle')
+const out = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 mkdirSync(repo)
 const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' })
 git('init', '-q')
@@ -98,8 +98,20 @@ check('gitlinks are represented by metadata rather than recursively copied',
   readFileSync(join(out, 'files', 'after', 'submodule.gitlink'), 'utf8').includes(submoduleCommit) &&
   !existsSync(join(out, 'files', 'after', 'submodule', 'content.txt')))
 
+const persistentOut = join(root, 'persistent-bundle')
+mkdirSync(persistentOut)
+let persistentCode = 0
+try { execFileSync(script, [repo, persistentOut, 'HEAD..HEAD'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { persistentCode = error.status || 1 }
+check('review assembly rejects a persistent caller directory', persistentCode !== 0 && existsSync(persistentOut), `status=${persistentCode}`)
+
+const insecureOut = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
+chmodSync(insecureOut, 0o755)
+let insecureCode = 0
+try { execFileSync(script, [repo, insecureOut, 'HEAD..HEAD'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { insecureCode = error.status || 1 }
+check('review assembly rejects a non-private caller directory', insecureCode !== 0 && existsSync(insecureOut), `status=${insecureCode}`)
+
 const boundedRepo = join(root, 'bounded-repo')
-const boundedOut = join(root, 'bounded-bundle')
+const boundedOut = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 mkdirSync(boundedRepo)
 const boundedGit = (...args) => execFileSync('git', ['-C', boundedRepo, ...args], { encoding: 'utf8' })
 boundedGit('init', '-q')
@@ -133,6 +145,9 @@ let failedAssemblyCode = 0
 try { execFileSync(script, [failedRepo, failedOut, 'HEAD..HEAD'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { failedAssemblyCode = error.status || 1 }
 check('assembly failure cleans its private output directory', failedAssemblyCode !== 0 && !existsSync(failedOut), `status=${failedAssemblyCode} exists=${existsSync(failedOut)}`)
 
+rmSync(out, { recursive: true, force: true })
+rmSync(insecureOut, { recursive: true, force: true })
+rmSync(boundedOut, { recursive: true, force: true })
 rmSync(root, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

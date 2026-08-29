@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Decompose', detail: 'Opus splits the work into units with executable done-criteria' },
     { title: 'Build', detail: 'each Luna unit starts as soon as its dependencies are green, in the approved workspace' },
-    { title: 'Integrate', detail: 'merge sequence in dependency order — no automatic merging' },
+    { title: 'Integrate', detail: 'completion-order integration under a mutex; dependency order remains gated' },
   ],
 }
 
@@ -15,11 +15,11 @@ export const meta = {
 
 const PLAN = {
   type: 'object',
-  required: ['route', 'route_reason', 'workspace', 'workspace_reason', 'working_directory', 'base_commit', 'reason', 'units'],
+  required: ['route', 'route_reason', 'workspace', 'workspace_reason', 'working_directory', 'base_commit', 'reason', 'ignored_dependencies', 'units'],
   properties: {
     route: {
       enum: ['parallel', 'serial'],
-      description: 'parallel = two or more independent units with disjoint files and no shared contract. serial = one Luna implementer handles structured coupled work. One coherent, clearly scoped unit belongs in /implement. Compound Engineering remains an explicit planning and review toolbox, not the scheduler.',
+      description: 'parallel = the maximum reachable DAG frontier is at least two and concurrently-ready units have disjoint canonical ownership; ordered provider/consumer contracts are allowed when the dependency edge is declared. serial = maximum frontier width one, or genuine coupling among concurrently-ready units. One coherent, clearly scoped unit belongs in /implement. Compound Engineering remains an explicit planning and review toolbox, not the scheduler.',
     },
     route_reason: { type: 'string', minLength: 1, description: 'Why this route and not the other route — name the deciding property (shared file, shared contract, size, coupling), not a generic phrase' },
     workspace: {
@@ -27,6 +27,7 @@ const PLAN = {
       description: 'Every parallel unit receives a deterministic private git worktree. Shared checkout execution is never an accepted implementation mode.',
     },
     workspace_reason: { type: 'string', minLength: 1, description: 'Name the deciding fact — which ignored path the verify commands need, or the evidence that they need none' },
+    ignored_dependencies: { type: 'array', items: { type: 'string', minLength: 1 }, description: 'Exact repo-relative ignored dependency baselines to hydrate into every private worktree. Empty when no verify command needs ignored state.' },
     working_directory: { type: 'string', minLength: 1, description: 'Absolute path to the exact checkout where every unit must run. Never infer this at dispatch time.' },
     base_commit: { type: 'string', minLength: 1, description: 'HEAD commit of working_directory when this plan was created. Build approval rejects a stale checkout.' },
     working_tree_fingerprint: { type: 'string', description: 'SHA-256 fingerprint frozen by the dispatcher over index, tracked working-tree, and relevant untracked state. The dispatcher fills this before approval.' },
@@ -148,20 +149,27 @@ const INTEGRATION_RESULT = {
 }
 
 const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\\"'\\\"'")}'`
-const repoFingerprint = async (workingDirectory, label) => agent(
+const repoFingerprint = async (workingDirectory, label, ignoredDependencies = []) => {
+  const ignored = Array.isArray(ignoredDependencies) ? ignoredDependencies : []
+  const ignoredArgs = ignored.map(shellQuote).join(' ')
+  const ignoredScan = ignored.length
+    ? ` set -e; root=${shellQuote(workingDirectory)}; mode() { stat -f '%p' "$1" 2>/dev/null || stat -c '%a' "$1"; }; link() { local target; target=$(readlink "$1"); case "$target" in *$'\\n'*) exit 1 ;; esac; printf '%s\\0' "$target"; }; for ignored in ${ignoredArgs}; do target="$root/$ignored"; printf 'ignored-path=%s\\0' "$ignored"; if [ -L "$target" ]; then printf 'ignored-symlink=%s\\0' "$(mode "$target")"; link "$target"; elif [ -f "$target" ]; then printf 'ignored-file=%s\\0' "$(mode "$target")"; git -C "$root" hash-object --no-filters -- "$ignored"; elif [ -d "$target" ]; then printf 'ignored-directory=%s\\0' "$(mode "$target")"; find -P "$target" -mindepth 1 -print | LC_ALL=C sort | while IFS= read -r path; do rel=\${path#"$root"/}; if [ -L "$path" ]; then printf 'ignored-symlink=%s:%s\\0' "$rel" "$(mode "$path")"; link "$path"; elif [ -d "$path" ]; then printf 'ignored-directory=%s:%s\\0' "$rel" "$(mode "$path")"; elif [ -f "$path" ]; then printf 'ignored-file=%s:%s\\0' "$rel" "$(mode "$path")"; git -C "$root" hash-object --no-filters -- "$rel"; else printf 'ignored-other=%s:%s\\0' "$rel" "$(mode "$path")"; fi; done; else printf 'ignored-missing\\0'; fi; done;`
+    : ''
+  return agent(
   `Run exactly this read-only command in the frozen checkout and return the
 single lowercase SHA-256 value it prints. Do not inspect or modify files:
 
-  { git -C ${shellQuote(workingDirectory)} status --porcelain=v1 -z --untracked-files=all; git -C ${shellQuote(workingDirectory)} diff --binary HEAD --; git -C ${shellQuote(workingDirectory)} diff --cached --binary; git -C ${shellQuote(workingDirectory)} ls-files --others --exclude-standard -z | while IFS= read -r -d '' path; do printf 'untracked-path=%s\\0' "$path"; if [ -L ${shellQuote(workingDirectory)}/"$path" ]; then printf 'symlink-target=%s\\0' "$(readlink ${shellQuote(workingDirectory)}/"$path")"; elif [ -f ${shellQuote(workingDirectory)}/"$path" ]; then git -C ${shellQuote(workingDirectory)} hash-object --no-filters -- "$path"; else printf 'non-regular\\0'; fi; done; } | shasum -a 256 | awk '{print $1}'
+  { git -C ${shellQuote(workingDirectory)} status --porcelain=v1 -z --untracked-files=all; git -C ${shellQuote(workingDirectory)} diff --binary HEAD --; git -C ${shellQuote(workingDirectory)} diff --cached --binary; git -C ${shellQuote(workingDirectory)} ls-files --others --exclude-standard -z | while IFS= read -r -d '' path; do printf 'untracked-path=%s\\0' "$path"; if [ -L ${shellQuote(workingDirectory)}/"$path" ]; then printf 'symlink-target=%s\\0' "$(readlink ${shellQuote(workingDirectory)}/"$path")"; elif [ -f ${shellQuote(workingDirectory)}/"$path" ]; then git -C ${shellQuote(workingDirectory)} hash-object --no-filters -- "$path"; else printf 'non-regular\\0'; fi; done;${ignoredScan} } | shasum -a 256 | awk '{print $1}'
 
 The value must cover the index, tracked working-tree content, and all relevant
 (unignored) untracked paths and their bytes. Return fingerprint as the exact hash, or an empty
 fingerprint if the command failed.`,
   { label, phase: 'Build', agentType: 'explorer', schema: FINGERPRINT_CHECK }
-)
-const approvalSnapshot = async (workingDirectory, label) => {
+  )
+}
+const approvalSnapshot = async (workingDirectory, label, ignoredDependencies = []) => {
   const [fingerprint, head] = await parallel([
-    () => repoFingerprint(workingDirectory, `${label}:fingerprint`),
+    () => repoFingerprint(workingDirectory, `${label}:fingerprint`, ignoredDependencies),
     () => agent(
       `Run exactly this read-only command in the frozen working directory and return its output:
 
@@ -191,6 +199,7 @@ command as the structured result.
 
   python3 -c 'import json,os,sys
 root=os.path.realpath(sys.argv[1]); units=json.loads(sys.argv[2]); paths=[]; errors=[]
+if not os.path.isdir(root): errors.append("working directory does not exist: "+root)
 for unit in units:
   for rel in unit.get("files",[]):
     valid=isinstance(rel,str) and bool(rel) and not rel.startswith("/") and "\\\\" not in rel and "//" not in rel and not rel.endswith("/") and rel not in (".","..") and "." not in rel.split("/") and ".." not in rel.split("/")
@@ -284,12 +293,35 @@ const planValidation = (candidate) => {
   for (const field of ['route', 'route_reason', 'workspace', 'workspace_reason', 'working_directory', 'base_commit', 'reason']) {
     if (typeof candidate[field] !== 'string' || !candidate[field].trim()) errors.push(`missing required plan field: ${field}`)
   }
+  if (!Array.isArray(candidate.ignored_dependencies)) errors.push('ignored_dependencies must be an array')
+  else {
+    const ignored = new Set()
+    for (const path of candidate.ignored_dependencies) {
+      if (typeof path !== 'string' || !path.trim() || path !== path.trim() || path.includes('\0') || path.includes('\n') || path.startsWith('/') || path.includes('\\') || path.includes('//') || path.endsWith('/') || path.split('/').some((part) => part === '.' || part === '..' || !part)) {
+        errors.push('ignored_dependencies must contain canonical repo-relative paths')
+      } else if (ignored.has(path)) errors.push(`ignored_dependencies repeats path: ${path}`)
+      else ignored.add(path)
+    }
+  }
   if (!['parallel', 'serial'].includes(candidate.route)) errors.push('route must be parallel or serial')
   if (candidate.workspace !== 'worktree') errors.push('workspace must be worktree')
-  if (candidate.working_directory && !candidate.working_directory.startsWith('/')) errors.push('working_directory must be an absolute path')
-  if (!Array.isArray(candidate.units) || !candidate.units.length) errors.push('units must be a non-empty array')
+  if (candidate.working_directory && (
+    !candidate.working_directory.startsWith('/') ||
+    candidate.working_directory !== candidate.working_directory.trim() ||
+    candidate.working_directory.includes('\0') ||
+    (candidate.working_directory !== '/' && candidate.working_directory.endsWith('/')) ||
+    /\/{2,}|\/\.\/?|\/\.\.\/?/.test(candidate.working_directory)
+  )) errors.push('working_directory must be a canonical absolute path')
+  if (typeof candidate.base_commit === 'string' && !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(candidate.base_commit)) {
+    errors.push('base_commit must be an exact Git commit id')
+  }
+  if (typeof candidate.working_tree_fingerprint === 'string' && candidate.working_tree_fingerprint && !/^[0-9a-f]{64}$/.test(candidate.working_tree_fingerprint)) {
+    errors.push('working_tree_fingerprint must be an exact lowercase SHA-256')
+  }
+  const units = Array.isArray(candidate.units) ? candidate.units : []
+  if (!units.length) errors.push('units must be a non-empty array')
   const seen = new Set()
-  for (const [index, unit] of (candidate.units || []).entries()) {
+  for (const [index, unit] of units.entries()) {
     if (!unit || typeof unit !== 'object') { errors.push(`unit ${index + 1} is not an object`); continue }
     for (const field of ['id', 'title', 'definition_of_done', 'verify_command']) {
       if (typeof unit[field] !== 'string' || !unit[field].trim()) errors.push(`unit ${index + 1} missing required field: ${field}`)
@@ -298,14 +330,36 @@ const planValidation = (candidate) => {
     if (unit.id) seen.add(unit.id)
     if (unit.id && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(unit.id)) errors.push(`unit ${unit.id} must use a worktree-safe id slug`)
     if (!Array.isArray(unit.depends_on)) errors.push(`unit ${unit.id || index + 1} requires depends_on array`)
-    if (Array.isArray(unit.depends_on) && unit.depends_on.some((dependency) => typeof dependency !== 'string' || !dependency.trim())) errors.push(`unit ${unit.id || index + 1} has invalid depends_on entries`)
+    if (Array.isArray(unit.depends_on)) {
+      const dependencies = new Set()
+      for (const dependency of unit.depends_on) {
+        if (typeof dependency !== 'string' || !dependency.trim()) errors.push(`unit ${unit.id || index + 1} has invalid depends_on entries`)
+        else if (dependency === unit.id) errors.push(`unit ${unit.id || index + 1} cannot depend on itself`)
+        else if (dependencies.has(dependency)) errors.push(`unit ${unit.id || index + 1} repeats dependency: ${dependency}`)
+        else dependencies.add(dependency)
+      }
+    }
     if (!Array.isArray(unit.files) || !unit.files.length) errors.push(`unit ${unit.id || index + 1} requires non-empty files ownership`)
+    const ownedFiles = new Set()
     for (const file of (unit.files || [])) {
-      if (typeof file !== 'string' || !file.trim() || file.startsWith('/') || file.split('/').includes('..')) errors.push(`unit ${unit.id || index + 1} has invalid file ownership`)
+      if (typeof file !== 'string' || !file.trim() || file !== file.trim() || file.includes('\0') || file.startsWith('/') || file.includes('\\') || file.includes('//') || file.split('/').some((part) => part === '.' || part === '..' || !part)) {
+        errors.push(`unit ${unit.id || index + 1} has invalid file ownership`)
+      } else if (ownedFiles.has(file)) {
+        errors.push(`unit ${unit.id || index + 1} repeats owned file: ${file}`)
+      } else {
+        ownedFiles.add(file)
+      }
     }
     for (const field of ['provides', 'consumes', 'removes']) {
       if (!Array.isArray(unit[field])) errors.push(`unit ${unit.id || index + 1} requires ${field} array`)
-      else if (unit[field].some((name) => typeof name !== 'string' || !name.trim())) errors.push(`unit ${unit.id || index + 1} has invalid ${field} entries`)
+      else {
+        const names = new Set()
+        for (const name of unit[field]) {
+          if (typeof name !== 'string' || !name.trim() || name !== name.trim() || name.includes('\0')) errors.push(`unit ${unit.id || index + 1} has invalid ${field} entries`)
+          else if (names.has(name)) errors.push(`unit ${unit.id || index + 1} repeats ${field} entry: ${name}`)
+          else names.add(name)
+        }
+      }
     }
   }
   return errors
@@ -342,7 +396,7 @@ if (build) {
   if (typeof approved.working_tree_fingerprint !== 'string' || !approved.working_tree_fingerprint.trim()) {
     return { error: 'Frozen plan is missing the index and working-tree fingerprint; no unit was dispatched.' }
   }
-  const currentSnapshot = await approvalSnapshot(approved.working_directory, 'build:approval-snapshot')
+  const currentSnapshot = await approvalSnapshot(approved.working_directory, 'build:approval-snapshot', approved.ignored_dependencies)
   if (!currentSnapshot || currentSnapshot.fingerprint !== approved.working_tree_fingerprint) {
     return {
       error: 'Frozen plan is stale; index, working tree, or relevant untracked state changed after approval. No unit was dispatched.',
@@ -377,6 +431,10 @@ Rules for a unit:
   exactly; never leave it implicit or ask a worker to guess.
 - Return \`base_commit\` as the exact \`git rev-parse HEAD\` output for that
   working directory. Approval rejects the payload if HEAD is stale.
+- Return \`ignored_dependencies\` as the exact repo-relative ignored dependency
+  paths needed by any verify command, or \`[]\` when no ignored baseline is
+  needed. These paths are fingerprinted at approval and hydrated one-way into
+  each private worktree; worker-created ignored writes are never copied back.
 - \`depends_on\` lists ONLY the units that must genuinely finish first — because this unit reads code
   the other one creates, or edits a file the other one owns. **Every id you add delays this unit and
   everything downstream of it.** A dependency added "to keep things tidy" or "to be safe" costs real
@@ -425,14 +483,22 @@ Rules for a unit:
 **Choosing the route is the most valuable thing you do here.** Pick one, and say which property
 decided it:
 
-- \`parallel\` — two or more units with disjoint files and no shared contract, at least two able to
-  start at once. Only this route earns the worktree and dispatch cost.
-- \`serial\` — sequential, coupled, or one-unit work handled by one Luna implementer. Compound
-  Engineering can provide an explicit plan or review, but it never performs the implementation.
+- \`parallel\` — the dependency DAG has maximum reachable frontier width >= 2.
+  Units that are concurrently ready must have disjoint canonical ownership.
+  Ordered provider/consumer contracts are valid when the provider is declared
+  in the consumer's \`depends_on\`; that edge does not remove unrelated units
+  from the same frontier.
+- \`serial\` — maximum frontier width one, or genuine ownership/contract
+  coupling among units that would otherwise be concurrently ready. Do not pick
+  serial merely because one unit depends on another: a wide frontier with an
+  independent unit must use parallel. Compound Engineering can provide an
+  explicit plan or review, but it never performs the implementation.
 
-Two failure modes, and the second is the expensive one. Forcing a fan-out on coupled work produces
-merge conflicts that cost more than the parallelism saved. But routing genuinely parallel work to
-\`serial\` is safe, and an over-parallelised build is wrong.`,
+The validator rejects unsafe fan-out and
+serial routing that discards independent frontier work. Name the deciding
+frontier and coupling facts in \`route_reason\`.
+\`serial\` is not a safe fallback for a wide independent frontier, and an
+over-parallelised build is wrong.`,
   { label: 'decompose', phase: 'Decompose', model: 'opus', effort: 'xhigh', schema: PLAN }
 )
 }
@@ -447,7 +513,7 @@ if (plan.route === 'parallel' && plan.workspace !== 'worktree') {
 }
 
 if (!build) {
-  const frozenFingerprint = await repoFingerprint(plan.working_directory, 'build:freeze-fingerprint')
+  const frozenFingerprint = await repoFingerprint(plan.working_directory, 'build:freeze-fingerprint', plan.ignored_dependencies)
   if (!frozenFingerprint || typeof frozenFingerprint.fingerprint !== 'string' || !frozenFingerprint.fingerprint.trim()) {
     return { error: 'Could not freeze the index and working-tree fingerprint; no plan was offered for approval.' }
   }
@@ -462,6 +528,22 @@ if (validationErrors.length) {
     plan,
   }
 }
+
+// Name the concrete fallback route before any read-only capability gate so
+// every malformed plan can return a useful recommendation without dispatch.
+const planPath = (task.match(/[\w./-]*docs\/plans\/[\w.-]+\.md/) || [])[0] || null
+const routeOf = (r) => r === 'parallel'
+  ? 'parallel Luna implementers after approval of the frozen split'
+  : `one serial Luna implementer${planPath ? ` using the explicit plan path: \`${planPath}\`` : ''}`
+// The decomposer's route always wins; the regex is only a fallback when none is returned.
+const fallbackRoute = routeOf(plan.route || 'serial')
+
+// Graph and contract validation must precede path ownership checks as well as
+// route dispatch. A malformed serial plan cannot spend an explorer gate call,
+// create a worktree, call Luna, or mutate the canonical checkout.
+const lexicalPaths = new Map(plan.units.flatMap((unit) => unit.files.map((file) => [`${unit.id}\0${file}`, { unit: unit.id, file, physical: `${plan.working_directory}/${file}`, identity: `path:${plan.working_directory}/${file}` }])))
+const earlySemanticPlanError = validatePlanSemantics(lexicalPaths)
+if (earlySemanticPlanError) return earlySemanticPlanError
 
 const ownedPathCheck = await pathCheck(plan)
 if (!ownedPathCheck || ownedPathCheck.status !== 'ready' || !Array.isArray(ownedPathCheck.paths)) {
@@ -507,16 +589,247 @@ if (pathErrors.length) {
   return { error: 'Canonical ownership check failed; no unit was dispatched.', path_errors: pathErrors, plan }
 }
 
-// Naming the concrete fallback route lets the caller act without a round trip.
-const planPath = (task.match(/[\w./-]*docs\/plans\/[\w.-]+\.md/) || [])[0] || null
-const routeOf = (r) => r === 'parallel'
-  ? 'parallel Luna implementers after approval of the frozen split'
-  : `one serial Luna implementer${planPath ? ` using the explicit plan path: \`${planPath}\`` : ''}`
-// The decomposer's route always wins; the regex is only a fallback when none is returned.
-const fallbackRoute = routeOf(plan.route || 'serial')
+// Keep every graph, ownership, and contract invariant in one fail-closed
+// preflight. This function is invoked before either route dispatches, so a
+// malformed serial plan cannot create a worktree, call Luna, or mutate the
+// canonical checkout before it is rejected.
+function validatePlanSemantics(paths) {
 
-// One unit isn't a fan-out — it pays worktree and dispatch cost for zero concurrency, so it falls back.
-if (plan.route === 'parallel' && plan.units && plan.units.length === 1) plan.route = 'serial'
+  // Ids must be unique — the scheduler keys a promise per id, so duplicates collapse but still count twice.
+  const idCounts = new Map()
+  for (const u of plan.units) idCounts.set(u.id, (idCounts.get(u.id) || 0) + 1)
+  const duplicates = [...idCounts].filter(([, n]) => n > 1).map(([id, n]) => ({ id, count: n }))
+  if (duplicates.length) {
+    return {
+      error: 'Decomposition emitted duplicate unit ids.',
+      duplicates,
+      recommendation: 'Re-run; ids must be unique because dependencies and scheduling are keyed on them.',
+      plan,
+    }
+  }
+
+  const byId = new Map(plan.units.map((u) => [u.id, u]))
+  const depsOf = (u) => (u.depends_on || []).filter((d) => d !== u.id)
+
+  // A dependency on a nonexistent unit would never resolve, so the scheduler would wait forever.
+  const dangling = []
+  for (const u of plan.units) {
+    for (const d of depsOf(u)) if (!byId.has(d)) dangling.push({ unit: u.id, missing: d })
+  }
+  if (dangling.length) {
+    return {
+      error: 'Decomposition references dependency ids that are not units.',
+      dangling,
+      recommendation: 'Re-run; the decomposer named a dependency it did not emit as a unit.',
+      plan,
+    }
+  }
+
+  // A cycle would deadlock the scheduler as a silent hang, not an error — refuse it up front.
+  const CYCLE_MARK = { visiting: 1, done: 2 }
+  const mark = new Map()
+  const cycles = []
+  const walk = (id, trail) => {
+    if (mark.get(id) === CYCLE_MARK.done) return
+    if (mark.get(id) === CYCLE_MARK.visiting) {
+      cycles.push([...trail.slice(trail.indexOf(id)), id].join(' -> '))
+      return
+    }
+    mark.set(id, CYCLE_MARK.visiting)
+    for (const d of depsOf(byId.get(id))) walk(d, [...trail, id])
+    mark.set(id, CYCLE_MARK.done)
+  }
+  for (const u of plan.units) walk(u.id, [])
+  if (cycles.length) {
+    return {
+      error: 'Dependency cycle — the units cannot be ordered.',
+      cycles: [...new Set(cycles)],
+      recommendation: 'Re-run with the cycle merged into one unit, or the false dependency removed.',
+      plan,
+    }
+  }
+
+  // Units may run concurrently only if neither is an ancestor of the other, and must not then share a file.
+  const ancestors = new Map()
+  const ancestorsOf = (id) => {
+    if (ancestors.has(id)) return ancestors.get(id)
+    const acc = new Set()
+    ancestors.set(id, acc) // set before recursing; the graph is already acyclic
+    for (const d of depsOf(byId.get(id))) {
+      acc.add(d)
+      for (const a of ancestorsOf(d)) acc.add(a)
+    }
+    return acc
+  }
+  for (const u of plan.units) ancestorsOf(u.id)
+  const ordered = (a, b) => ancestorsOf(a).has(b) || ancestorsOf(b).has(a)
+
+  const owners = new Map()
+  for (const u of plan.units) {
+    for (const f of (u.files || [])) {
+      const physical = paths.get(`${u.id}\0${f}`).physical
+      if (!owners.has(physical)) owners.set(physical, [])
+      owners.get(physical).push(u.id)
+    }
+  }
+  const conflicts = []
+  for (const [file, ids] of owners) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let k = i + 1; k < ids.length; k++) {
+        if (!ordered(ids[i], ids[k])) conflicts.push({ file, units: [ids[i], ids[k]] })
+      }
+    }
+  }
+  if (conflicts.length && plan.route === 'parallel') {
+    log(`${conflicts.length} concurrent file overlap(s) — refusing to fan out into a guaranteed conflict`)
+    return {
+      error: 'Units that can run concurrently share files.',
+      conflicts,
+      fallback: fallbackRoute,
+      recommendation: `Re-run once with the overlapping units merged or a real dependency declared. If it comes back overlapping again, the work is coupled — build it via ${fallbackRoute} instead of forcing a third decomposition.`,
+      plan,
+    }
+  }
+
+  // Distinct from file overlap: these units touch different files, so drift only appears at merge.
+  const providers = new Map()
+  for (const u of plan.units) {
+    for (const s of (u.provides || [])) {
+      if (!providers.has(s)) providers.set(s, [])
+      providers.get(s).push(u.id)
+    }
+  }
+  const contractIssues = []
+  for (const [sym, ids] of providers) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let k = i + 1; k < ids.length; k++) {
+        // Two units defining the same name collide even if ordered — the later one silently wins.
+        contractIssues.push({ kind: 'duplicate-provider', symbol: sym, units: [ids[i], ids[k]] })
+      }
+    }
+  }
+  for (const u of plan.units) {
+    for (const s of (u.consumes || [])) {
+      const matchingProviders = providers.get(s) || []
+      if (matchingProviders.length === 0) {
+        contractIssues.push({
+          kind: 'missing-provider',
+          symbol: s,
+          consumer: u.id,
+          detail: `${u.id} consumes "${s}" but no unit provides it. Declare the provider or remove the consume contract before dispatch.`,
+        })
+      }
+      for (const p of matchingProviders) {
+        if (p === u.id) continue
+        if (!ancestorsOf(u.id).has(p)) {
+          contractIssues.push({
+            kind: 'unordered-contract',
+            symbol: s,
+            consumer: u.id,
+            provider: p,
+            detail: `${u.id} consumes "${s}" but does not depend on ${p}, which provides it — both would verify green in isolation and disagree at merge.`,
+          })
+        }
+      }
+    }
+  }
+  // This isn't a correctness bug — it's spend on a question the plan already answered, invisible because nothing fails.
+  for (const remover of plan.units) {
+    for (const s of (remover.removes || [])) {
+      for (const victim of plan.units) {
+        if (victim.id === remover.id) continue
+        const touches = (victim.consumes || []).includes(s) || (victim.provides || []).includes(s)
+        if (!touches) continue
+        // Safe only if removal happens first — the victim is then written against the world that ships.
+        if (ancestorsOf(victim.id).has(remover.id)) continue
+        contractIssues.push({
+          kind: 'invalidated-work',
+          symbol: s,
+          wasted: victim.id,
+          remover: remover.id,
+          detail: `${victim.id} works on "${s}", which ${remover.id} deletes or rewrites. ${victim.id} does not depend on ${remover.id}, so it is scheduled against a world that will not exist. It will go green and the result will mean nothing.`,
+        })
+      }
+    }
+  }
+
+  if (contractIssues.length) {
+    log(`${contractIssues.length} contract issue(s) — refusing to fan out into drift that only shows at merge`)
+    return {
+      error: 'Units share a contract without an ordering that makes it real.',
+      contract_issues: contractIssues,
+      fallback: fallbackRoute,
+      recommendation: `For missing-provider, declare the unit that provides the name or remove the consume contract. For unordered-contract, add the provider to the consumer's depends_on. For duplicate-provider, one unit owns the name — merge them, or move the definition into a single unit the others depend on. For invalidated-work, put the remover FIRST — add it to the other unit's depends_on — or delete the other unit outright if it only existed to check something being removed; do not "just run it anyway", which is exactly the spend this catches. If a second decomposition still collides, the contract is genuinely shared: build via ${fallbackRoute}.`,
+      plan,
+    }
+  }
+
+  // Physical disjointness is checked after dependency ordering. Sequential
+  // units may intentionally hand off a file; units that can start concurrently
+  // may not share a file or one path's directory prefix.
+  const physicalConflicts = []
+  const physicalEntries = [...paths.values()]
+  for (let i = 0; i < physicalEntries.length; i++) {
+    for (let j = i + 1; j < physicalEntries.length; j++) {
+      const a = physicalEntries[i]
+      const b = physicalEntries[j]
+      const prefix = (left, right) => left === right || right.startsWith(`${left}/`)
+      const samePhysicalFile = a.identity === b.identity && a.identity.startsWith('inode:')
+      if ((samePhysicalFile || prefix(a.physical, b.physical) || prefix(b.physical, a.physical)) && !ordered(a.unit, b.unit)) {
+        physicalConflicts.push({ kind: 'physical-path-overlap', paths: [a.file, b.file], physical: [a.physical, b.physical], units: [a.unit, b.unit] })
+      }
+    }
+  }
+  if (physicalConflicts.length && plan.route === 'parallel') {
+    return {
+      error: 'Units that can run concurrently overlap physically; no unit was dispatched.',
+      conflicts: physicalConflicts,
+      fallback: fallbackRoute,
+      recommendation: 'Merge overlapping units or declare a real dependency. Shared execution never permits an unsafe fan-out.',
+      plan,
+    }
+  }
+  return null
+}
+
+const semanticPlanError = validatePlanSemantics(canonicalPaths)
+if (semanticPlanError) return semanticPlanError
+
+const frontierLayers = (() => {
+  const remaining = new Set(plan.units.map((u) => u.id))
+  const deps = (u) => (u.depends_on || []).filter((id) => remaining.has(id) || plan.units.some((candidate) => candidate.id === id))
+  const layers = []
+  while (remaining.size) {
+    const frontier = plan.units.filter((u) => remaining.has(u.id) && deps(u).every((id) => !remaining.has(id)))
+    if (!frontier.length) return []
+    layers.push(frontier)
+    for (const unit of frontier) remaining.delete(unit.id)
+  }
+  return layers
+})()
+const planFrontierWidth = frontierLayers.reduce((maximum, layer) => Math.max(maximum, layer.length), 0)
+const hasDeclaredCoupling = (() => {
+  const pathOverlaps = (left, right) => left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`)
+  const contractCouples = (left, right) => (left.provides || []).some((name) => (right.consumes || []).includes(name)) || (right.provides || []).some((name) => (left.consumes || []).includes(name))
+  const physical = [...canonicalPaths.values()]
+  return frontierLayers.some((layer) => {
+    for (let i = 0; i < layer.length; i++) for (const right of layer.slice(i + 1)) {
+      const left = layer[i]
+      if (contractCouples(left, right)) return true
+      if ((left.files || []).some((file) => (right.files || []).some((other) => pathOverlaps(file, other)))) return true
+      const leftPhysical = physical.filter((record) => record.unit === left.id)
+      const rightPhysical = physical.filter((record) => record.unit === right.id)
+      if (leftPhysical.some((record) => rightPhysical.some((other) => pathOverlaps(record.physical, other.physical)))) return true
+    }
+    return false
+  })
+})()
+if (plan.route === 'parallel' && planFrontierWidth < 2) {
+  return { error: 'Parallel route requires maximum DAG frontier width >= 2; no safe fan-out exists.', route: 'parallel', frontier_width: planFrontierWidth, fallback: 'serial', plan }
+}
+if (plan.route === 'serial' && planFrontierWidth >= 2 && !hasDeclaredCoupling) {
+  return { error: 'Serial route would discard independent DAG frontier parallelism; use parallel.', route: 'serial', frontier_width: planFrontierWidth, fallback: 'parallel', plan }
+}
 
 if (plan.route !== 'parallel' || !plan.units || !plan.units.length) {
   log(`route: ${plan.route || 'serial'} — not fanning out`)
@@ -528,11 +841,12 @@ if (plan.route !== 'parallel' || !plan.units || !plan.units.length) {
     // target or trusting a worker's claimed scope.
     const serialId = 'serial'
     const serialFiles = [...new Set(plan.units.flatMap((u) => u.files))]
+    const serialIgnored = [...new Set(plan.ignored_dependencies || [])]
+    const serialIgnoredArgs = serialIgnored.map(shellQuote).join(' ')
     const serialBrief = plan.units.map((u, i) => `
 UNIT ${i + 1}: ${u.title}
 FILES YOU OWN: ${u.files.join(', ')}
 DONE WHEN: ${u.definition_of_done}
-VERIFY: ${u.verify_command}
 ${u.notes ? `NOTES: ${u.notes}` : ''}`).join('\n')
     const serialWorktreeCommand = '~/.claude/scripts/build-worktree.sh'
     const serialCleanup = async (root, token) => {
@@ -563,9 +877,9 @@ Run exactly:
   cleanup() { [ -n "$token" ] && bash ${serialWorktreeCommand} cleanup '${plan.working_directory}' "$root" "$token" '${invocationNonce}' '${frozenPlanHash}' >/dev/null 2>&1 || true; }
   trap cleanup EXIT HUP INT TERM
   path="$root/${serialId}"
-  token=$(bash ${serialWorktreeCommand} prepare '${plan.working_directory}' '${plan.base_commit}' "$root" '${invocationNonce}' '${frozenPlanHash}' '${serialId}')
+  token=$(bash ${serialWorktreeCommand} prepare '${plan.working_directory}' '${plan.base_commit}' "$root" '${invocationNonce}' '${frozenPlanHash}' --ignored ${serialIgnoredArgs} --units '${serialId}')
   bash ${serialWorktreeCommand} create '${plan.working_directory}' '${plan.base_commit}' "$path" "codex-build/\${token:0:12}-${serialId}" '${invocationNonce}' '${frozenPlanHash}'
-  seed=$(bash ${serialWorktreeCommand} seed '${plan.working_directory}' "$path" '${invocationNonce}' '${frozenPlanHash}')
+  seed=$(bash ${serialWorktreeCommand} seed '${plan.working_directory}' "$path" '${invocationNonce}' '${frozenPlanHash}' ${serialIgnoredArgs})
   trap - EXIT HUP INT TERM
   printf 'status=ready root=%s token=%s invocation_nonce=%s plan_hash=%s path=%s seed=%s\\n' "$root" "$token" '${invocationNonce}' '${frozenPlanHash}' "$path" "$seed"
 Return the exact root, token, path, and seed. Do not modify the canonical checkout.`,
@@ -579,8 +893,13 @@ Return the exact root, token, path, and seed. Do not modify the canonical checko
         return { built: true, decomposable: false, route: 'serial', units_total: plan.units.length, units_green: 0, units: plan.units, result: prepared || { status: 'failed' }, cleanup, needs_attention: [{ status: 'failed', detail: 'Serial private worktree preparation returned incomplete or unsafe identity records.' }] }
       }
       serialState = { path: prepared.path, seed: prepared.seed, token: serialRunToken }
+      // Freeze one aggregate gate before dispatch. Each exact implementer
+      // command gets its own subshell rooted at the exact private worktree so
+      // cd/exit/exec/trap/options state cannot leak between units. `set -e`
+      // makes the first failed subshell fail the whole serial handoff.
+      const serialVerifyCommand = ['set -e', ...plan.units.map((u) => `(cd ${shellQuote(serialState.path)} && ${u.verify_command})`)].join('\n')
       let finalSnapshot = null
-      try { finalSnapshot = await approvalSnapshot(plan.working_directory, 'build:serial-final-release-check') } catch (error) {
+      try { finalSnapshot = await approvalSnapshot(plan.working_directory, 'build:serial-final-release-check', plan.ignored_dependencies) } catch (error) {
         const cleanup = await cleanupSerialOnce()
         return { built: true, decomposable: false, route: 'serial', units_total: plan.units.length, units_green: 0, units: plan.units, cleanup, needs_attention: [{ status: 'blocked', detail: String((error && error.message) || error) }] }
       }
@@ -598,6 +917,12 @@ CANONICAL CHECKOUT (READ-ONLY REFERENCE): ${plan.working_directory}
 FILES YOU OWN: ${serialFiles.join(', ')}
 ${serialBrief}
 
+YOUR EXACT AGGREGATE FAIL-FAST GATE — run this command after the complete serial implementation and before reporting green:
+
+${serialVerifyCommand}
+
+Do not substitute per-unit commands, reorder them, or report green unless this exact aggregate command exits 0.
+
 Keep all changes inside the listed ownership. The integration helper performs a post-write scope check and rejects every other changed path. Return the structured unit handoff.`,
         { label: 'build:serial', phase: 'Build', agentType: 'implementer', schema: UNIT }
       )
@@ -607,7 +932,7 @@ Keep all changes inside the listed ownership. The integration helper performs a 
         const files = serialFiles.map((file) => shellQuote(file)).join(' ')
         integration = await agent(
           `Integrate exactly one completed serial unit into the canonical checkout. Run exactly:
-  bash ${serialWorktreeCommand} integrate '${plan.working_directory}' '${serialState.path}' '${serialState.seed}' '${plan.working_directory}' '${serialState.token}' '${invocationNonce}' '${frozenPlanHash}' ${files}
+  bash ${serialWorktreeCommand} integrate '${plan.working_directory}' '${serialState.path}' '${serialState.seed}' '${plan.working_directory}' '${serialState.token}' '${invocationNonce}' '${frozenPlanHash}' --ignored ${serialIgnoredArgs} --files ${files}
 The helper must validate the private worktree identity, reject every changed path outside the unit's exact owned files, and apply the patch only after that check. Do not merge unrelated paths.`,
           { label: 'build:serial-integrate', phase: 'Integrate', agentType: 'explorer', schema: INTEGRATION_RESULT }
         )
@@ -644,193 +969,11 @@ The helper must validate the private worktree identity, reject every changed pat
   }
 }
 
-// Ids must be unique — the scheduler keys a promise per id, so duplicates collapse but still count twice.
-const idCounts = new Map()
-for (const u of plan.units) idCounts.set(u.id, (idCounts.get(u.id) || 0) + 1)
-const duplicates = [...idCounts].filter(([, n]) => n > 1).map(([id, n]) => ({ id, count: n }))
-if (duplicates.length) {
-  return {
-    error: 'Decomposition emitted duplicate unit ids.',
-    duplicates,
-    recommendation: 'Re-run; ids must be unique because dependencies and scheduling are keyed on them.',
-    plan,
-  }
-}
+ // Scheduler graph setup follows route dispatch; semantic preflight is complete above.
+ const byId = new Map(plan.units.map((u) => [u.id, u]))
+ const depsOf = (u) => (u.depends_on || []).filter((d) => d !== u.id)
 
-const byId = new Map(plan.units.map((u) => [u.id, u]))
-const depsOf = (u) => (u.depends_on || []).filter((d) => d !== u.id)
-
-// A dependency on a nonexistent unit would never resolve, so the scheduler would wait forever.
-const dangling = []
-for (const u of plan.units) {
-  for (const d of depsOf(u)) if (!byId.has(d)) dangling.push({ unit: u.id, missing: d })
-}
-if (dangling.length) {
-  return {
-    error: 'Decomposition references dependency ids that are not units.',
-    dangling,
-    recommendation: 'Re-run; the decomposer named a dependency it did not emit as a unit.',
-    plan,
-  }
-}
-
-// A cycle would deadlock the scheduler as a silent hang, not an error — refuse it up front.
-const CYCLE_MARK = { visiting: 1, done: 2 }
-const mark = new Map()
-const cycles = []
-const walk = (id, trail) => {
-  if (mark.get(id) === CYCLE_MARK.done) return
-  if (mark.get(id) === CYCLE_MARK.visiting) {
-    cycles.push([...trail.slice(trail.indexOf(id)), id].join(' -> '))
-    return
-  }
-  mark.set(id, CYCLE_MARK.visiting)
-  for (const d of depsOf(byId.get(id))) walk(d, [...trail, id])
-  mark.set(id, CYCLE_MARK.done)
-}
-for (const u of plan.units) walk(u.id, [])
-if (cycles.length) {
-  return {
-    error: 'Dependency cycle — the units cannot be ordered.',
-    cycles: [...new Set(cycles)],
-    recommendation: 'Re-run with the cycle merged into one unit, or the false dependency removed.',
-    plan,
-  }
-}
-
-// Units may run concurrently only if neither is an ancestor of the other, and must not then share a file.
-const ancestors = new Map()
-const ancestorsOf = (id) => {
-  if (ancestors.has(id)) return ancestors.get(id)
-  const acc = new Set()
-  ancestors.set(id, acc) // set before recursing; the graph is already acyclic
-  for (const d of depsOf(byId.get(id))) {
-    acc.add(d)
-    for (const a of ancestorsOf(d)) acc.add(a)
-  }
-  return acc
-}
-for (const u of plan.units) ancestorsOf(u.id)
-const ordered = (a, b) => ancestorsOf(a).has(b) || ancestorsOf(b).has(a)
-
-const owners = new Map()
-for (const u of plan.units) {
-  for (const f of (u.files || [])) {
-    const physical = canonicalPaths.get(`${u.id}\0${f}`).physical
-    if (!owners.has(physical)) owners.set(physical, [])
-    owners.get(physical).push(u.id)
-  }
-}
-const conflicts = []
-for (const [file, ids] of owners) {
-  for (let i = 0; i < ids.length; i++) {
-    for (let k = i + 1; k < ids.length; k++) {
-      if (!ordered(ids[i], ids[k])) conflicts.push({ file, units: [ids[i], ids[k]] })
-    }
-  }
-}
-if (conflicts.length) {
-  log(`${conflicts.length} concurrent file overlap(s) — refusing to fan out into a guaranteed conflict`)
-  return {
-    error: 'Units that can run concurrently share files.',
-    conflicts,
-    fallback: fallbackRoute,
-    recommendation: `Re-run once with the overlapping units merged or a real dependency declared. If it comes back overlapping again, the work is coupled — build it via ${fallbackRoute} instead of forcing a third decomposition.`,
-    plan,
-  }
-}
-
-// Distinct from file overlap: these units touch different files, so drift only appears at merge.
-const providers = new Map()
-for (const u of plan.units) {
-  for (const s of (u.provides || [])) {
-    if (!providers.has(s)) providers.set(s, [])
-    providers.get(s).push(u.id)
-  }
-}
-const contractIssues = []
-for (const [sym, ids] of providers) {
-  for (let i = 0; i < ids.length; i++) {
-    for (let k = i + 1; k < ids.length; k++) {
-      // Two units defining the same name collide even if ordered — the later one silently wins.
-      contractIssues.push({ kind: 'duplicate-provider', symbol: sym, units: [ids[i], ids[k]] })
-    }
-  }
-}
-for (const u of plan.units) {
-  for (const s of (u.consumes || [])) {
-    for (const p of (providers.get(s) || [])) {
-      if (p === u.id) continue
-      if (!ancestorsOf(u.id).has(p)) {
-        contractIssues.push({
-          kind: 'unordered-contract',
-          symbol: s,
-          consumer: u.id,
-          provider: p,
-          detail: `${u.id} consumes "${s}" but does not depend on ${p}, which provides it — both would verify green in isolation and disagree at merge.`,
-        })
-      }
-    }
-  }
-}
-// This isn't a correctness bug — it's spend on a question the plan already answered, invisible because nothing fails.
-for (const remover of plan.units) {
-  for (const s of (remover.removes || [])) {
-    for (const victim of plan.units) {
-      if (victim.id === remover.id) continue
-      const touches = (victim.consumes || []).includes(s) || (victim.provides || []).includes(s)
-      if (!touches) continue
-      // Safe only if removal happens first — the victim is then written against the world that ships.
-      if (ancestorsOf(victim.id).has(remover.id)) continue
-      contractIssues.push({
-        kind: 'invalidated-work',
-        symbol: s,
-        wasted: victim.id,
-        remover: remover.id,
-        detail: `${victim.id} works on "${s}", which ${remover.id} deletes or rewrites. ${victim.id} does not depend on ${remover.id}, so it is scheduled against a world that will not exist. It will go green and the result will mean nothing.`,
-      })
-    }
-  }
-}
-
-if (contractIssues.length) {
-  log(`${contractIssues.length} contract issue(s) — refusing to fan out into drift that only shows at merge`)
-  return {
-    error: 'Units share a contract without an ordering that makes it real.',
-    contract_issues: contractIssues,
-    fallback: fallbackRoute,
-    recommendation: `For unordered-contract, add the provider to the consumer's depends_on. For duplicate-provider, one unit owns the name — merge them, or move the definition into a single unit the others depend on. For invalidated-work, put the remover FIRST — add it to the other unit's depends_on — or delete the other unit outright if it only existed to check something being removed; do not "just run it anyway", which is exactly the spend this catches. If a second decomposition still collides, the contract is genuinely shared: build via ${fallbackRoute}.`,
-    plan,
-  }
-}
-
-// Physical disjointness is checked after dependency ordering. Sequential
-// units may intentionally hand off a file; units that can start concurrently
-// may not share a file or one path's directory prefix.
-const physicalConflicts = []
-const physicalEntries = [...canonicalPaths.values()]
-for (let i = 0; i < physicalEntries.length; i++) {
-  for (let j = i + 1; j < physicalEntries.length; j++) {
-    const a = physicalEntries[i]
-    const b = physicalEntries[j]
-    const prefix = (left, right) => left === right || right.startsWith(`${left}/`)
-    const samePhysicalFile = a.identity === b.identity && a.identity.startsWith('inode:')
-    if ((samePhysicalFile || prefix(a.physical, b.physical) || prefix(b.physical, a.physical)) && !ordered(a.unit, b.unit)) {
-      physicalConflicts.push({ kind: 'physical-path-overlap', paths: [a.file, b.file], physical: [a.physical, b.physical], units: [a.unit, b.unit] })
-    }
-  }
-}
-if (physicalConflicts.length) {
-  return {
-    error: 'Units that can run concurrently overlap physically; no unit was dispatched.',
-    conflicts: physicalConflicts,
-    fallback: fallbackRoute,
-    recommendation: 'Merge overlapping units or declare a real dependency. Shared execution never permits an unsafe fan-out.',
-    plan,
-  }
-}
-
-// Depth is for reporting and merge order only — it never gates execution.
+// Depth is for reporting only — it never gates execution or integration order.
 const depth = new Map()
 const depthOf = (id) => {
   if (depth.has(id)) return depth.get(id)
@@ -844,7 +987,7 @@ const criticalPath = Math.max(...plan.units.map((u) => depthOf(u.id)))
 const startable = plan.units.filter((u) => depsOf(u).length === 0).length
 
 if (!build) {
-  log(`${plan.units.length} unit(s), ${startable} starting immediately, critical path ${criticalPath} — reporting the plan, not building`)
+  log(`${plan.units.length} unit(s), ${startable} starting immediately, frontier width ${planFrontierWidth}, critical path ${criticalPath} — reporting the plan, not building`)
   const approvedHash = await planHash(plan)
   return {
     built: false,
@@ -852,6 +995,7 @@ if (!build) {
     reason: plan.reason,
     units_total: plan.units.length,
     starting_immediately: startable,
+    frontier_width: planFrontierWidth,
     critical_path: criticalPath,
     units: plan.units.map((u) => ({ ...u, depth: depthOf(u.id) })),
     workspace: plan.workspace || 'worktree',
@@ -869,6 +1013,7 @@ if (!build) {
 const worktreeCommand = '~/.claude/scripts/build-worktree.sh'
 const prepareWorktrees = async () => {
   const ids = plan.units.map((unit) => unit.id).join(' ')
+  const ignoredArgs = (plan.ignored_dependencies || []).map(shellQuote).join(' ')
   return agent(
     `Prepare one private git worktree for every approved unit. This is a capability
 preflight and must fail closed; do not use a shared checkout or guess paths.
@@ -884,11 +1029,11 @@ Run exactly:
   token=''
   cleanup() { [ -n "$token" ] && bash ${worktreeCommand} cleanup '${plan.working_directory}' "$root" "$token" '${invocationNonce}' '${frozenPlanHash}' >/dev/null 2>&1 || true; }
   trap cleanup EXIT HUP INT TERM
-  token=$(bash ${worktreeCommand} prepare '${plan.working_directory}' '${plan.base_commit}' "$root" '${invocationNonce}' '${frozenPlanHash}' ${ids})
+  token=$(bash ${worktreeCommand} prepare '${plan.working_directory}' '${plan.base_commit}' "$root" '${invocationNonce}' '${frozenPlanHash}' --ignored ${ignoredArgs} --units ${ids})
   for id in ${ids}; do
     path="$root/$id"
     bash ${worktreeCommand} create '${plan.working_directory}' '${plan.base_commit}' "$path" "codex-build/\${token:0:12}-$id" '${invocationNonce}' '${frozenPlanHash}'
-    seed=$(bash ${worktreeCommand} seed '${plan.working_directory}' "$path" '${invocationNonce}' '${frozenPlanHash}')
+    seed=$(bash ${worktreeCommand} seed '${plan.working_directory}' "$path" '${invocationNonce}' '${frozenPlanHash}' ${ignoredArgs})
     printf 'unit=%s path=%s seed=%s\\n' "$id" "$path" "$seed"
   done
   trap - EXIT HUP INT TERM
@@ -933,7 +1078,7 @@ if (unitWorktrees.size !== expectedUnits.size) {
 // Worktree creation can take time. Recheck after it and immediately before the
 // queue opens so a late edit cannot enter a worker snapshot unnoticed.
 let finalSnapshot = null
-try { finalSnapshot = await approvalSnapshot(plan.working_directory, 'build:final-release-check') } catch (error) {
+try { finalSnapshot = await approvalSnapshot(plan.working_directory, 'build:final-release-check', plan.ignored_dependencies) } catch (error) {
   const cleanup = await cleanupWorktrees(worktreeRoot, worktreeRunToken)
   return { error: 'Final fingerprint and HEAD verification failed; no unit was dispatched.', detail: String((error && error.message) || error), cleanup, plan }
 }
@@ -952,7 +1097,7 @@ if (!snapshotMatches(plan, finalSnapshot)) {
 
 log(`workspace: private worktree per unit${plan.workspace_reason ? ` — ${plan.workspace_reason}` : ''}`)
 
-log(`${plan.units.length} unit(s), ${startable} starting immediately, critical path ${criticalPath} — building`)
+log(`${plan.units.length} unit(s), ${startable} starting immediately, frontier width ${planFrontierWidth}, critical path ${criticalPath} — building`)
 
 // Raw promises, not parallel() — each unit starts the moment its own predecessors go green.
 const scheduled = new Map()
@@ -973,47 +1118,67 @@ const releaseImplementer = () => {
   else activeImplementers -= 1
 }
 
-const serializeIntegration = (() => {
-  let tail = Promise.resolve()
-  return (operation) => {
-    const current = tail.then(operation)
-    tail = current.catch(() => {})
-    return current
-  }
-})()
-
-// Worker completion order is deliberately nondeterministic. Keep canonical
-// writes deterministic too: topological depth puts true predecessors first,
-// while the id tie-breaker makes independent units reproducible. A failed or
-// skipped unit still releases its turn so siblings are not stranded behind it.
-const integrationTurns = new Map()
-let previousIntegrationTurn = Promise.resolve()
-for (const unit of plan.units.slice().sort((a, b) => depthOf(a.id) - depthOf(b.id) || a.id.localeCompare(b.id))) {
-  let release
-  const done = new Promise((resolve) => { release = resolve })
-  integrationTurns.set(unit.id, { before: previousIntegrationTurn, release, released: false })
-  previousIntegrationTurn = done
-}
-const runIntegrationTurn = async (u, operation) => {
-  const turn = integrationTurns.get(u.id)
-  if (!turn) return operation()
-  await turn.before
-  try {
-    return await operation()
-  } finally {
-    if (!turn.released) {
-      turn.released = true
-      turn.release()
+// Canonical refreshes are readers of one immutable snapshot and integrations
+// are writers. Readers may overlap each other, but a writer waits for every
+// active reader and blocks new readers until its patch is complete. This keeps
+// refreshes from observing a partially integrated canonical checkout while
+// retaining useful overlap among independent refreshes.
+const canonicalLock = (() => {
+  let readers = 0
+  let writer = false
+  const readerWaiters = []
+  const writerWaiters = []
+  const wake = () => {
+    if (writer || readers > 0) return
+    if (writerWaiters.length) {
+      writer = true
+      writerWaiters.shift()()
+      return
+    }
+    while (readerWaiters.length) {
+      readers += 1
+      readerWaiters.shift()()
     }
   }
-}
-const refreshUnit = (u, state) => serializeIntegration(async () => {
+  const read = async (operation) => {
+    let reserved = false
+    if (writer || writerWaiters.length) {
+      await new Promise((resolve) => readerWaiters.push(resolve))
+      reserved = true
+    }
+    if (!reserved) readers += 1
+    try { return await operation() } finally {
+      readers -= 1
+      wake()
+    }
+  }
+  const write = async (operation) => {
+    let reserved = false
+    if (writer || readers > 0 || writerWaiters.length) {
+      await new Promise((resolve) => writerWaiters.push(resolve))
+      reserved = true
+    }
+    if (!reserved) writer = true
+    try { return await operation() } finally {
+      writer = false
+      wake()
+    }
+  }
+  return { read, write }
+})()
+
+// Workers complete nondeterministically, so integrate each completed unit in
+// completion order behind the canonical writer lock. Dependency order is
+// still preserved by runUnit waiting for every predecessor's integrated result before starting.
+const ignoredDependencyArgs = (plan.ignored_dependencies || []).map(shellQuote).join(' ')
+const integratedOrder = []
+const refreshUnit = (u, state) => canonicalLock.read(async () => {
   let refreshed
   try {
     refreshed = await agent(
       `Refresh the exact private worktree for a unit after its dependencies have integrated.
 Run exactly:
-  seed=$(bash ${worktreeCommand} refresh '${plan.working_directory}' '${state.path}' '${plan.base_commit}' '${worktreeRunToken}' '${invocationNonce}' '${frozenPlanHash}')
+  seed=$(bash ${worktreeCommand} refresh '${plan.working_directory}' '${state.path}' '${plan.base_commit}' '${worktreeRunToken}' '${invocationNonce}' '${frozenPlanHash}' ${ignoredDependencyArgs})
   printf 'status=ready seed=%s\\n' "$seed"
 The command must return a new seed commit. Do not modify the canonical checkout except
 through the helper's source snapshot.`,
@@ -1026,14 +1191,14 @@ through the helper's source snapshot.`,
   state.seed = refreshed.seed
   return { status: 'ready' }
 })
-const integrateUnit = (u, state) => serializeIntegration(async () => {
+const integrateUnit = (u, state) => canonicalLock.write(async () => {
   const files = u.files.map((file) => shellQuote(file)).join(' ')
   let integrated
   try {
     integrated = await agent(
       `Integrate exactly one completed private unit into the canonical checkout.
 Run exactly:
-  bash ${worktreeCommand} integrate '${plan.working_directory}' '${state.path}' '${state.seed}' '${plan.working_directory}' '${worktreeRunToken}' '${invocationNonce}' '${frozenPlanHash}' ${files}
+  bash ${worktreeCommand} integrate '${plan.working_directory}' '${state.path}' '${state.seed}' '${plan.working_directory}' '${worktreeRunToken}' '${invocationNonce}' '${frozenPlanHash}' --ignored ${ignoredDependencyArgs} --files ${files}
 The helper must reject every changed path outside the unit's exact owned files and
 apply the unit patch only after that check. Do not merge unrelated paths.`,
     { label: `build:integrate:${u.id}`, phase: 'Integrate', agentType: 'explorer', schema: INTEGRATION_RESULT }
@@ -1041,7 +1206,11 @@ apply the unit patch only after that check. Do not merge unrelated paths.`,
   } catch (error) {
     return { status: 'failed', detail: String((error && error.message) || error) }
   }
-  return integrated && integrated.status === 'integrated' ? { status: 'integrated' } : { status: 'failed', detail: integrated || 'integration returned no result' }
+  if (integrated && integrated.status === 'integrated') {
+    integratedOrder.push(u.id)
+    return { status: 'integrated' }
+  }
+  return { status: 'failed', detail: integrated || 'integration returned no result' }
 })
 
 const runUnit = (u) => {
@@ -1054,18 +1223,15 @@ const runUnit = (u) => {
     const blockedBy = deps.filter((d, i) => !depOutcomes[i] || depOutcomes[i].status !== 'green')
     if (blockedBy.length) {
       log(`skip ${u.id} — dependency not green: ${blockedBy.join(', ')}`)
-      await runIntegrationTurn(u, async () => {})
       return { unit: u, status: 'skipped', result: null, blocked_by: blockedBy }
     }
 
     const state = unitWorktrees.get(u.id)
     if (!state) {
-      await runIntegrationTurn(u, async () => {})
       return { unit: u, status: 'error', result: null, error: 'No exact private worktree was prepared for this unit.' }
     }
     const refreshed = await refreshUnit(u, state)
     if (!refreshed || refreshed.status !== 'ready') {
-      await runIntegrationTurn(u, async () => {})
       return { unit: u, status: 'error', result: null, error: refreshed && refreshed.detail ? refreshed.detail : 'Private worktree refresh failed.' }
     }
 
@@ -1118,18 +1284,18 @@ you do not own, that is a sibling's in-flight edit, not your bug — report \`bl
       releaseImplementer()
     }
     if (dispatchError) {
-      await runIntegrationTurn(u, async () => {})
       return { unit: u, status: 'error', result: null, error: dispatchError }
     }
     const status = (r && r.status) || 'no-result'
     if (status === 'green') {
-      const integrated = await runIntegrationTurn(u, () => integrateUnit(u, state))
+      const integrated = await integrateUnit(u, state)
       if (!integrated || integrated.status !== 'integrated') {
         log(`integration failed ${u.id}`)
         return { unit: u, status: 'failed', result: r, error: integrated && integrated.detail ? integrated.detail : 'unit patch was not integrated' }
       }
     } else {
-      await runIntegrationTurn(u, async () => {})
+      // Failed units do not enter the integration queue; their dependents are
+      // gated by the status above while unrelated units keep progressing.
     }
     log(`${status === 'green' ? 'green' : status} ${u.id}`)
     return { unit: u, status, result: r, worktree: state.path, seed: state.seed }
@@ -1167,10 +1333,13 @@ return {
   units_green: green.length,
   critical_path: criticalPath,
   starting_immediately: startable,
-  // Merge order follows dependency depth; merging stays manual — an unattended N-way merge is where parallel builds go wrong.
-  merge_sequence: green
-    // Total order, not just depth — id breaks ties so the merge sequence is reproducible across runs.
-    .sort((a, b) => depthOf(a.unit.id) - depthOf(b.unit.id) || a.unit.id.localeCompare(b.unit.id))
+  frontier_width: planFrontierWidth,
+  // Report the order the mutex actually integrated patches. Dependency edges
+  // still make predecessors appear before dependents; independent units retain
+  // their useful completion order instead of a synthetic head-of-line order.
+  merge_sequence: integratedOrder
+    .map((id) => green.find((r) => r.unit.id === id))
+    .filter(Boolean)
     .map((r) => ({
       depth: depthOf(r.unit.id),
       id: r.unit.id,

@@ -18,7 +18,7 @@ const mkFindings = (n) => Array.from({ length: n }, (_, i) => ({
 
 // The Opus challenger refutes the odd-indexed claims and upholds the even ones, so
 // the regroup is checked against a verdict pattern that cannot match by accident.
-const run = async (nFindings, { dropBatch = -1, dropIndex = -1 } = {}) => {
+const run = async (nFindings, { dropBatch = -1, dropIndex = -1, invalid = '' } = {}) => {
   const dispatched = []
   const agent = async (prompt, opts) => {
     dispatched.push(opts.label)
@@ -31,6 +31,8 @@ const run = async (nFindings, { dropBatch = -1, dropIndex = -1 } = {}) => {
       if (bi * 4 + i === dropIndex) continue
       verdicts.push({ index: i, refuted: (bi * 4 + i) % 2 === 1, reasoning: `r${bi}.${i}` })
     }
+    if (invalid === 'duplicate' && bi === 0) verdicts[1].index = verdicts[0].index
+    if (invalid === 'out-of-range' && bi === 0) verdicts[0].index = size
     return { verdicts }
   }
   const found = mkFindings(nFindings)
@@ -73,12 +75,18 @@ check('a dead batch orphans only its own findings',
   [4, 5, 6, 7].every((i) => (rd.votesFor.get(rd.found[i]) || []).length === 1),
   rd.found.map((f) => (rd.votesFor.get(f) || []).length).join(','))
 
-// A verdict omitted from an otherwise-good batch must not shift the others.
-const ri = await run(8, { dropIndex: 5 })
-check('an omitted verdict costs only its own finding its votes',
-  (ri.votesFor.get(ri.found[5]) || []).length === 0 &&
-  ri.found.filter((_, i) => i !== 5).every((f) => (ri.votesFor.get(f) || []).length === 1),
+// A verdict omitted from an otherwise-good batch invalidates the whole batch;
+// accepting the remaining indexes would make a partial challenge look complete.
+const ri = await run(8, { dropIndex: 1 })
+check('an incomplete batch is blocked as a whole and cannot yield partial votes',
+  ri.challengeFailures === 1 && ri.found.slice(0, 4).every((f) => (ri.votesFor.get(f) || []).length === 0) &&
+  ri.found.slice(4).every((f) => (ri.votesFor.get(f) || []).length === 1),
   ri.found.map((f) => (ri.votesFor.get(f) || []).length).join(','))
+
+const duplicate = await run(4, { invalid: 'duplicate' })
+check('duplicate challenge indexes block the entire batch', duplicate.challengeFailures === 1 && duplicate.found.every((f) => (duplicate.votesFor.get(f) || []).length === 0), JSON.stringify(duplicate))
+const outOfRange = await run(4, { invalid: 'out-of-range' })
+check('out-of-range challenge indexes block the entire batch', outOfRange.challengeFailures === 1 && outOfRange.found.every((f) => (outOfRange.votesFor.get(f) || []).length === 0), JSON.stringify(outOfRange))
 
 // The fail-open path itself: zero votes must surface the finding, not bury it.
 // The fail-open branch must remain explicit: zero votes are unverified, not refuted.

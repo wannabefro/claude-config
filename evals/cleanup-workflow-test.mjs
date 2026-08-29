@@ -36,7 +36,7 @@ const reviewBundle = makeBundle()
 const reviewAgent = async (_prompt, options) => {
   if (options.label === 'review:classify') return { tier: 'normal', reason: 'behaviour change' }
   if (options.label === 'review:normal:opus') throw new Error('injected reviewer failure')
-  if (options.label === 'review:normal:codex') return { status: 'reviewed', findings: [] }
+  if (options.label === 'review:normal:codex') return { status: 'reviewed', runner_exit_code: 0, findings: [] }
   if (options.label === 'review:cleanup' || options.label === 'review:exception-cleanup') {
     execFileSync(cleanupScript, [reviewBundle])
     return { status: 'cleaned' }
@@ -48,9 +48,26 @@ try { await evaluate(fileURLToPath(new URL('../workflows/review.js', import.meta
 check('reviewer failure rejects the workflow', reviewRejected)
 check('review finally cleans a bundle after reviewer failure', !existsSync(reviewBundle))
 
+// A real Codex wrapper failure must not become an empty successful seat. The
+// cleanup still belongs to the workflow when the review is blocked.
+const failedCodexBundle = makeBundle()
+const failedCodexAgent = async (_prompt, options) => {
+  if (options.label === 'review:classify') return { tier: 'normal', reason: 'behaviour change' }
+  if (options.label === 'review:normal:opus') return { findings: [] }
+  if (options.label === 'review:normal:codex') return { status: 'failed', runner_exit_code: 7, findings: [], detail: 'Codex runtime failure' }
+  if (options.label === 'review:cleanup' || options.label === 'review:exception-cleanup') {
+    execFileSync(cleanupScript, [failedCodexBundle])
+    return { status: 'cleaned' }
+  }
+  throw new Error(`unexpected review call: ${options.label}`)
+}
+const failedCodexResult = await evaluate(fileURLToPath(new URL('../workflows/review.js', import.meta.url)), { bundlePath: failedCodexBundle, target: 'HEAD..HEAD' }, failedCodexAgent)
+check('Codex runner failure blocks normal review and preserves the failure code', failedCodexResult.status === 'blocked' && failedCodexResult.codex.runner_exit_code === 7 && !existsSync(failedCodexBundle), JSON.stringify(failedCodexResult))
+
 const councilBundle = makeBundle()
 const councilAgent = async (_prompt, options) => {
   if (options.label === 'lens:correctness') return { findings: [{ title: 'real defect', file: 'a.js', severity: 'major', why_it_breaks: 'input causes wrong result' }] }
+  if (options.label === 'lens:outsider(codex)') return { findings: [], runner_exit_code: 0 }
   if (options.label.startsWith('lens:')) return { findings: [] }
   if (options.label.startsWith('challenge:')) return { verdicts: [{ index: 0, refuted: false, reasoning: 'reachable failure' }] }
   if (options.label === 'judge') throw new Error('injected judge failure')
@@ -64,6 +81,19 @@ let judgeRejected = false
 try { await evaluate(fileURLToPath(new URL('../workflows/council-review.js', import.meta.url)), { bundlePath: councilBundle, target: 'HEAD..HEAD' }, councilAgent) } catch { judgeRejected = true }
 check('judge failure rejects the council workflow', judgeRejected)
 check('council finally cleans a bundle after judge failure', !existsSync(councilBundle))
+
+const outsiderFailureBundle = makeBundle()
+const outsiderFailureAgent = async (_prompt, options) => {
+  if (options.label === 'lens:outsider(codex)') return { findings: [{ title: 'plausible but untrusted', file: 'a.js', severity: 'minor', why_it_breaks: 'runtime failed before review' }], runner_exit_code: 7 }
+  if (options.label.startsWith('lens:')) return { findings: [] }
+  if (options.label === 'council:cleanup-bundle') {
+    execFileSync(cleanupScript, [outsiderFailureBundle])
+    return { status: 'cleaned' }
+  }
+  throw new Error(`unexpected outsider failure call: ${options.label}`)
+}
+const outsiderFailureResult = await evaluate(fileURLToPath(new URL('../workflows/council-review.js', import.meta.url)), { bundlePath: outsiderFailureBundle, target: 'HEAD..HEAD' }, outsiderFailureAgent)
+check('Codex outsider failure blocks council despite plausible findings', outsiderFailureResult.status === 'blocked' && outsiderFailureResult.coverage === 'degraded' && outsiderFailureResult.council?.outsider === 'unavailable' && !existsSync(outsiderFailureBundle), JSON.stringify(outsiderFailureResult))
 
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -55,10 +56,12 @@ const promptText = 'Review this exact brief: $value `quoted`\n'
 writeFileSync(prompt, promptText)
 
 const wrapper = fileURLToPath(new URL('../scripts/codex-run.sh', import.meta.url))
-const env = { ...process.env, PATH: `${root}:${process.env.PATH || ''}`, CODEX_BIN: fake, FAKE_ARGS: argsFile, FAKE_STDIN: stdinFile }
-const run = (extraEnv = {}) => execFileSync(wrapper, [
-  '-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N',
-], { cwd: work, env: { ...env, ...extraEnv }, encoding: 'utf8' })
+// The fake is injected through PATH, while CODEX_BIN points at an invalid path.
+// This proves callers cannot replace the approved runtime through the
+// environment, while tests retain a deterministic executable seam.
+const env = { ...process.env, PATH: `${root}:${process.env.PATH || ''}`, TMPDIR: root, CODEX_BIN: join(root, 'missing-override'), FAKE_ARGS: argsFile, FAKE_STDIN: stdinFile }
+const runWithArgs = (args, extraEnv = {}) => execFileSync(wrapper, args, { cwd: work, env: { ...env, ...extraEnv }, encoding: 'utf8' })
+const run = (extraEnv = {}) => runWithArgs(['-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N'], extraEnv)
 
 let output = ''
 let code = 0
@@ -84,6 +87,25 @@ check('wrapper disables MCP by default', args.includes('mcp_servers={}'), args.j
 check('wrapper sends the prompt through stdin instead of argv', args.includes('-') && !promptArg && stdinText.includes(promptText.trimEnd()), `${args.join(' | ')} | stdin=${stdinText}`)
 check('wrapper pins a read-only sandbox', args.includes('--sandbox') && args.includes('read-only'), args.join(' | '))
 check('wrapper uses no dangerous bypass flags', !args.some((arg) => arg.startsWith('--dangerously-')), args.join(' | '))
+check('wrapper cleans its owner-private runtime directory', readdirSync(root).every((name) => !name.startsWith('claude-codex-run.')), readdirSync(root).join(' | '))
+
+const exactPrompt = 'byte-preserving brief with a trailing newline\n'
+writeFileSync(prompt, exactPrompt)
+let exactCode = 0
+try { runWithArgs(['-t', '5', '-s', '2', '-f', prompt, '-d', work]) } catch (error) { exactCode = error.status }
+check('file prompts reach Codex byte-for-byte, including trailing newlines', exactCode === 0 && readFileSync(stdinFile, 'utf8') === exactPrompt, `code=${exactCode} stdin=${JSON.stringify(readFileSync(stdinFile, 'utf8'))}`)
+
+// The bundle is clean, but the separately supplied brief is not. The final
+// exact-payload scan must catch this mismatch even when the bundle scan passes.
+const cleanBundle = join(root, 'clean-bundle')
+mkdirSync(join(cleanBundle, 'files', 'after'), { recursive: true })
+mkdirSync(join(cleanBundle, 'files', 'before'), { recursive: true })
+mkdirSync(join(cleanBundle, 'untracked', 'after'), { recursive: true })
+writeFileSync(join(cleanBundle, 'files', 'after', 'clean.txt'), 'no credentials here\n')
+writeFileSync(prompt, 'secret=super-secret-value-123\n')
+let mismatchCode = 0
+try { runWithArgs(['-t', '5', '-s', '2', '-B', cleanBundle, '-f', prompt, '-d', work]) } catch (error) { mismatchCode = error.status }
+check('clean bundle plus secret brief is blocked by the exact prompt-input scan', mismatchCode === 8, `got ${mismatchCode}`)
 
 // A large brief must not be passed as an argv element. The fake CLI consumes
 // stdin, so this also catches regressions that reintroduce E2BIG risk.

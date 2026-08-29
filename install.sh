@@ -24,6 +24,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BRANCH="main"
 log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
 
+# The path filter writes this exact absolute path into the installed agent
+# brief. Resolve relative targets before configuring the filter so the Luna
+# runner command remains valid after Claude changes its working directory.
+TARGET_PARENT=$(CDPATH= cd -- "$(dirname -- "$TARGET")" 2>/dev/null && pwd -P) || {
+  log "ERROR: cannot resolve the target parent directory: $TARGET"
+  exit 1
+}
+TARGET_BASE=$(basename -- "$TARGET")
+[ -n "$TARGET_BASE" ] || { log 'ERROR: target path is empty.'; exit 1; }
+TARGET="$TARGET_PARENT/$TARGET_BASE"
+
 # --- prereq check (report only) ---------------------------------------------
 log "Checking prerequisites (report only — nothing is installed):"
 # Per-tool install hint (macOS/Homebrew-first), printed only when the tool is
@@ -46,6 +57,8 @@ prereq_hint() {
 }
 PREREQS="git gh node perl rg jq codex rtk cmux wt bd"
 missing=""
+PERL_RUNTIME=/usr/bin/perl
+if [ ! -x "$PERL_RUNTIME" ]; then PERL_RUNTIME=$(command -v perl 2>/dev/null || true); fi
 for t in $PREREQS; do
   if ! command -v "$t" >/dev/null 2>&1; then
     printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
@@ -64,7 +77,7 @@ for t in $PREREQS; do
       printf '  ✓ node %s (supported runtime)\n' "$node_version"
     fi
   elif [ "$t" = codex ]; then
-    if ! /usr/bin/perl -e 'alarm shift; exec @ARGV' 10 codex --version >/dev/null 2>&1; then
+    if [ -z "$PERL_RUNTIME" ] || ! "$PERL_RUNTIME" -e 'alarm shift; exec @ARGV' 10 codex --version >/dev/null 2>&1; then
       printf '  ✗ codex  (CLI runtime probe failed)\n'
       missing="$missing codex-runtime"
     else
@@ -72,6 +85,15 @@ for t in $PREREQS; do
     fi
   else
     printf '  ✓ %s\n' "$t"
+  fi
+done
+# The wrappers use the BSD/POSIX tools present on macOS and a Perl alarm for
+# deadlines. Check them explicitly so a partial install cannot fail only after
+# a review or Luna dispatch has started. GNU `timeout` is not required.
+for t in awk grep id mktemp openssl pgrep ps realpath sed shasum stat tr; do
+  if ! command -v "$t" >/dev/null 2>&1; then
+    printf '  ✗ %s  (required by the bounded wrappers)\n' "$t"
+    missing="$missing runtime-$t"
   fi
 done
 [ -n "$missing" ] && log "Missing:$missing — run the install hints shown above."
@@ -140,6 +162,18 @@ git -C "$TARGET" config filter.claudehome.clean  "sed \"s#$TARGET#__CLAUDE_HOME_
 git -C "$TARGET" config filter.claudehome.smudge "sed \"s#__CLAUDE_HOME__#$TARGET#g\""
 rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
 git -C "$TARGET" checkout -- settings.json agents/implementer.md
+
+# A successful checkout is not enough: a missing smudge expansion leaves the
+# dispatcher with a literal placeholder and it cannot invoke Luna. Fail during
+# installation while the target and its backup are still obvious to the user.
+if grep -Fq '__CLAUDE_HOME__' "$TARGET/agents/implementer.md" "$TARGET/settings.json"; then
+  log "ERROR: the Claude home path did not materialize in the installed routing files."
+  exit 1
+fi
+[ -x "$TARGET/scripts/luna-run.sh" ] || {
+  log "ERROR: the installed Luna runner is missing or not executable."
+  exit 1
+}
 
 log "Done. Next steps:"
 cat <<'EOF'

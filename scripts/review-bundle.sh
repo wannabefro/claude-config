@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Assemble one immutable, reviewable snapshot for every review seat.
 #
-# Usage: review-bundle.sh [REPOSITORY] [OUTPUT_DIRECTORY] [TARGET]
+# Usage: review-bundle.sh [REPOSITORY] [PRIVATE_OUTPUT_DIRECTORY] [TARGET]
 # The canonical patch is 01-the-diff.patch. Staged and unstaged patches are
 # separate diagnostic views; they are never concatenated into the canonical
 # patch. Every changed tracked regular file and untracked regular file is
@@ -12,33 +12,35 @@ umask 077
 REPO=${1:-.}
 OUT=${2:-}
 TARGET=${3:-}
-OWNED=0
 if [ -z "$OUT" ]; then
   OUT=$(mktemp -d "${TMPDIR:-/tmp}/claude-review-bundle.XXXXXXXX")
-  OWNED=1
 else
-  mkdir -p "$OUT"
+  # A caller-supplied output is still disposable workflow state. Requiring the
+  # canonical unique prefix prevents a caller from making this helper write a
+  # review bundle into a shared or persistent directory.
+  [ -d "$OUT" ] || { echo 'review-bundle: caller output directory must already exist' >&2; exit 65; }
 fi
 OUT=$(cd "$OUT" && pwd -P)
-# Both the workflow-created directory and a caller-supplied directory are
-# private only when they carry the canonical mktemp prefix. Such directories
-# are safe to remove on any assembly failure; arbitrary caller paths are never
-# recursively deleted by this helper.
+# Both the workflow-created directory and a caller-supplied directory must carry
+# the canonical mktemp prefix. Such directories are safe to remove on any
+# assembly failure; persistent caller paths are not accepted.
 TMP_ROOT=$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P) || { echo 'review-bundle: cannot resolve private temp root' >&2; exit 65; }
 case "$OUT" in
   "$TMP_ROOT"/claude-review-bundle.*) PRIVATE_OUT=1 ;;
-  *) PRIVATE_OUT=0 ;;
+  *) echo 'review-bundle: output directory must be a private claude-review-bundle temp directory' >&2; exit 65 ;;
 esac
-if [ "$PRIVATE_OUT" -eq 1 ] && [ "$(stat -f '%u' "$OUT" 2>/dev/null || true)" != "$(id -u)" ]; then
-  echo 'review-bundle: private output directory is not owned by the current user' >&2
+OUT_OWNER=$(stat -f '%u' "$OUT" 2>/dev/null || stat -c '%u' "$OUT" 2>/dev/null || true)
+OUT_MODE=$(stat -f '%Lp' "$OUT" 2>/dev/null || stat -c '%a' "$OUT" 2>/dev/null || true)
+if [ "$PRIVATE_OUT" -eq 1 ] && { [ "$OUT_OWNER" != "$(id -u)" ] || [ "$OUT_MODE" != '700' ]; }; then
+  echo 'review-bundle: private output directory is not owner-private' >&2
   exit 65
 fi
 KEEP=0
 cleanup() {
   # The successful bundle is owned by the review workflow and is removed by
-  # cleanup-review-bundle.sh after its final consumer. Failed owned bundles
-  # are removed here; caller-owned output directories are never removed.
-  if [ "$KEEP" -eq 0 ] && [ "$PRIVATE_OUT" -eq 1 ] && [ ! -L "$OUT" ]; then
+  # cleanup-review-bundle.sh after its final consumer. Failed private bundles
+  # are removed here.
+  if [ "$KEEP" -eq 0 ] && [ ! -L "$OUT" ]; then
     rm -rf -- "$OUT"
   fi
 }

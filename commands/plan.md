@@ -12,6 +12,9 @@ separates requirements from decisions, freezes the dependency graph and interfac
 ownership, defines acceptance criteria and exact verify commands, and writes the plan. Do not invoke
 Compound Engineering automatically.
 
+For build plans, also declare the exact repo-relative `ignored_dependencies` needed by verify gates;
+an empty array is the explicit proof that no ignored baseline is required.
+
 Use `ce-brainstorm` or `ce-plan` only when the user explicitly requests that toolbox or when a
 separate, named CE artifact is required. CE remains useful for optional brainstorm, plan, debug,
 simplify, review, and compound-learning passes. A CE pass does not authorize implementation; route
@@ -49,6 +52,8 @@ keeps the run in the foreground, and reports stable exit codes:
 | 4 | stalled and killed | optionally repeat the same Sol/xhigh invocation once with a tighter brief, then report if still not done |
 | 5 | empty pass | report that no review happened; do not treat it as approval |
 | 6 | provider refused | report the capacity gap; do not substitute another model |
+| 7 | Codex runtime failure | report the failed cross-family pass with the exact code; do not treat it as approval |
+| 8 | secret scan refused | report that the brief was not transferred; do not bypass the scan |
 
 Never let Codex rewrite the plan. It reviews only. A retry, if used for a stall, repeats the same
 fixed model and xhigh effort. It is not an effort fallback.

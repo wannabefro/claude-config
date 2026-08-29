@@ -44,6 +44,13 @@ const cases = [
     expect: (i) => i.length === 0,
   },
   {
+    name: 'a consumer without a provider is refused before dispatch',
+    units: [
+      { id: 'menu-render', depends_on: [], provides: [], consumes: ['item.photo'], files: ['b.ts'] },
+    ],
+    expect: (i) => i.some((x) => x.kind === 'missing-provider' && x.symbol === 'item.photo'),
+  },
+  {
     name: 'transitive dependency counts',
     units: [
       { id: 'a', depends_on: [], provides: ['x.y'], consumes: [], files: ['a.ts'] },

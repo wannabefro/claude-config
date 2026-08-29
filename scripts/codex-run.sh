@@ -23,6 +23,7 @@
 #   5  empty (ran, exited 0, produced no assistant result)
 #   6  refused (provider returned no capacity, e.g. out of credits — NOT a review)
 #   7  runtime failure (CLI exited non-zero before producing an answer)
+#   8  secret scan refused transfer (review content was not sent cross-provider)
 #
 # Why each guard exists, measured on this machine:
 #  * Preflight. A wedged syspolicyd left `codex --version` itself hanging for
@@ -71,12 +72,10 @@ done
 
 if [ -n "$FROM_FILE" ]; then
   if [ "$FROM_FILE" = "-" ]; then
-    PROMPT=$(cat)
+    : # stdin is copied byte-for-byte after the runtime directory is ready
   else
     [ -r "$FROM_FILE" ] || { echo "codex-run: cannot read $FROM_FILE" >&2; exit 2; }
-    PROMPT=$(cat "$FROM_FILE")
   fi
-  [ -n "$PROMPT" ] || { echo "codex-run: $FROM_FILE is empty" >&2; exit 2; }
 else
   if [ $# -lt 1 ]; then
     echo 'usage: codex-run.sh [-t SECS] [-s SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-N] (-f FILE|-|"<prompt>")' >&2
@@ -85,32 +84,33 @@ else
   PROMPT="$1"
 fi
 
-if [ "$NO_EXPLORE" -eq 1 ]; then
-  PROMPT="$PROMPT
-
-HARD CONSTRAINT: Do NOT read any files. Do NOT run any shell commands. Do NOT
-search the repo. Everything you need is stated above. A run that explores the
-repo is a failed run."
-fi
-
-CODEX_BIN="${CODEX_BIN:-codex}"
-if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
+CODEX_BIN=$(command -v codex 2>/dev/null || true)
+if [ -z "$CODEX_BIN" ] || [ ! -x "$CODEX_BIN" ]; then
   echo "codex-run: CLI unavailable (approved Codex command was not found)." >&2
   echo "codex-run: do not retry or hunt processes — report it unavailable." >&2
   exit 3
 fi
+# Resolve the approved command once. This prevents a PATH change during the
+# bounded run from swapping the runtime after preflight. Tests inject a fake
+# approved command by placing it first in PATH, not by overriding an env var.
+CODEX_BIN=$(realpath "$CODEX_BIN" 2>/dev/null) || {
+  echo "codex-run: approved Codex CLI path could not be resolved." >&2
+  exit 3
+}
+[ -x "$CODEX_BIN" ] || {
+  echo "codex-run: resolved Codex CLI is not executable." >&2
+  exit 3
+}
 
+SECRET_SCANNER="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/review-secret-scan.sh"
+[ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
 if [ -n "$BUNDLE" ]; then
-  SECRET_SCANNER="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/review-secret-scan.sh"
-  [ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
   "$SECRET_SCANNER" "$BUNDLE" >/dev/null || {
     echo 'codex-run: review bundle failed the secret scan; refusing cross-provider transfer.' >&2
     exit 8
   }
 fi
 if [ -n "$SECRET_FILE" ]; then
-  SECRET_SCANNER="${SECRET_SCANNER:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/review-secret-scan.sh}"
-  [ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
   "$SECRET_SCANNER" --file "$SECRET_FILE" >/dev/null || {
     echo 'codex-run: planning brief failed the secret scan; refusing cross-provider transfer.' >&2
     exit 8
@@ -134,11 +134,35 @@ if ! "$PERL_BIN" -e 'alarm shift; exec @ARGV' 10 "$CODEX_BIN" --version >/dev/nu
   exit 3
 fi
 
-out=$(mktemp "${TMPDIR:-/tmp}/claude-codex-run.XXXXXXXX")
-last_message=$(mktemp "${TMPDIR:-/tmp}/claude-codex-last-message.XXXXXXXX")
-prompt_input=$(mktemp "${TMPDIR:-/tmp}/claude-codex-input.XXXXXXXX")
-printf '%s' "$PROMPT" > "$prompt_input"
-trap 'rm -f "$out" "$last_message" "$prompt_input"' EXIT
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-codex-run.XXXXXXXX") || {
+  echo "codex-run: private runtime directory could not be created." >&2
+  exit 3
+}
+run_owner=$(stat -f '%u' "$run_dir" 2>/dev/null || stat -c '%u' "$run_dir" 2>/dev/null || true)
+run_mode=$(stat -f '%Lp' "$run_dir" 2>/dev/null || stat -c '%a' "$run_dir" 2>/dev/null || true)
+if [ "$run_owner" != "$(id -u)" ] || [ "$run_mode" != '700' ]; then
+  rm -rf -- "$run_dir"
+  echo "codex-run: private runtime directory is not owner-private." >&2
+  exit 3
+fi
+out="$run_dir/output"
+last_message="$run_dir/last-message"
+prompt_input="$run_dir/input"
+cleanup_run_dir() {
+  if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
+    rm -rf -- "$run_dir"
+  fi
+}
+trap cleanup_run_dir EXIT HUP INT TERM
+if [ -n "$FROM_FILE" ]; then
+  if [ "$FROM_FILE" = "-" ]; then cat > "$prompt_input"; else cat "$FROM_FILE" > "$prompt_input"; fi
+else
+  printf '%s' "$PROMPT" > "$prompt_input"
+fi
+[ -s "$prompt_input" ] || { echo "codex-run: prompt input is empty" >&2; exit 2; }
+if [ "$NO_EXPLORE" -eq 1 ]; then
+  printf '\n\nHARD CONSTRAINT: Do NOT read any files. Do NOT run any shell commands. Do NOT\nsearch the repo. Everything you need is stated above. A run that explores the\nrepo is a failed run.' >> "$prompt_input"
+fi
 
 MCP_ARGS=()
 [ "$MCP" -eq 0 ] && MCP_ARGS=(-c 'mcp_servers={}')
@@ -146,6 +170,10 @@ MCP_ARGS=()
 run_once() {
   : > "$out"
   : > "$last_message"
+  # Scan the exact bytes that will be sent on stdin, immediately before every
+  # Codex exec. Bundle and brief scans above are useful preflight checks, but
+  # neither is a substitute for this final payload check.
+  if ! "$SECRET_SCANNER" --file "$prompt_input" >/dev/null; then return 98; fi
   (
     cd "$DIR" || exit 1
     exec "$PERL_BIN" -e 'setpgrp(0, 0); alarm shift; exec @ARGV' "$TIMEOUT" "$CODEX_BIN" exec \
@@ -209,6 +237,10 @@ refused() {
 }
 
 run_once; rc=$?
+if [ "$rc" -eq 98 ]; then
+  echo 'codex-run: prompt input failed the secret scan; refusing cross-provider transfer.' >&2
+  exit 8
+fi
 if [ "$rc" -eq 99 ]; then
   echo "codex-run: STALLED — no output for ${STALL}s, killed." >&2
   echo "codex-run: MCP is already off unless you passed -M; if you did, drop it." >&2

@@ -10,8 +10,12 @@ contracts, coupled multi-file work, or genuinely parallel work. For one
 coherent unit with no shared contract or guardrail surface, use `/implement`.
 Opus xhigh must freeze the dependency graph, interfaces, file ownership,
 acceptance criteria, private worktree workspace, and exact verify commands before
-any worker starts. The index, tracked working tree, and relevant untracked state
-are fingerprinted at approval and checked again before dispatch.
+any worker starts. The index, tracked working tree, relevant untracked state,
+and every declared ignored dependency baseline is fingerprinted with its exact
+content, mode, and symlink topology at approval and checked again before
+dispatch. Ignored dependencies are hydrated one-way into private worktrees;
+any worker mutation under an approved baseline fails closed and never becomes a
+canonical change.
 
 ## Step 0 — Workflow preflight
 
@@ -43,12 +47,16 @@ Pass `args` as an object. The result must use `route: "parallel"` or
 worktree. The implementer is an Opus dispatcher and verifier; Codex
 `gpt-5.6-luna` xhigh performs the writes. A final fingerprint/HEAD check runs
 before that dispatch, and the helper rejects any post-write path outside the
-declared ownership before integration.
-`parallel` means the split needs approval before dispatch. Show the returned
+declared ownership before integration. The serial brief contains one frozen
+aggregate `set -e` verification command; every exact unit gate runs in its own
+fail-fast subshell rooted at the private worktree, and the first failure blocks
+integration.
+`parallel` means the split needs approval before dispatch and has maximum DAG
+frontier width of at least two. Show the returned
 `plan_payload`, `plan_id`, `plan_hash`, frozen `base_commit`, and working-tree
 fingerprint, then show each unit's exact files,
 contracts, dependencies, acceptance criteria, absolute working directory,
-workspace, and verify command. After approval, re-run with the exact frozen
+workspace, ignored dependency baselines, and verify command. After approval, re-run with the exact frozen
 payload and integrity fields:
 
 ```json
@@ -65,8 +73,12 @@ Do not call the decomposer again, edit the payload, or reconstruct it from the
 display. The workflow rejects missing, stale, or tampered payloads before any
 unit starts. The scheduler allows no more than three active Luna units, starts
 every currently-ready independent unit concurrently, creates one exact private
-git worktree per unit, and integrates completed patches serially in dependency
-order. A worktree preparation or ownership check failure blocks the fan-out;
+git worktree per unit, and integrates completed patches in worker completion
+order behind a canonical read/write lock. Refresh snapshots may overlap each
+other but never overlap a canonical integration; dependencies still wait for
+their predecessors' completed integration, but an unrelated slow unit cannot
+block a ready dependent. A
+worktree preparation or ownership check failure blocks the fan-out;
 shared-checkout execution is never a fallback.
 
 ## Degraded route
@@ -82,8 +94,9 @@ thread. Report missing verify commands and unavailable Luna runtime.
 
 ## After implementation
 
-Inspect `git status --short` and the complete diff. Integrate in dependency
-order under Opus xhigh. Do not merge automatically. Run `/review` once on the
+Inspect `git status --short` and the complete diff. Integrate under the
+canonical write lock; dependency edges, not unrelated unit IDs, determine when
+a unit is eligible. Do not merge automatically. Run `/review` once on the
 assembled diff. If it classifies the diff as guardrail, run the full `/council`
 before final verification under Opus.
 

@@ -5,6 +5,7 @@ import {
   mkdirSync,
   realpathSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -42,6 +43,7 @@ const wrapper = fileURLToPath(new URL('../scripts/luna-run.sh', import.meta.url)
 const env = {
   ...process.env,
   PATH: `${root}:${process.env.PATH || ''}`,
+  TMPDIR: root,
   CODEX_BIN: join(root, 'missing-override'),
   PERL_BIN: join(root, 'missing-perl-override'),
   FAKE_ARGS: argsFile,
@@ -77,6 +79,7 @@ check('wrapper has no dangerous bypass flags', !args.some((arg) => arg.startsWit
 check('wrapper passes the resolved working directory', args.includes(resolvedWork), args.join(' | '))
 check('wrapper ignores arbitrary binary overrides', !args.includes(join(root, 'missing-override')),
   args.join(' | '))
+check('wrapper cleans its owner-private runtime directory', readdirSync(root).every((name) => !name.startsWith('claude-luna-run.')), readdirSync(root).join(' | '))
 
 let runtimeCode = 0
 try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status } 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 
 const root = mkdtempSync(join(tmpdir(), 'claude-review-target-'))
 const repo = join(root, 'repo')
-const bundle = join(root, 'bundle')
+const bundle = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 mkdirSync(repo)
 const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' })
 git('init', '-q')
@@ -48,7 +48,7 @@ check('non-main base and exact head bind the bundle to the requested target',
 check('committed and uncommitted changes are both included from that target', patch.includes('feature commit') && patch.includes('uncommitted') && patch.includes('new.txt'), patch)
 check('two-dot target preserves the exact non-main base comparison', patch.includes('release-only.txt'), patch)
 
-const triple = join(root, 'triple')
+const triple = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 run('release...feature', triple)
 const tripleManifest = readFileSync(join(triple, '00-manifest.txt'), 'utf8')
 const triplePatch = readFileSync(join(triple, '01-the-diff.patch'), 'utf8')
@@ -67,7 +67,7 @@ case "$*" in
 esac
 `)
 chmodSync(fakeGh, 0o755)
-const prBundle = join(root, 'pr-bundle')
+const prBundle = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 runWithEnv('pr:7', prBundle, { PATH: `${root}:${process.env.PATH || ''}` })
 const prManifest = readFileSync(join(prBundle, '00-manifest.txt'), 'utf8')
 check('PR target resolves and binds the exact base and head', prManifest.includes('target=pr:7') && prManifest.includes('base_ref=release') && prManifest.includes('head_ref=feature') && prManifest.includes(`head=${git('rev-parse', 'feature').trim()}`), prManifest)
@@ -76,21 +76,21 @@ check('PR target records the exact GitHub base/head OIDs', prManifest.includes(`
 git('restore', '--source=HEAD', '--staged', '--worktree', '--', '.')
 git('checkout', 'release')
 let stalePrCode = 0
-try { runWithEnv('pr:7', join(root, 'stale-pr-bundle'), { PATH: `${root}:${process.env.PATH || ''}` }) } catch (error) { stalePrCode = error.status || 1 }
+try { runWithEnv('pr:7', execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim(), { PATH: `${root}:${process.env.PATH || ''}` }) } catch (error) { stalePrCode = error.status || 1 }
 check('stale or diverged local checkout refuses an exact PR target', stalePrCode !== 0, `status=${stalePrCode}`)
 git('checkout', 'feature')
 
 const foreign = join(root, 'foreign')
 let foreignCode = 0
-try { run('release..foreign', foreign) } catch (error) { foreignCode = error.status || 1 }
+try { run('release..foreign', execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()) } catch (error) { foreignCode = error.status || 1 }
 check('wrong requested head refuses instead of silently reviewing current checkout', foreignCode !== 0 && !existsSync(join(foreign, '01-the-diff.patch')), `status=${foreignCode}`)
 
-const detached = join(root, 'detached')
+const detached = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 git('checkout', '--detach', 'feature')
 run('release..HEAD', detached)
 check('explicit base and detached HEAD remain reviewable', readFileSync(join(detached, '00-manifest.txt'), 'utf8').includes('head_ref=HEAD'))
 
-const implicit = join(root, 'implicit')
+const implicit = execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-review-bundle.XXXXXXXX')], { encoding: 'utf8' }).trim()
 let implicitCode = 0
 try { run('the current branch diff plus uncommitted changes', implicit) } catch (error) { implicitCode = error.status || 1 }
 check('implicit target fails closed without an upstream', implicitCode !== 0, `status=${implicitCode}`)

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -13,11 +13,16 @@ git('config', 'user.email', 'test@example.com')
 git('config', 'user.name', 'Build Worktree Test')
 writeFileSync(join(repo, 'a.txt'), 'base a\n')
 writeFileSync(join(repo, 'b.txt'), 'base b\n')
+writeFileSync(join(repo, '.gitignore'), 'deps/\n')
 git('add', '.')
 git('commit', '-qm', 'base')
 const base = git('rev-parse', 'HEAD').trim()
 const repoCanonical = git('rev-parse', '--show-toplevel').trim()
+mkdirSync(join(repo, 'deps'))
+writeFileSync(join(repo, 'deps', 'fixture.txt'), 'immutable dependency baseline\n')
 writeFileSync(join(repo, 'a.txt'), 'canonical starting state\n')
+git('add', 'a.txt')
+writeFileSync(join(repo, 'a.txt'), 'canonical starting state plus unstaged\n')
 const script = fileURLToPath(new URL('../scripts/build-worktree.sh', import.meta.url))
 const invocationNonce = 'a'.repeat(64)
 const invocationNonceOther = 'b'.repeat(64)
@@ -27,7 +32,7 @@ const worktreeRoot = realpathSync(execFileSync('mktemp', ['-d', join(tmpdir(), '
 const worktreeRootOther = realpathSync(execFileSync('mktemp', ['-d', join(tmpdir(), 'claude-build-worktrees.XXXXXXXX')], { encoding: 'utf8' }).trim())
 const worktreeA = join(worktreeRoot, 'unit-a')
 const worktreeB = join(worktreeRoot, 'unit-b')
-const token = execFileSync('bash', [script, 'prepare', repo, base, worktreeRoot, invocationNonce, planHash, 'unit-a', 'unit-b'], { encoding: 'utf8' }).trim()
+const token = execFileSync('bash', [script, 'prepare', repo, base, worktreeRoot, invocationNonce, planHash, '--ignored', 'deps', '--units', 'unit-a', 'unit-b'], { encoding: 'utf8' }).trim()
 const tokenOther = execFileSync('bash', [script, 'prepare', repo, base, worktreeRootOther, invocationNonceOther, planHashOther, 'unit-a', 'unit-b'], { encoding: 'utf8' }).trim()
 const branchA = `codex-build/${token.slice(0, 12)}-unit-a`
 const branchB = `codex-build/${token.slice(0, 12)}-unit-b`
@@ -39,8 +44,8 @@ const otherA = join(worktreeRootOther, 'unit-a')
 const otherB = join(worktreeRootOther, 'unit-b')
 execFileSync('bash', [script, 'create', repo, base, otherA, branchOtherA, invocationNonceOther, planHashOther], { encoding: 'utf8' })
 execFileSync('bash', [script, 'create', repo, base, otherB, branchOtherB, invocationNonceOther, planHashOther], { encoding: 'utf8' })
-const seedA = execFileSync('bash', [script, 'seed', repo, worktreeA, invocationNonce, planHash], { encoding: 'utf8' }).trim()
-const seedB = execFileSync('bash', [script, 'seed', repo, worktreeB, invocationNonce, planHash], { encoding: 'utf8' }).trim()
+const seedA = execFileSync('bash', [script, 'seed', repo, worktreeA, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
+const seedB = execFileSync('bash', [script, 'seed', repo, worktreeB, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
 execFileSync('bash', [script, 'seed', repo, otherA, invocationNonceOther, planHashOther], { encoding: 'utf8' })
 execFileSync('bash', [script, 'seed', repo, otherB, invocationNonceOther, planHashOther], { encoding: 'utf8' })
 
@@ -52,36 +57,72 @@ const check = (name, ok, detail = '') => {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `\n         ${detail}`}`)
 }
 
+check('seeding preserves the final bytes from staged and unstaged tracked changes', readFileSync(join(worktreeA, 'a.txt'), 'utf8') === 'canonical starting state plus unstaged\n')
+check('seeding hydrates the exact ignored dependency baseline required by a verify gate', readFileSync(join(worktreeA, 'deps', 'fixture.txt'), 'utf8') === 'immutable dependency baseline\n' && existsSync(join(worktreeA, 'deps', 'fixture.txt')))
+let wrongIgnoredSeedCode = 0
+try { execFileSync('bash', [script, 'seed', repo, worktreeA, invocationNonce, planHash], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { wrongIgnoredSeedCode = error.status || 1 }
+check('worktree identity rejects a seed that omits the approved ignored baseline set', wrongIgnoredSeedCode !== 0)
+
 const rootManifest = readFileSync(join(worktreeRoot, '.run.identity'), 'utf8')
 check('each build root receives a distinct cryptographically random run token', /^[0-9a-f]{64}$/.test(token) && /^[0-9a-f]{64}$/.test(tokenOther) && token !== tokenOther)
-check('run manifest freezes repository identity, base, units, branches, paths, nonce, and plan hash', rootManifest.includes(`repo_root=${repoCanonical}`) && rootManifest.includes(`base_commit=${base}`) && rootManifest.includes(`invocation_nonce=${invocationNonce}`) && rootManifest.includes(`plan_hash=${planHash}`) && rootManifest.includes('expected_units=unit-a unit-b') && rootManifest.includes(`unit.unit-a.branch=${branchA}`) && rootManifest.includes(`unit.unit-a.path=${worktreeA}`) && rootManifest.includes(`unit.unit-b.branch=${branchB}`) && rootManifest.includes(`unit.unit-b.path=${worktreeB}`))
+check('run manifest freezes repository identity, base, units, branches, paths, nonce, plan hash, and ignored baseline digest', rootManifest.includes(`repo_root=${repoCanonical}`) && rootManifest.includes(`base_commit=${base}`) && rootManifest.includes(`invocation_nonce=${invocationNonce}`) && rootManifest.includes(`plan_hash=${planHash}`) && rootManifest.includes('expected_units=unit-a unit-b') && /ignored_digest=[0-9a-f]{64}/.test(rootManifest) && rootManifest.includes(`unit.unit-a.branch=${branchA}`) && rootManifest.includes(`unit.unit-a.path=${worktreeA}`) && rootManifest.includes(`unit.unit-b.branch=${branchB}`) && rootManifest.includes(`unit.unit-b.path=${worktreeB}`))
+
+writeFileSync(join(repo, 'deps', 'fixture.txt'), 'canonical baseline drift\n')
+let canonicalDriftCode = 0
+try { execFileSync('bash', [script, 'integrate', repo, worktreeA, seedA, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'a.txt', 'new-a.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { canonicalDriftCode = error.status || 1 }
+writeFileSync(join(repo, 'deps', 'fixture.txt'), 'immutable dependency baseline\n')
+check('canonical dependency drift after approval is rejected before any patch applies', canonicalDriftCode !== 0 && readFileSync(join(repo, 'a.txt'), 'utf8') === 'canonical starting state plus unstaged\n')
 
 writeFileSync(join(worktreeA, 'a.txt'), 'unit a\n')
 writeFileSync(join(worktreeA, 'new-a.txt'), 'unit a new file\n')
 let integrateCode = 0
-try { execFileSync('bash', [script, 'integrate', repo, worktreeA, seedA, repo, token, invocationNonce, planHash, 'a.txt', 'new-a.txt'], { encoding: 'utf8' }) } catch (error) { integrateCode = error.status || 1 }
+try { execFileSync('bash', [script, 'integrate', repo, worktreeA, seedA, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'a.txt', 'new-a.txt'], { encoding: 'utf8' }) } catch (error) { integrateCode = error.status || 1 }
 check('first unit integrates while a second private worktree is registered', integrateCode === 0 && readFileSync(join(repo, 'a.txt'), 'utf8') === 'unit a\n' && readFileSync(join(repo, 'new-a.txt'), 'utf8') === 'unit a new file\n')
 
-const refreshSeedB = execFileSync('bash', [script, 'refresh', repo, worktreeB, base, token, invocationNonce, planHash], { encoding: 'utf8' }).trim()
+writeFileSync(join(worktreeB, 'deps', 'fixture.txt'), 'worker mutation must not escape\n')
+writeFileSync(join(worktreeB, 'deps', 'worker-artifact.txt'), 'worker artifact\n')
+check('worker-created ignored writes never become canonical files', readFileSync(join(repo, 'deps', 'fixture.txt'), 'utf8') === 'immutable dependency baseline\n' && !existsSync(join(repo, 'deps', 'worker-artifact.txt')))
+const refreshSeedB = execFileSync('bash', [script, 'refresh', repo, worktreeB, base, token, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
 check('second unit refreshes from the first unit’s integrated canonical state', readFileSync(join(worktreeB, 'a.txt'), 'utf8') === 'unit a\n' && existsSync(join(worktreeB, 'new-a.txt')) && refreshSeedB.length === 40)
+check('refresh restores the immutable ignored baseline and removes worker ignored artifacts', readFileSync(join(worktreeB, 'deps', 'fixture.txt'), 'utf8') === 'immutable dependency baseline\n' && !existsSync(join(worktreeB, 'deps', 'worker-artifact.txt')))
 
 writeFileSync(join(worktreeB, 'b.txt'), 'unit b\n')
 writeFileSync(join(worktreeB, 'new-b.txt'), 'unit b new file\n')
+writeFileSync(join(worktreeB, 'deps', 'worker-artifact.txt'), 'must stay private\n')
+let ignoredTamperCode = 0
+try { execFileSync('bash', [script, 'integrate', repo, worktreeB, refreshSeedB, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'b.txt', 'new-b.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { ignoredTamperCode = error.status || 1 }
+check('dependency content tamper is rejected before a gate can falsely integrate it', ignoredTamperCode !== 0 && readFileSync(join(repo, 'b.txt'), 'utf8') === 'base b\n' && readFileSync(join(repo, 'deps', 'fixture.txt'), 'utf8') === 'immutable dependency baseline\n', `status=${ignoredTamperCode}`)
+
+const modeCleanSeedB = execFileSync('bash', [script, 'refresh', repo, worktreeB, base, token, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
+chmodSync(join(worktreeB, 'deps', 'fixture.txt'), 0o600)
+let ignoredModeTamperCode = 0
+try { execFileSync('bash', [script, 'integrate', repo, worktreeB, modeCleanSeedB, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'b.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { ignoredModeTamperCode = error.status || 1 }
+check('dependency mode tamper is rejected before integration', ignoredModeTamperCode !== 0 && readFileSync(join(repo, 'b.txt'), 'utf8') === 'base b\n', `status=${ignoredModeTamperCode}`)
+
+const linkCleanSeedB = execFileSync('bash', [script, 'refresh', repo, worktreeB, base, token, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
+symlinkSync('fixture.txt', join(worktreeB, 'deps', 'worker-link'))
+let ignoredSymlinkTamperCode = 0
+try { execFileSync('bash', [script, 'integrate', repo, worktreeB, linkCleanSeedB, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'b.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { ignoredSymlinkTamperCode = error.status || 1 }
+check('dependency symlink tamper is rejected before integration', ignoredSymlinkTamperCode !== 0 && readFileSync(join(repo, 'b.txt'), 'utf8') === 'base b\n', `status=${ignoredSymlinkTamperCode}`)
+
+const cleanSeedB = execFileSync('bash', [script, 'refresh', repo, worktreeB, base, token, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
+writeFileSync(join(worktreeB, 'b.txt'), 'unit b\n')
+writeFileSync(join(worktreeB, 'new-b.txt'), 'unit b new file\n')
 let integrateBCode = 0
-try { execFileSync('bash', [script, 'integrate', repo, worktreeB, refreshSeedB, repo, token, invocationNonce, planHash, 'b.txt', 'new-b.txt'], { encoding: 'utf8' }) } catch (error) { integrateBCode = error.status || 1 }
-check('second unit integrates after refresh with the first unit preserved', integrateBCode === 0 && readFileSync(join(repo, 'a.txt'), 'utf8') === 'unit a\n' && readFileSync(join(repo, 'b.txt'), 'utf8') === 'unit b\n' && readFileSync(join(repo, 'new-b.txt'), 'utf8') === 'unit b new file\n')
+try { execFileSync('bash', [script, 'integrate', repo, worktreeB, cleanSeedB, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'b.txt', 'new-b.txt'], { encoding: 'utf8' }) } catch (error) { integrateBCode = error.status || 1 }
+check('second unit integrates after refresh with the first unit preserved', integrateBCode === 0 && readFileSync(join(repo, 'a.txt'), 'utf8') === 'unit a\n' && readFileSync(join(repo, 'b.txt'), 'utf8') === 'unit b\n' && readFileSync(join(repo, 'new-b.txt'), 'utf8') === 'unit b new file\n' && readFileSync(join(repo, 'deps', 'fixture.txt'), 'utf8') === 'immutable dependency baseline\n' && !existsSync(join(repo, 'deps', 'worker-artifact.txt')))
 
 let identityCode = 0
-try { execFileSync('bash', [script, 'integrate', repo, worktreeA, seedB, repo, token, invocationNonce, planHash, 'a.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { identityCode = error.status || 1 }
+try { execFileSync('bash', [script, 'integrate', repo, worktreeA, seedB, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'a.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { identityCode = error.status || 1 }
 check('a mismatched unit seed is rejected without changing canonical files', identityCode !== 0 && readFileSync(join(repo, 'a.txt'), 'utf8') === 'unit a\n' && readFileSync(join(repo, 'b.txt'), 'utf8') === 'unit b\n')
 
-const refreshSeedA = execFileSync('bash', [script, 'refresh', repo, worktreeA, base, token, invocationNonce, planHash], { encoding: 'utf8' }).trim()
+const refreshSeedA = execFileSync('bash', [script, 'refresh', repo, worktreeA, base, token, invocationNonce, planHash, 'deps'], { encoding: 'utf8' }).trim()
 check('first unit also refreshes after the second unit integrates', readFileSync(join(worktreeA, 'b.txt'), 'utf8') === 'unit b\n' && refreshSeedA.length === 40)
 
 writeFileSync(join(worktreeA, 'a.txt'), 'unsafe unit a\n')
 writeFileSync(join(worktreeA, 'b.txt'), 'out of scope\n')
 let escapeCode = 0
-try { execFileSync('bash', [script, 'integrate', repo, worktreeA, refreshSeedA, repo, token, invocationNonce, planHash, 'a.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { escapeCode = error.status || 1 }
+try { execFileSync('bash', [script, 'integrate', repo, worktreeA, refreshSeedA, repo, token, invocationNonce, planHash, '--ignored', 'deps', '--files', 'a.txt'], { encoding: 'utf8', stdio: 'pipe' }) } catch (error) { escapeCode = error.status || 1 }
 check('out-of-scope unit writes are rejected before any patch applies', escapeCode !== 0 && readFileSync(join(repo, 'a.txt'), 'utf8') === 'unit a\n' && readFileSync(join(repo, 'b.txt'), 'utf8') === 'unit b\n')
 
 let aliasCode = 0

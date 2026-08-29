@@ -55,6 +55,10 @@ const FINDINGS = {
       type: 'boolean',
       description: 'Codex seat only: true if the Codex CLI could not be run at all (failed preflight, hung, or produced no output on every attempt). Leave false/absent when Codex ran and simply had nothing to report.',
     },
+    runner_exit_code: {
+      type: 'integer',
+      description: 'Codex seat only: exact codex-run.sh exit code. Zero is required for an available outsider seat.',
+    },
   },
 }
 
@@ -261,7 +265,7 @@ STEP 0 — PREFLIGHT, and treat it as a hard gate. Run exactly:
 
 \`--version\` needs no network, no auth and no model, so it is the cheapest possible
 proof the binary starts at all. If it prints EXIT:124, prints nothing, or errors,
-the CLI is wedged — **return \`{"findings": [], "tool_unavailable": true}\` immediately**.
+the CLI is wedged — **return \`{"findings": [], "runner_exit_code": 3, "tool_unavailable": true}\` immediately**.
 Set \`tool_unavailable\` on ANY path where Codex never produced a review: failed preflight,
 both attempts hung, or empty output every time. Leave it false ONLY when Codex actually ran
 and had nothing to report — the council reports those two outcomes differently, and marking a
@@ -311,17 +315,21 @@ branch on. Do NOT hand-roll \`timeout … codex exec\`:
 
 Branch on the exit code, never on how the output looks:
   0 — Codex reviewed. Parse the JSON after the echoed prompt and relay its findings.
-  3 — CLI unavailable → \`{"findings": [], "tool_unavailable": true}\`.
-  4 — stalled and killed → retry ONCE, then \`tool_unavailable: true\` if it stalls again.
-  5 — empty pass → \`{"findings": [], "tool_unavailable": true}\`. Codex produced no review.
+  3 — CLI unavailable → \`{"findings": [], "runner_exit_code": 3, "tool_unavailable": true}\`.
+  4 — stalled and killed → retry ONCE, then report the final runner_exit_code and \`tool_unavailable: true\` if it stalls again.
+  5 — empty pass → \`{"findings": [], "runner_exit_code": 5, "tool_unavailable": true}\`. Codex produced no review.
 
 Never use run_in_background, and never poll a backgrounded run with a \`while kill -0\` loop or a
 Monitor — a backgrounded Codex run hangs reporting "still running", and the polling is what turns a
 hang into a twenty-minute one.
 
 STEP 3 — the wrapper already detects the empty-output flake and the stall for you; that is what
-exit 5 and exit 4 mean. Retry ONCE on either, then report \`tool_unavailable: true\` — do NOT
-substitute your own review.
+exit 5 and exit 4 mean. Exit 3 means the CLI is unavailable, exit 6 means the
+provider refused capacity, exit 7 means Codex failed, and exit 8 means the
+secret scan refused the transfer. Retry ONCE only for exit 4 or 5, then report
+the exact final runner_exit_code and \`tool_unavailable: true\` — do NOT
+substitute your own review. Any non-zero exit makes this required council seat
+unavailable, even when the output contains plausible text.
 
 BUDGET — you have at most TWO wrapper invocations plus the preflight.
 That is the whole allowance. When it is spent, return what you have. Never kill stray processes and
@@ -343,7 +351,7 @@ outcome; fabricating a review is not.`,
       const valid = r && Array.isArray(r.findings)
       const n = valid ? r.findings.length : 0
       outsiderStatus = !valid ? 'failed'
-        : r.tool_unavailable ? 'unavailable'
+        : r.tool_unavailable || r.runner_exit_code !== 0 ? 'unavailable'
         : n ? 'reported' : 'empty'
       lensAvailability.set(member.key, outsiderStatus === 'reported' || outsiderStatus === 'empty' ? 'available' : 'unavailable')
       // Normalises agent()'s null-on-error into one shape — timeout, failure, empty, or reported — for every caller.
@@ -394,11 +402,15 @@ finding wastes more of the author's time than a missed minor one.
 
 Return one verdict per claim, using the [index] shown above.`,
         { label: `challenge:${member.key}#${bi}@${fam}`, phase: 'Cross-examine', model: fam, effort: 'xhigh', schema: CHALLENGE_BATCH_SCHEMA, agentType: READER }
-      )).then((r) => ({
-        bi,
-        verdicts: (r && Array.isArray(r.verdicts)) ? r.verdicts : [],
-        valid: !!(r && Array.isArray(r.verdicts) && r.verdicts.length === batch.length),
-      })).catch(() => ({ bi, verdicts: [], valid: false }))
+      )).then((r) => {
+        const verdicts = (r && Array.isArray(r.verdicts)) ? r.verdicts : []
+        const indexes = verdicts.map((verdict) => verdict && verdict.index)
+        const exactIndexSet = verdicts.length === batch.length &&
+          indexes.every((index) => Number.isInteger(index) && index >= 0 && index < batch.length) &&
+          new Set(indexes).size === batch.length &&
+          [...Array(batch.length).keys()].every((index) => indexes.includes(index))
+        return { bi, verdicts: exactIndexSet ? verdicts : [], valid: exactIndexSet }
+      }).catch(() => ({ bi, verdicts: [], valid: false }))
     })))
 
     // Regroup batch verdicts onto individual findings; a missing verdict reads as weaker evidence, not agreement.
@@ -457,7 +469,8 @@ const council = {
   members_available: membersAvailable,
   unavailable_members: unavailableMembers,
   challenge_failures: challengeFailures,
-  status: allRequiredSeatsReady ? 'complete' : 'blocked',
+  status: allRequiredSeatsReady && challengeFailures === 0 ? 'complete' : 'blocked',
+  coverage: allRequiredSeatsReady && challengeFailures === 0 ? 'complete' : 'degraded',
   lenses: SEATED.map((m) => m.key),
   tiers: CHALLENGERS,
   raised: all.length,
@@ -476,6 +489,7 @@ if (!allRequiredSeatsReady || challengeFailures > 0) {
   return {
     verdict: 'needs-discussion',
     status: 'blocked',
+    coverage: 'degraded',
     summary: `Council blocked: ${unavailableMembers.length ? `required seat(s) did not return a valid review (${unavailableMembers.join(', ')}).` : ''}${challengeFailures ? ` ${challengeFailures} challenge seat(s) did not return a complete verdict.` : ''} No clean or ship verdict is allowed until every required seat is available.`,
     ranked: survivors.map((f) => ({ ...f, action: 'Resolve the blocked council seat and re-run the full council.' })),
     dismissed: [],

@@ -32,8 +32,12 @@ esac
 # turning cleanup into a general-purpose recursive delete.
 [ -f "$TARGET/00-manifest.txt" ] || { echo 'cleanup-review-bundle: manifest missing' >&2; exit 65; }
 [ -f "$TARGET/01-the-diff.patch" ] || { echo 'cleanup-review-bundle: canonical diff missing' >&2; exit 65; }
-[ "$(stat -f '%u' "$TARGET" 2>/dev/null || true)" = "$(id -u)" ] || {
+[ "$(stat -f '%u' "$TARGET" 2>/dev/null || stat -c '%u' "$TARGET" 2>/dev/null || true)" = "$(id -u)" ] || {
   echo 'cleanup-review-bundle: target is not owned by the current user' >&2
+  exit 65
+}
+[ "$(stat -f '%Lp' "$TARGET" 2>/dev/null || stat -c '%a' "$TARGET" 2>/dev/null || true)" = '700' ] || {
+  echo 'cleanup-review-bundle: target is not owner-private' >&2
   exit 65
 }
 

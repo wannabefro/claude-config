@@ -27,7 +27,7 @@ Before any implementation dispatch, Opus must freeze:
 - the exact file ownership for each unit;
 - the absolute working directory and base commit for the approved payload;
 - the acceptance criteria and one executable verify command per unit;
-- the workspace choice and the integration order.
+- the workspace choice and the dependency constraints that govern eligibility.
 
 At most three independent Luna implementation units may run at once. The
 global setting and `workflows/build-parallel.js` enforce this ceiling. Parallel
@@ -42,6 +42,15 @@ the normal assembled-diff review. Guardrail work uses the full `/council`.
 No automatic merge occurs. A dependent unit cannot start after a failed
 predecessor. A unit that verifies a name a later unit removes must depend on
 that remover; otherwise the build refuses the invalidated work.
+
+The frozen contract fixes dependency edges, provider/consumer ordering,
+ownership, and eligibility constraints; it does not freeze a total integration
+order. When a unit completes and its dependencies are integrated, it is
+eligible for integration in completion order under one canonical writer lock.
+Independent completed units must not wait behind an unrelated slow unit
+(there is no independent head-of-line blocking). A dependent remains ineligible
+until every declared predecessor has integrated, even when another unit
+completes first.
 
 ## Implementer boundary
 
@@ -66,9 +75,9 @@ There is no permanent designer agent.
 ownership is not physical isolation: an accidental formatter or generated file
 can still collide in a shared checkout. The dispatcher rejects shared plans,
 creates and seeds the worktrees, passes each exact path to Luna, rejects any
-patch outside its canonical owned files, integrates patches serially in
-dependency order, and cleans up in a `finally` path. If any capability check
-fails, no parallel unit starts.
+patch outside its canonical owned files, integrates completed eligible patches
+in completion order under one canonical writer lock, and cleans up in a
+`finally` path. If any capability check fails, no parallel unit starts.
 
 Before dispatch, the workflow freezes a SHA-256 fingerprint over the index,
 tracked working tree, and relevant untracked paths. Approval rechecks the same

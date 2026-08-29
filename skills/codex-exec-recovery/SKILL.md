@@ -30,6 +30,8 @@ The wrapper returns stable codes:
 | 4 | stalled and killed | optionally repeat the same Sol/xhigh request once with a tighter inline brief |
 | 5 | empty assistant pass | report that no result exists; do not call it a review |
 | 6 | provider refused capacity | report the capacity gap; do not substitute another model |
+| 7 | Codex runtime failure | report the failed cross-family seat with the exact code |
+| 8 | secret scan refused transfer | report the blocked cross-family seat; do not bypass the scan |
 
 An empty pass is not approval. A same-model retry after a stall is a bounded operational retry,
 not an effort fallback. Do not retry an unavailable CLI or provider refusal.
@@ -60,14 +62,13 @@ decide whether to continue with the documented degraded path.
 
 ## Manual invocation
 
-Use the wrapper instead of hand-running Codex. If a diagnostic needs a direct bounded probe, preserve
-the same fixed arguments and foreground behavior:
+Use the wrapper instead of hand-running Codex. It uses the macOS/POSIX runtime
+tools and a Perl alarm. It does not require GNU `timeout` or a Homebrew
+coreutils shadow. For a diagnostic pass, put the required context in a file and
+preserve the same fixed arguments and foreground behavior:
 
 ```bash
-timeout 600 codex exec --skip-git-repo-check \
-  --model gpt-5.6-sol -c 'mcp_servers={}' \
-  -c 'model_reasoning_effort=xhigh' \
-  '<task with required context inline>' < /dev/null
+bash ~/.claude/scripts/codex-run.sh -t 600 -f /path/to/brief.md -N
 ```
 
 Do not add dangerous bypass flags. Do not silently change the model, effort, approval mode, or

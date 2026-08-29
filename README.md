@@ -33,7 +33,8 @@ Luna implementer. `/build` is for structured work: it chooses `serial` or
 and verification gates before approval, then starts every ready independent
 unit concurrently up to three. Shared parallel execution is guarded by
 private per-unit worktrees and canonical physical path checks; shared checkout
-fan-out is blocked. Completed patches integrate serially in dependency order.
+fan-out is blocked. Completed patches integrate in worker completion order under
+a canonical write lock, while dependency edges still gate dependents.
 Approval uses a cryptographic plan identity,
 an index/working-tree/untracked fingerprint, and rejects tampering or any
 stale checkout. `/review` and `/council` share one

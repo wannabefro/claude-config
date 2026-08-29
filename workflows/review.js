@@ -46,10 +46,11 @@ const FINDINGS = {
 
 const CODEX_RESULT = {
   type: 'object',
-  required: ['status', 'findings'],
+  required: ['status', 'findings', 'runner_exit_code'],
   properties: {
     status: { enum: ['reviewed', 'unavailable', 'stalled', 'empty', 'refused', 'blocked', 'failed'] },
     findings: { type: 'array', items: { type: 'object' } },
+    runner_exit_code: { type: 'integer', description: 'Exact codex-run.sh exit code. Required for a reviewed result and zero only when the wrapper returned an answer.' },
     detail: { type: 'string' },
   },
 }
@@ -282,16 +283,19 @@ snapshots inline exactly once, then run this fixed command exactly:
   ~/.claude/scripts/codex-run.sh -t 900 -s 480 -B '${bundlePath.replaceAll("'", "'\\\"'\\\"'")}' -f <brief-file> -N
 
 The wrapper fixes Codex gpt-5.6-sol at xhigh with MCP disabled. It returns 0
-when Codex reviewed, 3 when unavailable, 4 when stalled, 5 when empty, and 6
-when the provider refused capacity. Relay the findings and status. Never use a
-model, effort, or writer fallback. If the command is unavailable, report the
-gap instead of substituting a review.
+when Codex reviewed, 3 when unavailable, 4 when stalled, 5 when empty, 6 when
+the provider refused capacity, 7 when Codex failed, and 8 when the secret scan
+refused the transfer. Relay the exact exit code as runner_exit_code. Set status
+to reviewed only for exit 0 with a real assistant result. Every non-zero exit
+is a missing review seat, including runtime failure; never convert it to an
+empty or reviewed result. Never use a model, effort, or writer fallback. If the
+command is unavailable, report the gap instead of substituting a review.
 
 ${reviewScope}`,
     { label: 'review:normal:codex', phase: 'Review', model: 'opus', effort: 'xhigh', schema: CODEX_RESULT }),
 ])
 const cleanupResult = await cleanupOnce()
-const seatsReady = opusResult && Array.isArray(opusResult.findings) && codexResult && codexResult.status === 'reviewed'
+const seatsReady = opusResult && Array.isArray(opusResult.findings) && codexResult && codexResult.status === 'reviewed' && codexResult.runner_exit_code === 0
 const cleanupReady = cleanupResult && cleanupResult.status === 'cleaned'
 
 return {
@@ -301,6 +305,7 @@ return {
   status: seatsReady && cleanupReady
     ? 'reviewed'
     : 'blocked',
+  coverage: seatsReady && cleanupReady ? 'complete' : 'degraded',
   reviewers: ['opus-xhigh', 'codex-gpt-5.6-sol-xhigh'],
   opus: opusResult || { findings: [], summary: 'Opus returned no result.' },
   codex: codexResult || { status: 'failed', findings: [], detail: 'Codex harness returned no result.' },

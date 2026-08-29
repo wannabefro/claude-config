@@ -84,7 +84,7 @@ then get the best coverage still available:
 
 **The cross-family pass in step 2 is the floor, not an optional extra.** Step 1 alone is a
 same-family review, and a second family is the whole reason the council exists. Run step 2 on every
-degraded review. If it returns 3, 4, 5 or 6, name that in the verdict — a review missing its only
+degraded review. If it returns 3, 4, 5, 6, 7, or 8, name that in the verdict — a review missing its only
 non-Claude lens is never reported as complete.
 
 1. **`ce-code-review`** on the same diff. It is the closest same-family stand-in and it carries the
@@ -113,7 +113,8 @@ non-Claude lens is never reported as complete.
    > HARD CONSTRAINT: Do NOT read files, run shell commands, or search the repo. Everything you need
    > is below. A run that explores the repo is a failed run.
 
-   Branch on its exit code — `3` unavailable, `4` stalled, `5` empty, `6` refused (out of credits).
+   Branch on its exit code — `3` unavailable, `4` stalled, `5` empty, `6` refused (out of credits),
+   `7` Codex runtime failure, or `8` secret scan refusal.
    **None of those is a review**; report the gap rather than counting it as one. A stall retry, if
    used, repeats the same Sol/xhigh invocation. It is not a model or effort fallback.
 3. **On a guardrail surface** — auth, payments, migrations or schema, data mutations, public API,

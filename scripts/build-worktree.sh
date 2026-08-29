@@ -4,7 +4,7 @@ set -euo pipefail
 umask 077
 
 usage() {
-  echo 'usage: build-worktree.sh probe REPO BASE | prepare REPO BASE ROOT INVOCATION_NONCE PLAN_HASH UNIT... | create REPO BASE DEST BRANCH INVOCATION_NONCE PLAN_HASH | seed REPO WORKTREE INVOCATION_NONCE PLAN_HASH | refresh REPO WORKTREE BASE RUN_TOKEN INVOCATION_NONCE PLAN_HASH | integrate REPO WORKTREE SEED CANONICAL RUN_TOKEN INVOCATION_NONCE PLAN_HASH FILE... | cleanup REPO ROOT RUN_TOKEN INVOCATION_NONCE PLAN_HASH' >&2
+  echo 'usage: build-worktree.sh probe REPO BASE | prepare REPO BASE ROOT INVOCATION_NONCE PLAN_HASH [--ignored PATH...] --units UNIT... | create REPO BASE DEST BRANCH INVOCATION_NONCE PLAN_HASH | seed REPO WORKTREE INVOCATION_NONCE PLAN_HASH IGNORED_PATH... | refresh REPO WORKTREE BASE RUN_TOKEN INVOCATION_NONCE PLAN_HASH IGNORED_PATH... | integrate REPO WORKTREE SEED CANONICAL RUN_TOKEN INVOCATION_NONCE PLAN_HASH [--ignored PATH...] --files FILE... | cleanup REPO ROOT RUN_TOKEN INVOCATION_NONCE PLAN_HASH' >&2
   exit 64
 }
 
@@ -66,8 +66,12 @@ identity_token() {
 }
 
 invocation_binding() {
-  local invocation_nonce=$1 plan_hash=$2 repo_root=$3 base=$4 units=$5
-  printf '%s\0%s\0%s\0%s\0%s\0' "$invocation_nonce" "$plan_hash" "$repo_root" "$base" "$units" | shasum -a 256 | awk '{print $1}'
+  local invocation_nonce=$1 plan_hash=$2 repo_root=$3 base=$4 units=$5 ignored_hash=$6 ignored_digest=$7
+  printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0' "$invocation_nonce" "$plan_hash" "$repo_root" "$base" "$units" "$ignored_hash" "$ignored_digest" | shasum -a 256 | awk '{print $1}'
+}
+
+ignored_paths_hash() {
+  printf '%s\0' "$@" | shasum -a 256 | awk '{print $1}'
 }
 
 random_token() {
@@ -81,7 +85,7 @@ root_manifest_fields() {
   local file=$1 key
   while IFS='=' read -r key _; do
     case "$key" in
-      version|run_token|invocation_nonce|plan_hash|binding_hash|root|repo_root|git_common|base_commit|expected_units|unit.*.branch|unit.*.path) ;;
+      version|run_token|invocation_nonce|plan_hash|ignored_hash|ignored_digest|binding_hash|root|repo_root|git_common|base_commit|expected_units|unit.*.branch|unit.*.path) ;;
       *) return 1 ;;
     esac
   done < "$file"
@@ -89,7 +93,7 @@ root_manifest_fields() {
 
 root_identity() {
   local repo=$1 root=$2 expected_token=${3:-} expected_base=${4:-} expected_nonce=${5:-} expected_plan_hash=${6:-}
-  local manifest recorded_root repo_root git_common base token units invocation_nonce plan_hash binding_hash actual_repo_root actual_common expected_binding branch path
+  local manifest recorded_root repo_root git_common base token units invocation_nonce plan_hash ignored_hash ignored_digest binding_hash actual_repo_root actual_common expected_binding branch path
   root=$(private_root_path "$root") || return 1
   manifest="$root/.run.identity"
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || return 1
@@ -104,11 +108,15 @@ root_identity() {
   token=$(manifest_value "$manifest" run_token) || return 1
   invocation_nonce=$(manifest_value "$manifest" invocation_nonce) || return 1
   plan_hash=$(manifest_value "$manifest" plan_hash) || return 1
+  ignored_hash=$(manifest_value "$manifest" ignored_hash) || return 1
+  ignored_digest=$(manifest_value "$manifest" ignored_digest) || return 1
   binding_hash=$(manifest_value "$manifest" binding_hash) || return 1
   units=$(manifest_value "$manifest" expected_units) || return 1
   [[ "$token" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$invocation_nonce" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$plan_hash" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ "$ignored_hash" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ "$ignored_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$binding_hash" =~ ^[0-9a-f]{64}$ ]] || return 1
   [ -z "$expected_token" ] || [ "$token" = "$expected_token" ] || return 1
   [ -z "$expected_base" ] || [ "$base" = "$expected_base" ] || return 1
@@ -122,7 +130,7 @@ root_identity() {
   actual_common=$(cd "$repo" && cd "$actual_common" 2>/dev/null && pwd -P) || return 1
   [ "$git_common" = "$actual_common" ] || return 1
   [[ "$base" =~ ^[0-9a-fA-F]{40,64}$ ]] || return 1
-  expected_binding=$(invocation_binding "$invocation_nonce" "$plan_hash" "$repo_root" "$base" "$units")
+  expected_binding=$(invocation_binding "$invocation_nonce" "$plan_hash" "$repo_root" "$base" "$units" "$ignored_hash" "$ignored_digest")
   [ "$binding_hash" = "$expected_binding" ] || return 1
 
   local seen=' ' key suffix field record_unit expected_unit
@@ -163,10 +171,26 @@ identity_manifest_fields() {
 }
 
 prepare_root() {
-  local repo=$1 base=$2 root=$3 invocation_nonce=$4 plan_hash=$5 manifest temp repo_root git_common token unit units binding_hash
+  local repo=$1 base=$2 root=$3 invocation_nonce=$4 plan_hash=$5 manifest temp repo_root git_common token unit units binding_hash ignored_hash ignored_digest mode
   shift 5
-  [ "$#" -gt 0 ] || die 'at least one expected unit is required'
+  local ignored_paths=() expected_units=()
+  mode=units
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --ignored) mode=ignored ;;
+      --units) mode=units ;;
+      *)
+        if [ "$mode" = ignored ]; then ignored_paths+=("$1"); else expected_units+=("$1"); fi
+        ;;
+    esac
+    shift
+  done
+  [ "${#expected_units[@]}" -gt 0 ] || die 'at least one expected unit is required'
   repo=$(abs_dir "$repo") || die 'repository cannot be resolved'
+  if [ "${#ignored_paths[@]}" -gt 0 ]; then ignored_hash=$(ignored_paths_hash "${ignored_paths[@]}"); else ignored_hash=$(ignored_paths_hash); fi
+  if [ "${#ignored_paths[@]}" -gt 0 ]; then ignored_digest=$(baseline_digest "$repo" "${ignored_paths[@]}"); else ignored_digest=$(baseline_digest "$repo"); fi
+  [ -n "$ignored_digest" ] || die 'ignored dependency baseline digest could not be calculated'
+  [ -n "$ignored_hash" ] && [ -n "$ignored_digest" ] || die 'ignored baseline binding could not be calculated'
   root=$(private_root_path "$root") || die 'private build root is unsafe'
   [ -z "$(find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ] || die 'private build root is not empty'
   base=$(git -C "$repo" rev-parse --verify "$base^{commit}" 2>/dev/null) || die 'base is not a commit'
@@ -179,20 +203,20 @@ prepare_root() {
   token=$(random_token) || die 'cryptographically secure run token could not be generated'
   units=''
   local seen_units=' '
-  for unit in "$@"; do
+  for unit in "${expected_units[@]}"; do
     [[ "$unit" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "invalid expected unit: $unit"
     case "$seen_units" in *" $unit "*) die "duplicate expected unit: $unit" ;; esac
     seen_units="${seen_units}${unit} "
     units="${units:+$units }$unit"
   done
-  binding_hash=$(invocation_binding "$invocation_nonce" "$plan_hash" "$repo_root" "$base" "$units")
+  binding_hash=$(invocation_binding "$invocation_nonce" "$plan_hash" "$repo_root" "$base" "$units" "$ignored_hash" "$ignored_digest")
   manifest="$root/.run.identity"
   temp=$(mktemp "$root/.run.identity.tmp.XXXXXXXX") || die 'run manifest cannot be created'
   trap 'rm -f -- "$temp"' RETURN
   {
-    printf 'version=3\nrun_token=%s\ninvocation_nonce=%s\nplan_hash=%s\nbinding_hash=%s\nroot=%s\nrepo_root=%s\ngit_common=%s\nbase_commit=%s\nexpected_units=%s\n' \
-      "$token" "$invocation_nonce" "$plan_hash" "$binding_hash" "$root" "$repo_root" "$git_common" "$base" "$units"
-    for unit in "$@"; do
+    printf 'version=3\nrun_token=%s\ninvocation_nonce=%s\nplan_hash=%s\nignored_hash=%s\nignored_digest=%s\nbinding_hash=%s\nroot=%s\nrepo_root=%s\ngit_common=%s\nbase_commit=%s\nexpected_units=%s\n' \
+      "$token" "$invocation_nonce" "$plan_hash" "$ignored_hash" "$ignored_digest" "$binding_hash" "$root" "$repo_root" "$git_common" "$base" "$units"
+    for unit in "${expected_units[@]}"; do
       printf 'unit.%s.branch=codex-build/%s-%s\nunit.%s.path=%s/%s\n' "$unit" "${token:0:12}" "$unit" "$unit" "$root" "$unit"
     done
   } > "$temp"
@@ -511,13 +535,130 @@ copy_untracked() {
   done < <(git -C "$repo" ls-files --others --exclude-standard -z)
 }
 
+path_has_symlink_component() {
+  local root=$1 rel=$2 cursor=$root part
+  IFS=/ read -r -a parts <<< "$rel"
+  for part in "${parts[@]}"; do
+    cursor="$cursor/$part"
+    [ ! -L "$cursor" ] || return 0
+  done
+  return 1
+}
+
+validate_baseline_tree() {
+  local source=$1 rel link target source_root
+  [ -e "$source" ] && [ ! -L "$source" ] || die "ignored dependency baseline is missing or a symlink: ${source##*/}"
+  [ -f "$source" ] || [ -d "$source" ] || die "ignored dependency baseline is not a regular file or directory: ${source##*/}"
+  source_root=$(realpath "$source") || die 'ignored dependency baseline cannot be resolved'
+  [ "$source_root" = "$source" ] || die 'ignored dependency baseline must not resolve through a symlink'
+  if [ -d "$source" ]; then
+    while IFS= read -r -d '' link; do
+      target=$(readlink "$link") || die 'ignored dependency symlink could not be read'
+      [[ "$target" != /* ]] || die "ignored dependency baseline contains an absolute symlink: ${link#$source/}"
+      target=$(realpath "$link") || die 'ignored dependency symlink target could not be resolved'
+      case "$target" in "$source"/*) ;; *) die "ignored dependency baseline symlink escapes its source: ${link#$source/}" ;; esac
+    done < <(find -P "$source" -type l -print0)
+  fi
+}
+
+path_mode() {
+  stat -f '%p' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null
+}
+
+digest_entry() {
+  local root=$1 rel=$2 entry child_rel mode link_target hash
+  entry="$root/$rel"
+  validate_baseline_tree "$entry"
+  mode=$(path_mode "$entry") || return 1
+  if [ -L "$entry" ]; then
+    link_target=$(readlink "$entry") || return 1
+    case "$link_target" in *$'\n'*) return 1 ;; esac
+    printf 'symlink\0%s\0%s\0%s\0' "$rel" "$mode" "$link_target"
+  elif [ -d "$entry" ]; then
+    printf 'directory\0%s\0%s\0' "$rel" "$mode"
+    while IFS= read -r entry; do
+      case "$entry" in *$'\n'*) return 1 ;; esac
+      child_rel=${entry#"$root"/}
+      mode=$(path_mode "$entry") || return 1
+      if [ -L "$entry" ]; then
+        link_target=$(readlink "$entry") || return 1
+        case "$link_target" in *$'\n'*) return 1 ;; esac
+        printf 'symlink\0%s\0%s\0%s\0' "$child_rel" "$mode" "$link_target"
+      elif [ -d "$entry" ]; then
+        printf 'directory\0%s\0%s\0' "$child_rel" "$mode"
+      elif [ -f "$entry" ]; then
+        hash=$(shasum -a 256 "$entry" | awk '{print $1}') || return 1
+        printf 'file\0%s\0%s\0%s\0' "$child_rel" "$mode" "$hash"
+      else
+        printf 'other\0%s\0%s\0' "$child_rel" "$mode"
+      fi
+    done < <(find -P "$entry" -mindepth 1 -print | LC_ALL=C sort)
+  elif [ -f "$entry" ]; then
+    hash=$(shasum -a 256 "$entry" | awk '{print $1}') || return 1
+    printf 'file\0%s\0%s\0%s\0' "$rel" "$mode" "$hash"
+  else
+    printf 'other\0%s\0%s\0' "$rel" "$mode"
+  fi
+}
+
+baseline_digest() {
+  local root=$1 rel digest_file digest
+  shift
+  digest_file=$(mktemp "${TMPDIR:-/tmp}/claude-build-digest.XXXXXXXX") || return 1
+  for rel in "$@"; do
+    valid_rel "$rel" || {
+      rm -f -- "$digest_file"
+      return 1
+    }
+    digest_entry "$root" "$rel" >> "$digest_file" || {
+      rm -f -- "$digest_file"
+      return 1
+    }
+  done
+  digest=$(shasum -a 256 "$digest_file" | awk '{print $1}') || {
+    rm -f -- "$digest_file"
+    return 1
+  }
+  rm -f -- "$digest_file"
+  printf '%s\n' "$digest"
+}
+
+hydrate_ignored() {
+  local repo=$1 worktree=$2 rel src dst link target
+  shift 2
+  for rel in "$@"; do
+    valid_rel "$rel" || die "invalid ignored dependency path: $rel"
+    path_has_symlink_component "$repo" "$rel" && die "ignored dependency source path contains a symlink: $rel"
+    path_has_symlink_component "$worktree" "$rel" && die "ignored dependency destination path contains a symlink: $rel"
+    src="$repo/$rel"
+    dst="$worktree/$rel"
+    validate_baseline_tree "$src"
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+      [ ! -L "$dst" ] || die "ignored dependency destination is a symlink: $rel"
+      rm -rf -- "$dst"
+    fi
+    mkdir -p -- "$(dirname "$dst")"
+    if [ -d "$src" ]; then cp -pR -- "$src" "$dst"; else cp -p -- "$src" "$dst"; fi
+    validate_baseline_tree "$dst"
+    # A baseline is a one-way snapshot. It is never copied from a worker back
+    # to the canonical checkout; refresh removes all ignored worker writes.
+  done
+}
+
 seed_worktree() {
-  local repo=$1 worktree=$2 invocation_nonce=$3 plan_hash=$4 diff_file base branch root run_token
+  local repo=$1 worktree=$2 invocation_nonce=$3 plan_hash=$4 diff_file base branch root run_token expected_ignored_hash actual_ignored_hash expected_ignored_digest actual_ignored_digest hydrated_ignored_digest
+  shift 4
   repo=$(abs_dir "$repo") || die 'repository cannot be resolved'
   worktree=$(abs_dir "$worktree") || die 'worktree cannot be resolved'
   branch=$(git -C "$worktree" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
   root=$(private_root_for "$worktree") || die 'private worktree root cannot be resolved'
   run_token=$(manifest_value "$root/.run.identity" run_token) || die 'private build run token is missing'
+  expected_ignored_hash=$(manifest_value "$root/.run.identity" ignored_hash) || die 'private build run ignored baseline binding is missing'
+  expected_ignored_digest=$(manifest_value "$root/.run.identity" ignored_digest) || die 'private build run ignored baseline digest is missing'
+  actual_ignored_hash=$(ignored_paths_hash "$@") || die 'ignored baseline binding could not be calculated'
+  [ "$actual_ignored_hash" = "$expected_ignored_hash" ] || die 'ignored baseline paths do not match the frozen invocation'
+  actual_ignored_digest=$(baseline_digest "$repo" "$@") || die 'canonical ignored dependency baseline cannot be inspected'
+  [ "$actual_ignored_digest" = "$expected_ignored_digest" ] || die 'canonical ignored dependency baseline drifted after approval'
   validate_identity "$repo" "$worktree" '' "$branch" "$run_token" "$invocation_nonce" "$plan_hash" 0
   base=$(manifest_value "$(worktree_manifest "$worktree" "$branch")" base_commit) || die 'private worktree base is missing'
   [ "$(git -C "$worktree" rev-parse HEAD)" = "$base" ] || die 'private worktree is not at its frozen base before seeding'
@@ -527,11 +668,15 @@ seed_worktree() {
   git -C "$repo" diff --binary HEAD -- > "$diff_file"
   if [ -s "$diff_file" ]; then git -C "$worktree" apply --binary "$diff_file"; fi
   copy_untracked "$repo" "$worktree"
+  hydrate_ignored "$repo" "$worktree" "$@"
+  hydrated_ignored_digest=$(baseline_digest "$worktree" "$@") || die 'hydrated ignored dependency baseline cannot be inspected'
+  [ "$hydrated_ignored_digest" = "$expected_ignored_digest" ] || die 'hydrated ignored dependency baseline does not match the approved snapshot'
   write_seed "$repo" "$worktree"
 }
 
 refresh_worktree() {
   local repo=$1 worktree=$2 base=$3 run_token=$4 invocation_nonce=$5 plan_hash=$6 branch
+  shift 6
   repo=$(abs_dir "$repo") || die 'repository cannot be resolved'
   worktree=$(abs_dir "$worktree") || die 'worktree cannot be resolved'
   branch=$(git -C "$worktree" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
@@ -540,8 +685,8 @@ refresh_worktree() {
   # The directory is private and disposable; reset it before reseeding the
   # canonical snapshot so repeated dependency handoffs never double-apply.
   git -C "$worktree" reset --hard "$base" >/dev/null
-  git -C "$worktree" clean -fd >/dev/null
-  seed_worktree "$repo" "$worktree" "$invocation_nonce" "$plan_hash"
+  git -C "$worktree" clean -fdx >/dev/null
+  seed_worktree "$repo" "$worktree" "$invocation_nonce" "$plan_hash" "$@"
 }
 
 cleanup_manifest_fields() {
@@ -839,12 +984,12 @@ case "${1:-}" in
     printf '%s\n' "$DEST"
     ;;
   seed)
-    [ "$#" -eq 5 ] || usage
-    seed_worktree "$2" "$3" "$4" "$5"
+    [ "$#" -ge 5 ] || usage
+    seed_worktree "$2" "$3" "$4" "$5" "${@:6}"
     ;;
   refresh)
-    [ "$#" -eq 7 ] || usage
-    refresh_worktree "$2" "$3" "$4" "$5" "$6" "$7"
+    [ "$#" -ge 7 ] || usage
+    refresh_worktree "$2" "$3" "$4" "$5" "$6" "$7" "${@:8}"
     ;;
   integrate)
     [ "$#" -ge 8 ] || usage
@@ -856,14 +1001,37 @@ case "${1:-}" in
     INVOCATION_NONCE=$7
     PLAN_HASH=$8
     shift 8
-    [ "$#" -gt 0 ] || die 'at least one owned file is required'
+    ignored_paths=()
+    owned_args=()
+    mode=files
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --ignored) mode=ignored ;;
+        --files) mode=files ;;
+        *) if [ "$mode" = ignored ]; then ignored_paths+=("$1"); else owned_args+=("$1"); fi ;;
+      esac
+      shift
+    done
+    [ "${#owned_args[@]}" -gt 0 ] || die 'at least one owned file is required'
     branch=$(git -C "$WORKTREE" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    root=$(private_root_for "$WORKTREE") || die 'private worktree root cannot be resolved'
+    expected_ignored_hash=$(manifest_value "$root/.run.identity" ignored_hash) || die 'private build run ignored baseline binding is missing'
+    expected_ignored_digest=$(manifest_value "$root/.run.identity" ignored_digest) || die 'private build run ignored baseline digest is missing'
+    if [ "${#ignored_paths[@]}" -gt 0 ]; then actual_ignored_hash=$(ignored_paths_hash "${ignored_paths[@]}"); else actual_ignored_hash=$(ignored_paths_hash); fi
+    [ -n "$actual_ignored_hash" ] || die 'ignored baseline binding could not be calculated'
+    [ "$actual_ignored_hash" = "$expected_ignored_hash" ] || die 'ignored baseline paths do not match the frozen invocation'
     validate_identity "$REPO" "$WORKTREE" '' "$branch" "$RUN_TOKEN" "$INVOCATION_NONCE" "$PLAN_HASH" 1
     [ "$CANONICAL" = "$REPO" ] || die 'canonical integration checkout does not match the frozen repository'
     [ "$(git -C "$WORKTREE" rev-parse HEAD)" = "$SEED" ] || die 'private worktree HEAD does not match its seed commit'
     git -C "$WORKTREE" rev-parse --verify "$SEED^{commit}" >/dev/null 2>&1 || die 'seed is not a commit'
+    if [ "${#ignored_paths[@]}" -gt 0 ]; then actual_ignored_digest=$(baseline_digest "$CANONICAL" "${ignored_paths[@]}"); else actual_ignored_digest=$(baseline_digest "$CANONICAL"); fi
+    [ -n "$actual_ignored_digest" ] || die 'canonical ignored dependency baseline cannot be inspected'
+    [ "$actual_ignored_digest" = "$expected_ignored_digest" ] || die 'canonical ignored dependency baseline drifted after approval'
+    if [ "${#ignored_paths[@]}" -gt 0 ]; then actual_ignored_digest=$(baseline_digest "$WORKTREE" "${ignored_paths[@]}"); else actual_ignored_digest=$(baseline_digest "$WORKTREE"); fi
+    [ -n "$actual_ignored_digest" ] || die 'worker ignored dependency tree cannot be inspected'
+    [ "$actual_ignored_digest" = "$expected_ignored_digest" ] || die 'worker mutated an approved ignored dependency baseline'
     owned_paths=()
-    for rel in "$@"; do
+    for rel in "${owned_args[@]}"; do
       valid_rel "$rel" || die "non-canonical owned path: $rel"
       for root in "$WORKTREE" "$CANONICAL"; do
         if [ -e "$root/$rel" ] || [ -L "$root/$rel" ]; then
@@ -873,6 +1041,7 @@ case "${1:-}" in
       owned_paths+=("$rel")
     done
     is_owned() { local candidate=$1 item; for item in "${owned_paths[@]}"; do [ "$item" = "$candidate" ] && return 0; done; return 1; }
+    is_ignored_baseline() { local candidate=$1 item; for item in "${ignored_paths[@]}"; do [ "$item" = "$candidate" ] || [[ "$candidate" = "$item"/* ]] || continue; return 0; done; return 1; }
     changed_paths=()
     record_changed() { local candidate=$1 item; for item in "${changed_paths[@]-}"; do [ "$item" = "$candidate" ] && return; done; changed_paths+=("$candidate"); }
     while IFS= read -r -d '' rel; do record_changed "$rel"; done < <(git -C "$WORKTREE" diff --name-only -z "$SEED" --)
@@ -882,17 +1051,17 @@ case "${1:-}" in
     while IFS= read -r -d '' rel; do record_changed "$rel"; done < <(git -C "$WORKTREE" ls-files --others --ignored --exclude-standard -z)
     for rel in "${changed_paths[@]-}"; do
       [ -n "$rel" ] || continue
-      is_owned "$rel" || die "unit patch escapes owned canonical paths: $rel"
+      is_owned "$rel" || is_ignored_baseline "$rel" || die "unit patch escapes owned canonical paths: $rel"
     done
 
     tmp=$(mktemp "${TMPDIR:-/tmp}/claude-build-patch.XXXXXXXX")
     # Intent-to-add makes newly-created owned files appear in the binary diff.
-    for rel in "$@"; do
+    for rel in "${owned_args[@]}"; do
       if [ -f "$WORKTREE/$rel" ] && ! git -C "$WORKTREE" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
         git -C "$WORKTREE" add -N -- "$rel"
       fi
     done
-    git -C "$WORKTREE" diff --binary "$SEED" -- "$@" > "$tmp"
+    git -C "$WORKTREE" diff --binary "$SEED" -- "${owned_args[@]}" > "$tmp"
     if [ -s "$tmp" ]; then
       git -C "$CANONICAL" apply --binary --check "$tmp" || die 'unit patch does not apply cleanly to the canonical checkout'
       git -C "$CANONICAL" apply --binary "$tmp"

@@ -48,8 +48,8 @@ try { run() } catch (error) { beforeCode = error.status || 1 }
 check('deleted-file before snapshots are covered by the transfer gate', beforeCode === 66, `status=${beforeCode}`)
 
 for (const credential of [
-  'ghp_123456789012345678901234567890123456',
-  'github_pat_12345678901234567890123456789012345678901234567890',
+  ['ghp', '123456789012345678901234567890123456'].join('_'),
+  ['github', 'pat', '12345678901234567890123456789012345678901234567890'].join('_'),
 ]) {
   writeFileSync(join(bundle, 'files', 'before', 'deleted.txt'), 'ordinary\n')
   writeFileSync(join(bundle, 'files', 'after', 'a.txt'), `credential=${credential}\n`)
