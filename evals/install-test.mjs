@@ -56,7 +56,7 @@ const pathClean = git(successfulTarget, ['config', '--get', 'filter.claudehome.c
 check('installer succeeds for a target containing spaces and an apostrophe', result.status === 0, `${result.status}: ${result.stderr}`)
 check('quoted Git filters materialize both files and leave the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && successfulBrief.includes(successfulTarget) && !successfulSettings.includes('__CLAUDE_HOME__') && !successfulBrief.includes('__CLAUDE_HOME__') && successfulStatus === '' && settingsClean.includes('settings-clean.py') && pathClean.includes('path-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean, pathClean }))
 check('both installed filters remain required', git(successfulTarget, ['config', '--get', 'filter.claudesettings.required']) === 'true\n' && git(successfulTarget, ['config', '--get', 'filter.claudehome.required']) === 'true\n')
-const installedPolicy = spawnSync('/opt/homebrew/opt/node@24/bin/node', [join(successfulTarget, 'evals', 'claude-policy-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
+const installedPolicy = spawnSync(process.execPath, [join(successfulTarget, 'evals', 'claude-policy-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
 check('installed materialized policy accepts only the exact current-root wrapper permission', installedPolicy.status === 0 && installedPolicy.stdout.includes('---- 110 passed, 0 failed'), `${installedPolicy.status}: ${installedPolicy.stderr}`)
 
 cloneMain(cleanSource, rollbackSource)

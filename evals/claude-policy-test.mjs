@@ -47,13 +47,16 @@ check('Superpowers remains explicitly disabled', settings.enabledPlugins['superp
 check('standalone Impeccable is not desired', !Object.keys(settings.enabledPlugins).some((k) => k.startsWith('impeccable@')))
 check('tier-router marketplace is absent', !('claude-tier-router' in settings.extraKnownMarketplaces) && !('tier-router@claude-tier-router' in settings.enabledPlugins))
 check('old Claude design permissions are absent', !settings.permissions.allow.some((x) => x.includes('claude-design')))
-const fixedWrapperPermissions = new Set([
-  'Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)',
-  `Bash(bash ${configRoot}/scripts/luna-run.sh *)`,
-])
+const placeholderWrapperPermission = 'Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)'
+const materializedWrapperPermission = `Bash(bash ${configRoot}/scripts/luna-run.sh *)`
+const fixedWrapperPermissions = new Set([placeholderWrapperPermission, materializedWrapperPermission])
 const isFixedWrapperPermission = (permission) => fixedWrapperPermissions.has(permission)
-check('settings allow only the fixed wrapper command', settings.permissions.allow.some(isFixedWrapperPermission) && settings.permissions.allow.filter((permission) => permission.includes('/scripts/luna-run.sh')).every(isFixedWrapperPermission))
-check('wrapper permission accepts source and exact materialized forms only', isFixedWrapperPermission('Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)') && isFixedWrapperPermission(`Bash(bash ${configRoot}/scripts/luna-run.sh *)`) && !isFixedWrapperPermission(`Bash(bash ${configRoot}/other/luna-run.sh *)`) && !isFixedWrapperPermission('Bash(bash /tmp/other-config/scripts/luna-run.sh *)'))
+const onlyFixedLunaPermissions = (permissions) => {
+  const lunaRunPermissions = permissions.filter((permission) => permission.includes('luna-run.sh'))
+  return lunaRunPermissions.length > 0 && lunaRunPermissions.every(isFixedWrapperPermission)
+}
+check('settings allow only the fixed wrapper command', onlyFixedLunaPermissions(settings.permissions.allow))
+check('wrapper permission predicate rejects an arbitrary Luna-run path', onlyFixedLunaPermissions([placeholderWrapperPermission]) && !onlyFixedLunaPermissions([placeholderWrapperPermission, 'Bash(bash /tmp/other/luna-run.sh *)']))
 check('CodeRabbit marketplace uses strict validation', marketplace.plugins.find((p) => p.name === 'coderabbit')?.strict === true)
 check('tier-router file is removed', !existsSync(new URL('../tier-router.json', import.meta.url)))
 
