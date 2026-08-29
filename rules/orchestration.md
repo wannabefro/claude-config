@@ -18,6 +18,12 @@ Sonnet and `gpt-5.6-terra` are manual fast lanes only. Haiku is allowed only
 for deterministic, non-judgmental plumbing that cannot affect design, code,
 review severity, or verification.
 
+**Haiku needs all four conditions, or use the Luna implementer.** Use Haiku only
+for one-file deterministic plumbing with a failing-then-green verify command, no
+API or contract decision, and a known transformation rather than invention.
+Treat a Haiku failure as evidence that the unit needs clearer decomposition; do
+not silently upgrade it or substitute another writer.
+
 ## Frozen delegation contract
 
 Before any implementation dispatch, Opus must freeze:

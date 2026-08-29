@@ -12,8 +12,9 @@ every file type, including YAML and config.
 Three countable limits, taken from `rules/simplified-technical-english.md`:
 
 1. Write one sentence in one comment. Keep it to **20 words or fewer**.
-2. Never write a block of **more than 3 comment lines**. A longer block is a rationale block, and it
-   belongs in the PR description.
+2. Write a comment or a docstring on **one line**. A second line needs a very good reason. A block
+   of **more than 2 lines** is a hard breach: that is a rationale block, and it belongs in the PR
+   description. `comment-density.py` gates at 2, so a third line fails a commit.
 3. Keep a file at **15% comment lines or fewer**. When you edit a file, match or reduce its density.
 
 Add a comment only when it says what the code cannot: why a non-obvious choice was made, a workaround
@@ -45,7 +46,23 @@ do something, and check what the project already depends on before you add a pac
 
 ## Build the smallest thing that works, then add to it
 
-Two triggers, both visible in a diff:
+**Less code wins. Reach for the library, and never write the second copy.** Before adding a helper,
+check three places in order: the standard library, a dependency the project already has, and the
+codebase itself. A hand-rolled version of something `encoding/*`, `net/html` or an existing internal
+package already does is a defect, not a style preference — it is one more thing to keep correct.
+
+Two shapes that recur, both measured on k-repo:
+
+- **A decoder you wrote by hand.** A numeric HTML-entity decoder was 15 lines of `strconv` and
+  base-prefix handling; `html.UnescapeString` does it in one call.
+- **A second copy of a list.** `providers/basic` and `providers/fast` both held an HTML-entity table.
+  Two copies drift silently — the second one gained six entries the first never got.
+
+**Prefer deleting a proxy over fixing it.** A guard that approximates another component's rule will
+disagree with it eventually. Ask that component directly: replacing an `xurls.Strict()` stand-in with
+the actual `autoDNTURLPattern` fixed two defects and removed code.
+
+Two more triggers, both visible in a diff:
 
 1. **A parameter, flag, or config key that nothing currently reads** — delete it. Add it when the
    second caller exists.

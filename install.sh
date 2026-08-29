@@ -206,12 +206,13 @@ fi
 
 # --- materialize home paths via the templating filter -----------------------
 # settings.json and implementer instructions are committed with a
-# __CLAUDE_HOME__ placeholder. Configure the
-# per-machine clean/smudge filter (definition lives in local .git/config, never
-# committed) and re-checkout so the working copy carries this machine's real
-# ~/.claude paths in hook commands.
+# __CLAUDE_HOME__ placeholder. Configure the per-machine clean/smudge filter
+# (definition lives in local .git/config, never committed) and re-checkout so
+# the working copy carries this machine's real ~/.claude paths in hook commands.
+# Clean also drops any marketplace that settings.local.json already defines,
+# because the CLI can re-add private ones to settings.json and this repo is public.
 log "Configuring path filter and materializing home paths for $TARGET"
-git -C "$TARGET" config filter.claudehome.clean  "sed \"s#$TARGET#__CLAUDE_HOME__#g\""
+git -C "$TARGET" config filter.claudehome.clean  "python3 $TARGET/scripts/settings-clean.py $TARGET"
 git -C "$TARGET" config filter.claudehome.smudge "sed \"s#__CLAUDE_HOME__#$TARGET#g\""
 rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
 git -C "$TARGET" checkout -- settings.json agents/implementer.md

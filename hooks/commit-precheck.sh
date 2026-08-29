@@ -49,8 +49,14 @@ if ! repo_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then
   exit 0
 fi
 
+# A merge stages every upstream file, so the staged set is not authored content.
+merging=false
+if git -C "$repo_root" rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+  merging=true
+fi
+
 density="$HOME/.claude/scripts/comment-density.py"
-if [ -f "$density" ] && command -v python3 >/dev/null 2>&1; then
+if [ "$merging" = false ] && [ -f "$density" ] && command -v python3 >/dev/null 2>&1; then
   set +e
   # Structure only: --max-density 101 disables the density check on a diff.
   cmt_out=$(python3 "$density" --staged "$repo_root" --max-density 101 2>&1)

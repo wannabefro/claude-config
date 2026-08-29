@@ -1,6 +1,7 @@
-# Keep the committed home path generic. The clean filter rewrites this
-# machine's absolute ~/.claude prefix to __CLAUDE_HOME__ on commit; the smudge
-# filter restores it on checkout. install.sh configures the filter per machine
+# Keep the committed settings.json generic. scripts/settings-clean.py rewrites
+# this machine's absolute ~/.claude prefix to __CLAUDE_HOME__ on commit and drops
+# any marketplace that settings.local.json already defines; the smudge filter
+# restores the path on checkout. install.sh configures the filter per machine
 # (the filter definition lives in local .git/config, never committed).
 settings.json filter=claudehome
 agents/implementer.md filter=claudehome

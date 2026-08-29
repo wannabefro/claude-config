@@ -43,6 +43,39 @@ The Codex outsider is required for the normal tier; if it is unavailable,
 report the gap and do not substitute. Fable is a manual long-horizon
 escalation after host access is verified.
 
+**Parallel is the default, and sequential is the exception that must earn itself.** This matters most
+when you route by hand, which happens whenever managed policy has removed the `Workflow` tool: with no
+decomposer to answer, the pull is toward one long `ce-work` run, and that is the wrong instinct. Route
+sequential only for a reason you can name:
+
+1. Two units write the same file. Contention is decided by file ownership, not by wishful ordering.
+2. A unit needs a previous unit's code, not just its result. `depends_on` sequences agents; it does
+   not compose their work, so a depth-2 unit verifies against a tree that never held depth-1's.
+3. The whole change is one file, or small enough that a worktree costs more than the work.
+
+"It felt safer sequential" is not one of those. What makes parallel safe is the wave discipline in
+`rules/orchestration.md` — build depth-1 only, merge, then re-dispatch from the new HEAD — not the
+choice to avoid it. When a plan has independent roots, dispatch them together rather than one at a
+time.
+
+## Where plans live
+
+Plans live in `docs/plans/`, ignored globally via `~/.config/git/ignore`, so they stay out of every
+repo's history. Plans are durable — measured, 83 of 122 re-read more than 20 times and half revised
+after creation.
+
+**Where that directory actually points is machine-specific.** Some machines symlink it into cloud
+storage to sync plans across devices; others keep it as a plain local directory. A gitignored
+overlay in `rules/` states which, and it wins — **check it before creating or re-creating any
+symlink**, because a machine that has opted out of cloud sync must stay opted out.
+`~/.claude/scripts/link-plans.sh <path> --apply` creates the cloud symlink, so it is only correct on
+a machine whose overlay asks for it. Where no overlay says otherwise, `mkdir -p docs/plans` is all a
+fresh worktree needs.
+
+A fresh worktree starts without the directory either way, because ignored paths aren't checked out.
+`/build` still uses exact private worktrees for every implementation unit. The dispatcher hydrates
+declared ignored dependencies or blocks the dispatch; it never falls back to a shared checkout.
+
 ## Explicit approval and degraded paths
 
 Execution needs an approved `/implement` or `/build` invocation. If the
