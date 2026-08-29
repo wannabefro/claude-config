@@ -2,7 +2,9 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSyn
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8')
+const configRoot = fileURLToPath(new URL('../', import.meta.url)).replace(/[\\/]+$/, '') || '/'
 const settings = JSON.parse(read('settings.json'))
 const marketplace = JSON.parse(read('marketplace/.claude-plugin/marketplace.json'))
 const design = JSON.parse(read('manifests/design.json'))
@@ -45,7 +47,13 @@ check('Superpowers remains explicitly disabled', settings.enabledPlugins['superp
 check('standalone Impeccable is not desired', !Object.keys(settings.enabledPlugins).some((k) => k.startsWith('impeccable@')))
 check('tier-router marketplace is absent', !('claude-tier-router' in settings.extraKnownMarketplaces) && !('tier-router@claude-tier-router' in settings.enabledPlugins))
 check('old Claude design permissions are absent', !settings.permissions.allow.some((x) => x.includes('claude-design')))
-check('settings allow only the fixed wrapper command', settings.permissions.allow.includes('Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)'))
+const fixedWrapperPermissions = new Set([
+  'Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)',
+  `Bash(bash ${configRoot}/scripts/luna-run.sh *)`,
+])
+const isFixedWrapperPermission = (permission) => fixedWrapperPermissions.has(permission)
+check('settings allow only the fixed wrapper command', settings.permissions.allow.some(isFixedWrapperPermission) && settings.permissions.allow.filter((permission) => permission.includes('/scripts/luna-run.sh')).every(isFixedWrapperPermission))
+check('wrapper permission accepts source and exact materialized forms only', isFixedWrapperPermission('Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)') && isFixedWrapperPermission(`Bash(bash ${configRoot}/scripts/luna-run.sh *)`) && !isFixedWrapperPermission(`Bash(bash ${configRoot}/other/luna-run.sh *)`) && !isFixedWrapperPermission('Bash(bash /tmp/other-config/scripts/luna-run.sh *)'))
 check('CodeRabbit marketplace uses strict validation', marketplace.plugins.find((p) => p.name === 'coderabbit')?.strict === true)
 check('tier-router file is removed', !existsSync(new URL('../tier-router.json', import.meta.url)))
 

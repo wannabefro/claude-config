@@ -18,10 +18,10 @@ const cloneMain = (source, destination) => {
   runFile('git', ['clone', '-q', '-b', 'main', source, destination], { encoding: 'utf8', stdio: 'pipe' })
 }
 const snapshotWorkingInstaller = (source) => {
-  for (const relative of ['install.sh', '.gitattributes', 'scripts/path-clean.py', 'scripts/settings-clean.py']) {
+  for (const relative of ['install.sh', '.gitattributes', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'evals/claude-policy-test.mjs']) {
     writeFileSync(join(source, relative), readFileSync(join(repo, relative)))
   }
-  git(source, ['add', 'install.sh', '.gitattributes', 'scripts/path-clean.py', 'scripts/settings-clean.py'])
+  git(source, ['add', 'install.sh', '.gitattributes', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'evals/claude-policy-test.mjs'])
   const staged = spawnSync('git', ['-C', source, 'diff', '--cached', '--quiet'], { encoding: 'utf8' })
   if (staged.status === 1) git(source, ['commit', '-qm', 'snapshot installer under test'])
   else if (staged.status !== 0) throw new Error(`could not inspect installer snapshot index: ${staged.status}`)
@@ -56,6 +56,8 @@ const pathClean = git(successfulTarget, ['config', '--get', 'filter.claudehome.c
 check('installer succeeds for a target containing spaces and an apostrophe', result.status === 0, `${result.status}: ${result.stderr}`)
 check('quoted Git filters materialize both files and leave the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && successfulBrief.includes(successfulTarget) && !successfulSettings.includes('__CLAUDE_HOME__') && !successfulBrief.includes('__CLAUDE_HOME__') && successfulStatus === '' && settingsClean.includes('settings-clean.py') && pathClean.includes('path-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean, pathClean }))
 check('both installed filters remain required', git(successfulTarget, ['config', '--get', 'filter.claudesettings.required']) === 'true\n' && git(successfulTarget, ['config', '--get', 'filter.claudehome.required']) === 'true\n')
+const installedPolicy = spawnSync('/opt/homebrew/opt/node@24/bin/node', [join(successfulTarget, 'evals', 'claude-policy-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
+check('installed materialized policy accepts only the exact current-root wrapper permission', installedPolicy.status === 0 && installedPolicy.stdout.includes('---- 110 passed, 0 failed'), `${installedPolicy.status}: ${installedPolicy.stderr}`)
 
 cloneMain(cleanSource, rollbackSource)
 git(rollbackSource, ['config', 'user.email', 'test@example.com'])
