@@ -1,7 +1,8 @@
 # Open Design workflow
 
-Open Design is the optional design capability. It does not block coding
-readiness. Its release policy is in `manifests/design.json`.
+Open Design is an optional, host-local design bridge. It does not block core
+coding readiness. The reviewed app release and official distribution facts are
+in `manifests/design.json`.
 
 ## Phase routing
 
@@ -19,30 +20,49 @@ readiness. Its release policy is in `manifests/design.json`.
 The reviewer reads the frozen design files. The worker follows them and does
 not invent a competing aesthetic. There is no permanent designer agent.
 
-## Host-local boundary
+## Host-local setup
 
-The Open Design app, MCP configuration, data, conversations, credentials,
-absolute commands, and `.od` runtime state stay on each Mac. Do not sync them
-through this repository. Configure the MCP server from the exact snippet that
-the signed Open Design app generates. The current Mac's `/usr/bin/od` is the
-Apple octal-dump tool; do not assume that bare `od` means Open Design.
+The signed Open Design app is a manual prerequisite. This repository does not
+download, install, or replace it. Install the reviewed `0.21.0` app on each
+Mac, then launch it and complete any Open Design account or Vela login in the
+app when required.
+
+With the Open Design CLI available in the shell, install the Claude MCP
+configuration locally:
+
+```bash
+od mcp install claude
+```
+
+Claude uses this official MCP integration. Claude has no Open Design plugin.
+The official plugin distribution is for Codex only; its pinned
+source, plugin version, and minimum versions are recorded in the manifest.
+The command writes host-local MCP configuration. Do not copy that
+configuration, app data, conversations, credentials, absolute commands, or
+`.od` runtime state through this repository. The current Mac's `/usr/bin/od`
+is Apple's octal-dump tool; if the shell resolves that binary, use the Open
+Design CLI supplied by the signed app instead.
 
 The stale clone at `/Users/sam/dev/open-design` is not a source of truth. Do
 not change or delete that clone.
 
 ## Review-only readiness steps
 
-Do not run these steps as part of bootstrap. Review the pinned artifact for the
-machine architecture, verify its SHA-256 against `manifests/design.json`, and
-verify the app bundle identifier, version, architecture, Developer ID
-signature, and team identifier before any manual copy.
+Do not run these steps as part of bootstrap. Before manual installation,
+review the pinned artifact for the machine architecture and verify its
+SHA-256 against `manifests/design.json`. After installation, verify the app
+bundle identifier, version, architecture, Developer ID signature, and team
+identifier. Stop on any mismatch.
 
-After a signed app is present, configure `open-design` from its app-generated
-MCP snippet. Verify it with the read-only Codex command:
+After the signed app is present, run the official Claude MCP setup command
+above. Verify the resulting host-local entry with the Claude MCP list. Do not
+copy an absolute command into this repository. For Codex hosts, the equivalent
+official command is `od mcp install codex`.
 
 ```bash
-codex mcp get open-design --json
+claude mcp list
 ```
 
-Missing app or MCP produces `design_ready: false` and an action item. It does
-not make the core coding-ready result fail.
+If the app is missing, or the Claude MCP is not configured, report the design
+capability as unavailable and show the manual action. This does not make the
+core coding-ready result fail.

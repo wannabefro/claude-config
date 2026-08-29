@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "product": "open-design",
   "stable_version": "0.21.0",
   "stable_tag": "open-design-v0.21.0",
@@ -17,5 +17,25 @@
   },
   "bundle_id": "io.open-design.desktop",
   "signing_identity": "Developer ID Application: Wei Huang (236R69AWW2)",
-  "team_id": "236R69AWW2"
+  "team_id": "236R69AWW2",
+  "distribution": {
+    "source": "https://github.com/nexu-io/open-design-agent-plugins.git",
+    "source_commit": "c0710761302c69bded82e205362effcce6fde49e",
+    "marketplace": "open-design",
+    "plugin": "open-design@open-design",
+    "plugin_version": "0.5.3",
+    "minimum_codex_version": "0.144.6",
+    "minimum_open_design_version": "0.17.0",
+    "plugin_hosts": ["codex"],
+    "mcp_install_targets": ["codex", "claude"]
+  },
+  "mcp": {
+    "server": "open-design",
+    "transport": "stdio",
+    "host_managed": true,
+    "install_commands": {
+      "codex": "od mcp install codex",
+      "claude": "od mcp install claude"
+    }
+  }
 }

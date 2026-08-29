@@ -97,6 +97,59 @@ for t in awk grep id mktemp openssl pgrep ps realpath sed shasum stat tr; do
   fi
 done
 [ -n "$missing" ] && log "Missing:$missing — run the install hints shown above."
+
+# Open Design is deliberately optional. Report the manual action without
+# adding it to the core prerequisite set or attempting to install a signed GUI
+# application from this configuration repository.
+open_design_app=""
+for candidate in "/Applications/Open Design.app" "$HOME/Applications/Open Design.app"; do
+  if [ -d "$candidate" ]; then
+    open_design_app="$candidate"
+    break
+  fi
+done
+if [ -n "$open_design_app" ]; then
+  printf '  ✓ Open Design app present (optional) — verify its signed 0.21.0 release before use\n'
+
+  # Read only the known Claude MCP config locations. Redirect jq output so a
+  # malformed file or a config value never reaches the installer report.
+  # The probe never calls `od`, `claude`, or any MCP server. A server entry
+  # proves nothing unless it has a real command. Bare `od` and `/usr/bin/od`
+  # are rejected because they identify Apple's octal-dump utility, not the
+  # signed Open Design app.
+  if ! command -v claude >/dev/null 2>&1; then
+    printf '  ○ Claude CLI not found (optional) — after app setup, run: od mcp install claude\n'
+  elif ! command -v jq >/dev/null 2>&1; then
+    printf '  ○ Claude Open Design MCP not checked (optional) — jq is unavailable; run: od mcp install claude\n'
+  else
+    open_design_mcp_found=0
+    open_design_mcp_unreadable=0
+    for mcp_config in "$HOME/.claude.json" "$HOME/.claude/.mcp.json"; do
+      [ -e "$mcp_config" ] || continue
+      if [ -L "$mcp_config" ] || [ ! -f "$mcp_config" ]; then
+        open_design_mcp_unreadable=1
+        continue
+      fi
+      if jq -e '([.mcpServers? // {}, ((.projects? // {}) | to_entries[]?.value.mcpServers? // {})] | any(.[]; (."open-design" | if type != "object" then false elif (.command? | type) != "string" then false elif (.command | length) == 0 then false elif (.command | test("^[[:space:]]*$")) then false elif .command == "/usr/bin/od" or .command == "od" then false else true end)))' "$mcp_config" >/dev/null 2>&1; then
+        open_design_mcp_found=1
+        break
+      fi
+      if ! jq -e '.' "$mcp_config" >/dev/null 2>&1; then
+        open_design_mcp_unreadable=1
+      fi
+    done
+    if [ "$open_design_mcp_found" -eq 1 ]; then
+      printf '  ✓ Claude Open Design MCP present (optional)\n'
+    elif [ "$open_design_mcp_unreadable" -eq 1 ]; then
+      printf '  ○ Claude Open Design MCP not confirmed (optional) — local config could not be read safely; run: od mcp install claude\n'
+    else
+      printf '  ○ Claude Open Design MCP not configured (optional) — after app setup, run: od mcp install claude\n'
+    fi
+  fi
+else
+  printf '  ○ Open Design app not found (optional) — install the signed 0.21.0 app manually, then run: od mcp install claude\n'
+fi
+
 if [ "$CHECK_ONLY" -eq 1 ]; then log "--check done."; exit 0; fi
 
 # --- discover repo url from this checkout -----------------------------------
@@ -185,7 +238,7 @@ cat <<'EOF'
   4. Re-authenticate only the MCP servers required on this Mac. Credentials and OAuth state are not synced.
      GitHub connector authentication is separate from terminal Git and gh authentication.
   5. Check Remote Control and required macOS permissions on this Mac.
-  6. Open Design is optional. If present, verify the signed manifest artifact and configure MCP only from
-     the exact signed-app-generated snippet. Do not assume bare `od` is Open Design; /usr/bin/od is Apple octal dump.
+  6. Open Design is optional. Install its signed 0.21.0 app manually, then run `od mcp install claude` from
+     the Open Design CLI. Do not assume bare `od` is Open Design; /usr/bin/od is Apple octal dump.
   7. Verify `/plugins`, the MCP list, `/implement`, `/build`, and `/review` after the new session starts. See docs/design-workflow.md.
 EOF

@@ -1,4 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8')
 const settings = JSON.parse(read('settings.json'))
 const marketplace = JSON.parse(read('marketplace/.claude-plugin/marketplace.json'))
@@ -110,10 +113,122 @@ check('authoritative contract names direct and tiered review paths', claude.incl
 check('planning is native Opus with explicit CE only', plan.includes('native planner') && plan.includes('only when the user explicitly requests') && !/Run `ce-(brainstorm|plan)`/.test(plan))
 check('recovery docs match fixed Sol xhigh behavior', recovery.includes('gpt-5.6-sol') && recovery.includes('xhigh') && recovery.includes('runtime failure') && recovery.includes('secret scan refused') && recovery.includes('scripts/codex-run.sh') && !recovery.includes('timeout 600 codex exec') && !recovery.includes('model_reasoning_effort=medium') && !recovery.includes('retry once at'))
 
-check('Open Design manifest has the approved release', design.stable_version === '0.21.0' && design.stable_tag === 'open-design-v0.21.0' && design.source_commit === 'dbbd3b42eab9609065637452b347f903d7125ecd')
+check('Open Design manifest has the approved release', design.schema_version === 2 && design.stable_version === '0.21.0' && design.stable_tag === 'open-design-v0.21.0' && design.source_commit === 'dbbd3b42eab9609065637452b347f903d7125ecd')
 check('Open Design manifest pins both Mac architectures', design.releases.arm64.sha256 === 'b553f49c1fbdc7dcca4ca225d682ad5d672e0a1363653ce953eceecd76e53326' && design.releases.x86_64.sha256 === 'f73241ee3f0c8eb6ae7c63089cf0c3037fa0d39d9d40ba427fc2322ac95fbd03')
 check('Open Design manifest pins signing identity', design.bundle_id === 'io.open-design.desktop' && design.signing_identity === 'Developer ID Application: Wei Huang (236R69AWW2)' && design.team_id === '236R69AWW2')
-check('Open Design remains optional in docs', read('docs/design-workflow.md').includes('optional design capability') && read('docs/design-workflow.md').includes('does not block') && read('docs/workflow-migration.md').includes('optional'))
+const designWorkflow = read('docs/design-workflow.md')
+const migration = read('docs/workflow-migration.md')
+const readme = read('README.md')
+const designDocs = `${designWorkflow}\n${migration}\n${readme}`
+check('Open Design manifest pins the official distribution', design.distribution.source === 'https://github.com/nexu-io/open-design-agent-plugins.git' && design.distribution.source_commit === 'c0710761302c69bded82e205362effcce6fde49e' && design.distribution.marketplace === 'open-design' && design.distribution.plugin === 'open-design@open-design' && design.distribution.plugin_version === '0.5.3' && design.distribution.minimum_codex_version === '0.144.6' && design.distribution.minimum_open_design_version === '0.17.0')
+check('Claude uses official host-local MCP setup without a Claude plugin', design.distribution.plugin_hosts.length === 1 && design.distribution.plugin_hosts[0] === 'codex' && design.distribution.mcp_install_targets.includes('claude') && design.mcp.install_commands.claude === 'od mcp install claude' && design.mcp.install_commands.codex === 'od mcp install codex' && designWorkflow.includes('od mcp install claude') && designWorkflow.includes('Claude uses this official MCP integration') && designWorkflow.includes('Claude has no Open Design plugin'))
+check('Open Design remains optional and manually installed', designWorkflow.includes('optional, host-local design bridge') && designWorkflow.includes('does not block core') && designWorkflow.includes('does not\ndownload, install, or replace') && migration.includes('host-local optional integration') && readme.includes('installer does not download or install'))
+check('Claude policy contains no legacy enrollment protocol', !/(?:host enrollment|enrollment receipt|HMAC|Ed25519|detached signature)/i.test(designDocs))
+check('installer reports missing Open Design as an optional action', installer.includes('Open Design app not found (optional)') && installer.includes('od mcp install claude') && !/missing Open Design[^\n]*required/i.test(installer))
+
+const readTree = (directory) => {
+  const walk = (relativeDirectory) => readdirSync(new URL(`../${relativeDirectory}/`, import.meta.url), { withFileTypes: true })
+    .flatMap((entry) => {
+      const relativePath = `${relativeDirectory}/${entry.name}`
+      return entry.isDirectory() ? walk(relativePath) : [read(relativePath)]
+    })
+  return walk(directory).join('\u0000')
+}
+const integrationSurfaces = [
+  readme,
+  read('CLAUDE.md'),
+  installer,
+  read('settings.json'),
+  ...['agents', 'commands', 'workflows', 'scripts', 'hooks', 'skills', 'docs', 'rules', 'manifests', 'marketplace'].map(readTree),
+].join('\u0000')
+const configuredOpenDesignPlugins = Object.keys(settings.enabledPlugins).filter((name) => /open[- ]design/i.test(name))
+const configuredOpenDesignMarketplaces = Object.keys(settings.extraKnownMarketplaces).filter((name) => /open[- ]design/i.test(name))
+const hasPositiveClaudeOpenDesignPluginClaim = (text) => {
+  const explicitNoPlugin = /^(?:claude has no open[- ]design (?:plugin|marketplace)|there is no open[- ]design (?:plugin|marketplace) for claude|claude uses mcp, not (?:an )?(?:open[- ]design )?(?:plugin|marketplace))$/i
+  return text.split('\u0000').some((surface) => {
+    const normalized = surface.replace(/\s+/g, ' ')
+    const claims = normalized.split(/[.!?]+/).filter((sentence) => /\bclaude\b/i.test(sentence) && /open[- ]design/i.test(sentence) && /\b(?:plugin|marketplace)\b/i.test(sentence))
+    return claims.some((claim) => !explicitNoPlugin.test(claim.trim()))
+  })
+}
+const positiveClaudeOpenDesignPluginClaim = hasPositiveClaudeOpenDesignPluginClaim(integrationSurfaces)
+check('multiline positive Claude plugin claims are detected', hasPositiveClaudeOpenDesignPluginClaim('There is no Claude plugin. Claude uses Open Design\nClaude plugin.'))
+check('generic not does not negate a Claude plugin claim', hasPositiveClaudeOpenDesignPluginClaim('Claude uses the Open Design plugin, not Codex.'))
+check('generic without does not negate a multiline Claude plugin claim', hasPositiveClaudeOpenDesignPluginClaim('Claude uses the Open Design plugin\nwithout Codex.'))
+check('explicit no-Claude-plugin policy is not treated as a positive claim', ['Claude has no Open Design plugin.', 'There is no Open Design plugin for Claude.', 'Claude uses MCP, not a plugin.'].every((fixture) => !hasPositiveClaudeOpenDesignPluginClaim(fixture)))
+check('Codex-only Open Design plugin declaration is not treated as a Claude claim', !hasPositiveClaudeOpenDesignPluginClaim('The official Open Design plugin distribution targets Codex only.'))
+check('Claude settings do not enable the Open Design marketplace or plugin', configuredOpenDesignPlugins.length === 0 && configuredOpenDesignMarketplaces.length === 0)
+check('Claude integration surfaces contain no legacy enrollment or positive Claude plugin policy', !/(?:receipt|enrollment|HMAC|Ed25519|detached signature)/i.test(integrationSurfaces) && !positiveClaudeOpenDesignPluginClaim && /There is no Open Design plugin for Claude|Claude has no Open Design plugin/i.test(integrationSurfaces))
+check('installer validates the MCP command and rejects Apple od', installer.includes('real command') && installer.includes('command? | type') && installer.includes('command == "/usr/bin/od"') && installer.includes('command == "od"') && installer.includes('>/dev/null 2>&1') && installer.includes('never calls `od`'))
+
+const designCheckHome = mkdtempSync(join(tmpdir(), 'claude-open-design-check-'))
+const designCheckBin = join(designCheckHome, 'bin')
+const designCheckOd = join(designCheckBin, 'od')
+const designCheckClaude = join(designCheckBin, 'claude')
+const designCheckMarker = join(designCheckHome, 'od-invoked')
+const designCheckClaudeMarker = join(designCheckHome, 'claude-invoked')
+const designCheckConfig = join(designCheckHome, '.claude.json')
+mkdirSync(designCheckBin, { recursive: true })
+mkdirSync(join(designCheckHome, 'Applications', 'Open Design.app'), { recursive: true })
+writeFileSync(designCheckOd, '#!/bin/sh\nprintf called > "$OD_MARKER"\nexit 99\n')
+chmodSync(designCheckOd, 0o755)
+writeFileSync(designCheckClaude, '#!/bin/sh\nprintf called > "$CLAUDE_MARKER"\nexit 99\n')
+chmodSync(designCheckClaude, 0o755)
+const designCheckConfigText = '{"mcpServers":{"another-server":{"command":"true"}}}\n'
+writeFileSync(designCheckConfig, designCheckConfigText)
+const designCheckEnv = {
+  ...process.env,
+  HOME: designCheckHome,
+  OD_MARKER: designCheckMarker,
+  CLAUDE_MARKER: designCheckClaudeMarker,
+  PATH: `${designCheckBin}:/opt/homebrew/opt/node@24/bin:${process.env.PATH || ''}`,
+}
+const runDesignCheck = (env = designCheckEnv) => {
+  try {
+    return {
+      code: 0,
+      output: execFileSync('/bin/bash', ['install.sh', '--check'], { cwd: new URL('..', import.meta.url), env, encoding: 'utf8' }),
+    }
+  } catch (error) {
+    return { code: error.status ?? 1, output: `${error.stdout ?? ''}${error.stderr ?? ''}` }
+  }
+}
+let designCheck = runDesignCheck()
+check('app-present and MCP-absent check remains optional and names the official action', designCheck.code === 0 && designCheck.output.includes('Open Design app present (optional)') && designCheck.output.includes('Claude Open Design MCP not configured (optional)') && designCheck.output.includes('od mcp install claude'))
+check('app-present MCP probe does not invoke host CLIs or mutate Claude config', !existsSync(designCheckMarker) && !existsSync(designCheckClaudeMarker) && readFileSync(designCheckConfig, 'utf8') === designCheckConfigText)
+
+const invalidMcpFixtures = [
+  ['null', null],
+  ['scalar', 'not-an-object'],
+  ['empty object', {}],
+  ['null command', { command: null }],
+  ['empty command', { command: '' }],
+  ['blank command', { command: '   ' }],
+  ['Apple od', { command: '/usr/bin/od' }],
+  ['bare od', { command: 'od' }],
+]
+for (const [label, value] of invalidMcpFixtures) {
+  const fixtureText = `${JSON.stringify({ mcpServers: { 'open-design': value } })}\n`
+  writeFileSync(designCheckConfig, fixtureText)
+  designCheck = runDesignCheck()
+  check(`${label} Open Design MCP entry stays optional`, designCheck.code === 0 && designCheck.output.includes('Claude Open Design MCP not configured (optional)') && designCheck.output.includes('od mcp install claude') && readFileSync(designCheckConfig, 'utf8') === fixtureText)
+}
+check('invalid MCP fixtures do not invoke host CLIs', !existsSync(designCheckMarker) && !existsSync(designCheckClaudeMarker))
+
+const configuredMcpText = '{"projects":{"/tmp/example":{"mcpServers":{"open-design":{"command":"/private/host/open-design"}}}}}\n'
+writeFileSync(designCheckConfig, configuredMcpText)
+designCheck = runDesignCheck()
+check('configured Open Design MCP is detected without exposing its command', designCheck.code === 0 && designCheck.output.includes('Claude Open Design MCP present (optional)') && !designCheck.output.includes('/private/host/open-design') && readFileSync(designCheckConfig, 'utf8') === configuredMcpText)
+
+const malformedConfigText = 'credential=do-not-print-this-value\n'
+writeFileSync(designCheckConfig, malformedConfigText)
+designCheck = runDesignCheck()
+check('malformed MCP config stays optional, quiet, and non-mutating', designCheck.code === 0 && designCheck.output.includes('Claude Open Design MCP not confirmed (optional)') && !designCheck.output.includes('do-not-print-this-value') && readFileSync(designCheckConfig, 'utf8') === malformedConfigText)
+
+const missingCliEnv = { ...designCheckEnv, PATH: '/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin' }
+designCheck = runDesignCheck(missingCliEnv)
+check('missing Claude CLI keeps the app-present design action optional', designCheck.code === 0 && designCheck.output.includes('Claude CLI not found (optional)') && designCheck.output.includes('od mcp install claude') && readFileSync(designCheckConfig, 'utf8') === malformedConfigText)
+rmSync(designCheckHome, { recursive: true, force: true })
 check('currentness policy records the reviewed CE pin', read('docs/workflow-migration.md').includes('3.23.4') && read('docs/workflow-migration.md').includes('33d9bd92689d60580e732890f94466e5793385b1'))
 
 console.log(`  ---- ${pass} passed, ${fail} failed`)
