@@ -22,7 +22,9 @@ const snapshotWorkingInstaller = (source) => {
     writeFileSync(join(source, relative), readFileSync(join(repo, relative)))
   }
   git(source, ['add', 'install.sh', '.gitattributes', 'scripts/path-clean.py', 'scripts/settings-clean.py'])
-  git(source, ['commit', '-qm', 'snapshot installer under test'])
+  const staged = spawnSync('git', ['-C', source, 'diff', '--cached', '--quiet'], { encoding: 'utf8' })
+  if (staged.status === 1) git(source, ['commit', '-qm', 'snapshot installer under test'])
+  else if (staged.status !== 0) throw new Error(`could not inspect installer snapshot index: ${staged.status}`)
 }
 const runInstall = (source, target) => spawnSync('/bin/bash', [join(source, 'install.sh'), '--target', target, '--force'], {
   cwd: source,
