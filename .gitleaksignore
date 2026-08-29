@@ -1,0 +1,4 @@
+# These exact fingerprints are synthetic credential fixtures from cdcaba6.
+# Keep these entries fingerprint-specific; do not add path- or rule-wide ignores.
+cdcaba64468c8abfd53393059d5bba651e843474:evals/build-route-test.mjs:generic-api-key:25
+cdcaba64468c8abfd53393059d5bba651e843474:evals/review-secret-scan-test.mjs:github-pat:51

@@ -24,6 +24,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BRANCH="main"
 log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
 
+# Resolve one absolute, working Python 3 executable before any install
+# mutation. The clean filter calls this exact path from Git.
+PYTHON3_RUNTIME=""
+for candidate in /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+  if [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+    PYTHON3_RUNTIME="$candidate"
+    break
+  fi
+done
+if [ -z "$PYTHON3_RUNTIME" ]; then
+  candidate="$(command -v python3 2>/dev/null || true)"
+  if [ -n "$candidate" ] && [ "${candidate#/}" != "$candidate" ] && [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+    PYTHON3_RUNTIME="$candidate"
+  fi
+fi
+
 # The path filter writes this exact absolute path into the installed agent
 # brief. Resolve relative targets before configuring the filter so the Luna
 # runner command remains valid after Claude changes its working directory.
@@ -87,6 +103,12 @@ for t in $PREREQS; do
     printf '  ✓ %s\n' "$t"
   fi
 done
+if [ -n "$PYTHON3_RUNTIME" ]; then
+  printf '  ✓ python3 %s (clean-filter runtime passed)\n' "$PYTHON3_RUNTIME"
+else
+  printf '  ✗ python3  (absolute Python 3 runtime required by the settings clean filter)\n'
+  missing="$missing python3-runtime"
+fi
 # The wrappers use the BSD/POSIX tools present on macOS and a Perl alarm for
 # deadlines. Check them explicitly so a partial install cannot fail only after
 # a review or Luna dispatch has started. GNU `timeout` is not required.
@@ -152,6 +174,11 @@ fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then log "--check done."; exit 0; fi
 
+if [ -z "$PYTHON3_RUNTIME" ]; then
+  log "ERROR: an absolute working Python 3 executable is required before installation can continue."
+  exit 1
+fi
+
 # --- discover repo url from this checkout -----------------------------------
 REPO_URL="$(git -C "$SCRIPT_DIR" config --get remote.origin.url 2>/dev/null || true)"
 if [ -z "$REPO_URL" ]; then
@@ -206,14 +233,27 @@ fi
 
 # --- materialize home paths via the templating filter -----------------------
 # settings.json and implementer instructions are committed with a
-# __CLAUDE_HOME__ placeholder. Configure the per-machine clean/smudge filter
-# (definition lives in local .git/config, never committed) and re-checkout so
-# the working copy carries this machine's real ~/.claude paths in hook commands.
-# Clean also drops any marketplace that settings.local.json already defines,
-# because the CLI can re-add private ones to settings.json and this repo is public.
+# __CLAUDE_HOME__ placeholder. Configure separate per-machine clean/smudge
+# filters (definitions live in local .git/config, never committed): strict JSON
+# validation and private-marketplace removal for settings, and path-only
+# substitution for Markdown instructions. Clean also drops any marketplace
+# that settings.local.json already defines, because the CLI can re-add private
+# ones to settings.json and this repo is public.
 log "Configuring path filter and materializing home paths for $TARGET"
-git -C "$TARGET" config filter.claudehome.clean  "python3 $TARGET/scripts/settings-clean.py $TARGET"
-git -C "$TARGET" config filter.claudehome.smudge "sed \"s#__CLAUDE_HOME__#$TARGET#g\""
+shell_quote() {
+  local value="$1"
+  value="${value//\'/\'\\\'\'}"
+  printf "'%s'" "$value"
+}
+settings_clean_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/settings-clean.py") $(shell_quote "$TARGET")"
+path_clean_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/path-clean.py") $(shell_quote "$TARGET")"
+path_smudge_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/path-clean.py") --smudge $(shell_quote "$TARGET")"
+git -C "$TARGET" config filter.claudesettings.clean "$settings_clean_filter"
+git -C "$TARGET" config filter.claudesettings.smudge "$path_smudge_filter"
+git -C "$TARGET" config filter.claudesettings.required true
+git -C "$TARGET" config filter.claudehome.clean "$path_clean_filter"
+git -C "$TARGET" config filter.claudehome.smudge "$path_smudge_filter"
+git -C "$TARGET" config filter.claudehome.required true
 rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
 git -C "$TARGET" checkout -- settings.json agents/implementer.md
 
@@ -228,6 +268,35 @@ fi
   log "ERROR: the installed Luna runner is missing or not executable."
   exit 1
 }
+
+# Exercise the configured clean filter through Git before reporting success.
+# This catches missing executables, bad quoting, malformed tracked settings,
+# and any absolute home path that could enter the public repository.
+filter_probe="$(mktemp "${TMPDIR:-/tmp}/claude-settings-filter.XXXXXXXX")"
+filter_probe_expected="$(mktemp "${TMPDIR:-/tmp}/claude-settings-filter-expected.XXXXXXXX")"
+filter_probe_cleanup() { rm -f "$filter_probe" "$filter_probe_expected"; }
+trap filter_probe_cleanup EXIT
+printf '{"hooks":{"probe":"%s/hooks/verify"},"extraKnownMarketplaces":{"probe-public":{"source":"github","repo":"example/public"}}}\n' "$TARGET" > "$filter_probe"
+if ! "$PYTHON3_RUNTIME" "$TARGET/scripts/settings-clean.py" "$TARGET" < "$filter_probe" > "$filter_probe_expected"; then
+  log "ERROR: the settings clean filter rejected its valid probe input."
+  exit 1
+fi
+if ! actual_filter_oid="$(git -C "$TARGET" hash-object --path=settings.json --stdin < "$filter_probe")"; then
+  log "ERROR: Git could not run the required settings clean filter."
+  exit 1
+fi
+if ! expected_filter_oid="$(git -C "$TARGET" hash-object --no-filters "$filter_probe_expected")"; then
+  log "ERROR: Git could not hash the expected cleaned settings probe."
+  exit 1
+fi
+if [ "$actual_filter_oid" != "$expected_filter_oid" ]; then
+  log "ERROR: Git clean filtering does not match the validated public settings output."
+  exit 1
+fi
+if grep -Fq "$TARGET" "$filter_probe_expected" || ! grep -Fq '__CLAUDE_HOME__' "$filter_probe_expected"; then
+  log "ERROR: the settings clean filter did not strip the machine path."
+  exit 1
+fi
 
 log "Done. Next steps:"
 cat <<'EOF'

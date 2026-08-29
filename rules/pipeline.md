@@ -49,14 +49,18 @@ decomposer to answer, the pull is toward one long `ce-work` run, and that is the
 sequential only for a reason you can name:
 
 1. Two units write the same file. Contention is decided by file ownership, not by wishful ordering.
-2. A unit needs a previous unit's code, not just its result. `depends_on` sequences agents; it does
-   not compose their work, so a depth-2 unit verifies against a tree that never held depth-1's.
+2. The dependency graph has width one, so no independent unit can overlap. A dependent unit can use
+   an earlier unit's code: its predecessor integrates first, then its private worktree refreshes from
+   the canonical checkout. Independent frontier units remain parallel.
 3. The whole change is one file, or small enough that a worktree costs more than the work.
 
-"It felt safer sequential" is not one of those. What makes parallel safe is the wave discipline in
-`rules/orchestration.md` — build depth-1 only, merge, then re-dispatch from the new HEAD — not the
-choice to avoid it. When a plan has independent roots, dispatch them together rather than one at a
-time.
+"It felt safer sequential" is not one of those. What makes parallel safe is
+the DAG scheduler: eligible frontier units run concurrently, predecessors
+integrate, and dependents refresh their private worktrees from the canonical
+checkout before they start. There is no manual re-dispatch. When a plan has
+independent roots, dispatch them together rather than one at a time. Use serial
+only for true shared ownership or coupling, or for width-one work where fan-out
+adds no value.
 
 ## Where plans live
 

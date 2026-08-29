@@ -82,7 +82,7 @@ check('wrapper ignores arbitrary binary overrides', !args.includes(join(root, 'm
 check('wrapper cleans its owner-private runtime directory', readdirSync(root).every((name) => !name.startsWith('claude-luna-run.')), readdirSync(root).join(' | '))
 
 let runtimeCode = 0
-try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status } 
+try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status }
 check('runtime failure has a distinct exit code', runtimeCode === 70, `got ${runtimeCode}`)
 
 const childPidFile = join(root, 'child-pid')

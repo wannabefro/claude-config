@@ -11,7 +11,8 @@ settings.json, and this repo is public.
 
 Output is canonical json.dumps(indent=2), which matches the CLI's own formatting
 byte-for-byte, so a cleaned working file compares equal to HEAD.
-Invalid JSON passes through untouched; a filter must never corrupt the file.
+Invalid tracked JSON or local settings fails closed; a filter must never stage
+unvalidated machine-specific content.
 """
 import json
 import os
@@ -23,23 +24,41 @@ def main():
     home = (sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.claude")).rstrip("/")
     try:
         obj = json.loads(raw)
-    except Exception:
-        sys.stdout.write(raw.replace(home, "__CLAUDE_HOME__"))
-        return
+    except (TypeError, json.JSONDecodeError):
+        print("settings-clean: tracked settings.json is not valid JSON", file=sys.stderr)
+        return 2
+    if not isinstance(obj, dict):
+        print("settings-clean: tracked settings.json must contain an object", file=sys.stderr)
+        return 2
+    markets = obj.get("extraKnownMarketplaces", {})
+    if not isinstance(markets, dict):
+        print("settings-clean: tracked marketplaces must be an object", file=sys.stderr)
+        return 2
 
     local = os.path.join(home, "settings.local.json")
     try:
         with open(local) as fh:
-            private = set(json.load(fh).get("extraKnownMarketplaces", {}))
-    except Exception:
-        private = set()
+            local_obj = json.load(fh)
+    except FileNotFoundError:
+        local_obj = {}
+    except (OSError, json.JSONDecodeError):
+        print("settings-clean: local settings could not be read safely", file=sys.stderr)
+        return 3
+    if not isinstance(local_obj, dict):
+        print("settings-clean: local settings must contain an object", file=sys.stderr)
+        return 3
+    private_markets = local_obj.get("extraKnownMarketplaces", {})
+    if not isinstance(private_markets, dict):
+        print("settings-clean: local marketplaces must be an object", file=sys.stderr)
+        return 3
+    private = set(private_markets)
 
-    markets = obj.get("extraKnownMarketplaces")
     if isinstance(markets, dict) and private:
         for name in private & set(markets):
             del markets[name]
 
     sys.stdout.write(json.dumps(obj, indent=2).replace(home, "__CLAUDE_HOME__") + "\n")
+    return 0
 
 
-main()
+sys.exit(main())
