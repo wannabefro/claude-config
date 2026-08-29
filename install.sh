@@ -241,9 +241,9 @@ fi
 # ones to settings.json and this repo is public.
 log "Configuring path filter and materializing home paths for $TARGET"
 shell_quote() {
-  local value="$1"
-  value="${value//\'/\'\\\'\'}"
-  printf "'%s'" "$value"
+  # Git executes filter commands through a shell. Bash's %q emits a token
+  # that keeps spaces, apostrophes, and other shell metacharacters literal.
+  printf '%q' "$1"
 }
 settings_clean_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/settings-clean.py") $(shell_quote "$TARGET")"
 path_clean_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/path-clean.py") $(shell_quote "$TARGET")"
@@ -254,28 +254,25 @@ git -C "$TARGET" config filter.claudesettings.required true
 git -C "$TARGET" config filter.claudehome.clean "$path_clean_filter"
 git -C "$TARGET" config filter.claudehome.smudge "$path_smudge_filter"
 git -C "$TARGET" config filter.claudehome.required true
-rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
-git -C "$TARGET" checkout -- settings.json agents/implementer.md
 
-# A successful checkout is not enough: a missing smudge expansion leaves the
-# dispatcher with a literal placeholder and it cannot invoke Luna. Fail during
-# installation while the target and its backup are still obvious to the user.
-if grep -Fq '__CLAUDE_HOME__' "$TARGET/agents/implementer.md" "$TARGET/settings.json"; then
-  log "ERROR: the Claude home path did not materialize in the installed routing files."
-  exit 1
-fi
-[ -x "$TARGET/scripts/luna-run.sh" ] || {
-  log "ERROR: the installed Luna runner is missing or not executable."
-  exit 1
-}
-
-# Exercise the configured clean filter through Git before reporting success.
-# This catches missing executables, bad quoting, malformed tracked settings,
-# and any absolute home path that could enter the public repository.
+# Exercise the configured clean filter through Git before touching tracked
+# files. This catches missing executables, bad quoting, malformed tracked
+# settings, and any absolute home path that could enter the public repository.
 filter_probe="$(mktemp "${TMPDIR:-/tmp}/claude-settings-filter.XXXXXXXX")"
 filter_probe_expected="$(mktemp "${TMPDIR:-/tmp}/claude-settings-filter-expected.XXXXXXXX")"
-filter_probe_cleanup() { rm -f "$filter_probe" "$filter_probe_expected"; }
-trap filter_probe_cleanup EXIT
+materialization_tx=""
+materialization_committed=0
+install_cleanup() {
+  local saved_status=$?
+  set +e
+  if [ -n "${materialization_tx:-}" ] && [ "$materialization_committed" -eq 0 ]; then
+    materialization_restore
+  fi
+  rm -f "$filter_probe" "$filter_probe_expected"
+  [ -z "${materialization_tx:-}" ] || rm -rf "$materialization_tx"
+  return "$saved_status"
+}
+trap install_cleanup EXIT
 printf '{"hooks":{"probe":"%s/hooks/verify"},"extraKnownMarketplaces":{"probe-public":{"source":"github","repo":"example/public"}}}\n' "$TARGET" > "$filter_probe"
 if ! "$PYTHON3_RUNTIME" "$TARGET/scripts/settings-clean.py" "$TARGET" < "$filter_probe" > "$filter_probe_expected"; then
   log "ERROR: the settings clean filter rejected its valid probe input."
@@ -297,6 +294,65 @@ if grep -Fq "$TARGET" "$filter_probe_expected" || ! grep -Fq '__CLAUDE_HOME__' "
   log "ERROR: the settings clean filter did not strip the machine path."
   exit 1
 fi
+
+# Back up the exact pair before checkout. A failed filter, checkout, or
+# materialization must restore both files as a pair, including their prior
+# absence; no partially materialized routing files may survive an install.
+materialization_tx="$(mktemp -d "${TMPDIR:-/tmp}/claude-materialize.XXXXXXXX")"
+materialization_restore() {
+  local relative target_file state_file backup_file state
+  for relative in settings.json agents/implementer.md; do
+    target_file="$TARGET/$relative"
+    state_file="$materialization_tx/${relative//\//_}.state"
+    backup_file="$materialization_tx/${relative//\//_}.backup"
+    [ -f "$state_file" ] || continue
+    state="$(cat "$state_file")"
+    rm -f "$target_file"
+    if [ "$state" = present ]; then
+      cp -p "$backup_file" "$target_file"
+    fi
+  done
+}
+for relative in settings.json agents/implementer.md; do
+  target_file="$TARGET/$relative"
+  state_file="$materialization_tx/${relative//\//_}.state"
+  backup_file="$materialization_tx/${relative//\//_}.backup"
+  if [ -f "$target_file" ]; then
+    printf 'present\n' > "$state_file"
+    cp -p "$target_file" "$backup_file"
+  elif [ -e "$target_file" ] || [ -L "$target_file" ]; then
+    log "ERROR: expected installed routing path is not a regular file: $relative"
+    exit 1
+  else
+    printf 'absent\n' > "$state_file"
+  fi
+done
+
+rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
+if ! git -C "$TARGET" checkout -- settings.json agents/implementer.md; then
+  log "ERROR: the Claude routing files could not be materialized; prior files were restored."
+  exit 1
+fi
+
+# A successful checkout is not enough: a missing smudge expansion leaves the
+# dispatcher with a literal placeholder and it cannot invoke Luna. Fail during
+# installation while the target and its backup are still obvious to the user.
+if grep -Fq '__CLAUDE_HOME__' "$TARGET/agents/implementer.md" "$TARGET/settings.json"; then
+  log "ERROR: the Claude home path did not materialize in the installed routing files."
+  exit 1
+fi
+[ -x "$TARGET/scripts/luna-run.sh" ] || {
+  log "ERROR: the installed Luna runner is missing or not executable."
+  exit 1
+}
+if ! routing_status="$(git -C "$TARGET" status --porcelain -- settings.json agents/implementer.md)"; then
+  log "ERROR: could not verify that materialized routing files are clean."
+  exit 1
+elif [ -n "$routing_status" ]; then
+  log "ERROR: materialized routing files left the target repository dirty."
+  exit 1
+fi
+materialization_committed=1
 
 log "Done. Next steps:"
 cat <<'EOF'
