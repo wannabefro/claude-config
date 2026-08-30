@@ -201,6 +201,7 @@ check('installer validates the MCP command and rejects Apple od', installer.incl
 
 let designCheckHome = ''
 let codexIsolationBin = ''
+let primaryFixtureError = null
 try {
 designCheckHome = mkdtempSync(join(tmpdir(), 'claude-open-design-check-'))
 const designCheckBin = join(designCheckHome, 'bin')
@@ -315,11 +316,22 @@ try { isolatedCodexCommand = execFileSync('/bin/bash', ['-c', 'command -v codex'
 check('missing-Claude fixture selects an isolated Codex link to the existing CLI', isolatedCodexCommand === codexIsolationLink && realpathSync(isolatedCodexCommand) === authorizedCodexRealpath, JSON.stringify({ isolatedCodexCommand, codexIsolationLink, authorizedCodexRealpath }))
 designCheck = runDesignCheck(missingCliEnv)
 check('missing Claude CLI keeps the app-present design action optional', designCheck.code === 0 && designCheck.output.includes('Claude CLI not found (optional)') && designCheck.output.includes('od mcp install claude') && readFileSync(designCheckConfig, 'utf8') === malformedConfigText)
+} catch (error) {
+  primaryFixtureError = error
 } finally {
+  const cleanupFailures = []
   for (const fixture of [codexIsolationBin, designCheckHome]) {
     if (!fixture) continue
-    try { rmSync(fixture, { recursive: true, force: true }) } catch {}
+    try { rmSync(fixture, { recursive: true, force: true }) } catch (error) { cleanupFailures.push({ fixture, error }) }
   }
+  if (cleanupFailures.length > 0) {
+    const describe = (error) => error instanceof Error ? error.message : String(error)
+    const details = cleanupFailures.map(({ fixture, error }) => `${fixture}: ${describe(error)}`).join('; ')
+    const cleanupErrors = cleanupFailures.map(({ fixture, error }) => new Error(`cleanup failed for ${fixture}: ${describe(error)}`, { cause: error }))
+    if (primaryFixtureError) throw new AggregateError([primaryFixtureError, ...cleanupErrors], `fixture execution failed and cleanup failed: ${details}`)
+    throw new Error(`fixture cleanup failed: ${details}`, { cause: cleanupErrors[0] })
+  }
+  if (primaryFixtureError) throw primaryFixtureError
 }
 check('currentness policy records the reviewed CE pin', read('docs/workflow-migration.md').includes('3.23.4') && read('docs/workflow-migration.md').includes('33d9bd92689d60580e732890f94466e5793385b1'))
 
