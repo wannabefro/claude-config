@@ -22,6 +22,7 @@ const fakeHelp = join(root, 'help')
 const fakeInvocations = join(root, 'invocations')
 const fakeCalls = join(root, 'calls')
 const probe = join(root, 'probe.sh')
+const revalidateProbe = join(root, 'revalidate-probe.sh')
 const work = join(root, 'work')
 const prompt = join(root, 'brief')
 const npmMarker = join(root, 'npm-called')
@@ -114,6 +115,15 @@ status=$?
 printf '%s|%s\\n' "$CODEX_BIN" "$CODEX_VERSION"
 `)
 chmodSync(probe, 0o755)
+writeFileSync(revalidateProbe, `#!/bin/bash
+set -u
+source "$1"
+codex_preflight review || exit 20
+PATH="$2"
+if codex_preflight_revalidate; then exit 21; fi
+exit 0
+`)
+chmodSync(revalidateProbe, 0o755)
 
 const fullHelp = `Usage: codex exec [OPTIONS] [PROMPT]
   -c, --config <key=value>
@@ -142,6 +152,15 @@ const runPreflight = (lane, version, help = fullHelp, extra = {}) => {
   const result = spawnSync('/bin/bash', [probe, helper, lane], {
     cwd: repo,
     env: { ...env, FAKE_VERSION: version, ...extra },
+    encoding: 'utf8',
+  })
+  return { ...result, output: `${result.stdout ?? ''}${result.stderr ?? ''}` }
+}
+const runRevalidate = (pathValue) => {
+  rmSync(fakeInvocations, { force: true })
+  const result = spawnSync('/bin/bash', [revalidateProbe, helper, pathValue], {
+    cwd: repo,
+    env: { ...env, FAKE_VERSION: 'codex-cli 99.4.2', PATH: env.PATH },
     encoding: 'utf8',
   })
   return { ...result, output: `${result.stdout ?? ''}${result.stderr ?? ''}` }
@@ -178,6 +197,23 @@ const missingReview = runPreflight('review', 'codex-cli 99.4.2', fullHelp.replac
 check('a high stable version missing one review flag fails closed', missingReview.status !== 0 && missingReview.output.includes('required review surface'), missingReview.output)
 const missingExec = runPreflight('review', 'codex-cli 99.4.2', fullHelp.replace('Usage: codex exec', 'Usage: codex run'))
 check('a high stable version missing the exec command fails closed', missingExec.status !== 0 && missingExec.output.includes('required common exec flag'), missingExec.output)
+
+const invalidPaths = [
+  ['empty PATH', ''],
+  ['leading empty PATH entry', `:${env.PATH}`],
+  ['double-colon empty PATH entry', `${fakeBin}::${env.PATH}`],
+  ['trailing empty PATH entry', `${env.PATH}:`],
+  ['dot PATH entry', `${fakeBin}:.:${env.PATH}`],
+  ['relative PATH entry', `${fakeBin}:relative:${env.PATH}`],
+]
+for (const [label, pathValue] of invalidPaths) {
+  const result = runPreflight('review', 'codex-cli 99.4.2', fullHelp, { PATH: pathValue })
+  check(`rejects ${label} before Codex discovery`, result.status !== 0 && result.output.includes('PATH must be non-empty and contain only absolute entries') && !existsSync(fakeInvocations), result.output)
+  const revalidated = runRevalidate(pathValue)
+  check(`rejects ${label} again before Codex exec during revalidation`, revalidated.status === 0 && revalidated.output.includes('PATH must be non-empty and contain only absolute entries') && !existsSync(fakeInvocations), revalidated.output)
+}
+const validRevalidation = runRevalidate(env.PATH)
+check('accepts a valid all-absolute PATH during revalidation', validRevalidation.status === 21 && !existsSync(fakeInvocations), validRevalidation.output)
 
 symlinkSync(fakeReal, join(repoWinnerBin, 'codex'))
 symlinkSync(fakeReal, join(tempWinnerBin, 'codex'))

@@ -112,6 +112,42 @@ codex_preflight_has() {
   printf '%s\n' "$CODEX_EXEC_HELP" | "$CODEX_PREFLIGHT_GREP" -Eq "$pattern"
 }
 
+codex_preflight_validate_path_env() {
+  local path_value=${PATH:-} entry remainder last
+  if [ -z "$path_value" ]; then
+    codex_preflight_report 'PATH must be non-empty and contain only absolute entries'
+    return 1
+  fi
+  remainder=$path_value
+  while :; do
+    last=0
+    case "$remainder" in
+      *:*)
+        entry=${remainder%%:*}
+        remainder=${remainder#*:}
+        ;;
+      *)
+        entry=$remainder
+        remainder=''
+        last=1
+        ;;
+    esac
+    case "$entry" in
+      '')
+        codex_preflight_report 'PATH must be non-empty and contain only absolute entries'
+        return 1
+        ;;
+      /*) ;;
+      *)
+        codex_preflight_report 'PATH must be non-empty and contain only absolute entries'
+        return 1
+        ;;
+    esac
+    [ "$last" -eq 1 ] && break
+  done
+  return 0
+}
+
 codex_preflight_inside() {
   local candidate=$1 root=$2
   [ -n "$root" ] || return 1
@@ -213,6 +249,9 @@ codex_preflight() {
   if ! codex_preflight_require_control_tools; then
     return 1
   fi
+  if ! codex_preflight_validate_path_env; then
+    return 1
+  fi
 
   # This is intentionally the sole discovery operation. command -v may
   # return a shell function or alias, so require an absolute executable path
@@ -310,6 +349,9 @@ codex_preflight() {
 
 codex_preflight_revalidate() {
   local discovered resolved current_id current_digest
+  if ! codex_preflight_validate_path_env; then
+    return 1
+  fi
   discovered=$(command -v codex 2>/dev/null || true)
   if ! codex_preflight_validate_path "$discovered" 'current Codex CLI'; then
     return 1
