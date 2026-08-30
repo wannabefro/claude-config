@@ -41,7 +41,11 @@ resolved once to an absolute realpath. `scripts/luna-run.sh` and
 bounded version probe, and the exact `codex exec` flags and sandbox values used
 by the writer or review lane. A future high version that lacks a required flag
 still blocks. Never use `CODEX_BIN`, scan alternate installations, invoke
-`codex exec` directly, or let the installer install/update the CLI.
+`codex exec` directly, or let the installer install/update the CLI. The
+selected executable must be outside the current worktree, this checkout, and
+macOS temporary roots; immediately before exec, wrappers re-resolve the PATH
+winner and require the captured filesystem identity and SHA-256 digest to
+match.
 
 Fable is a manual long-horizon option only. Verify host access before use.
 Sonnet and `gpt-5.6-terra` are manual fast lanes only. Haiku is limited to

@@ -44,4 +44,7 @@ surface before running. There is no maximum version pin: a future stable
 release is accepted when it retains every required writer/review flag and
 sandbox value. Missing, malformed, prerelease, or incompatible output fails
 closed with the selected path and a safe update hint; no alternate binary or
-automatic install is attempted.
+automatic install is attempted. Paths inside the active worktree, this
+checkout, or macOS temporary roots are rejected, and wrappers compare a fresh
+realpath, filesystem identity, and SHA-256 digest immediately before each
+final exec.

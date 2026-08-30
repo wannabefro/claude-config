@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "unknown arg: $1" >&2; exit 2 ;;
 esac; shift; done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BRANCH="main"
 log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
 # The shared preflight performs the bounded `codex --version` probe and the
@@ -49,11 +49,11 @@ fi
 # The path filter writes this exact absolute path into the installed agent
 # brief. Resolve relative targets before configuring the filter so the Luna
 # runner command remains valid after Claude changes its working directory.
-TARGET_PARENT=$(CDPATH= cd -- "$(dirname -- "$TARGET")" 2>/dev/null && pwd -P) || {
+TARGET_PARENT=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$TARGET")" 2>/dev/null && pwd -P) || {
   log "ERROR: cannot resolve the target parent directory: $TARGET"
   exit 1
 }
-TARGET_BASE=$(basename -- "$TARGET")
+TARGET_BASE=$(/usr/bin/basename -- "$TARGET")
 [ -n "$TARGET_BASE" ] || { log 'ERROR: target path is empty.'; exit 1; }
 TARGET="$TARGET_PARENT/$TARGET_BASE"
 
@@ -69,7 +69,13 @@ prereq_hint() {
     perl)  echo "xcode-select --install   # or: brew install perl" ;;
     rg)    echo "brew install ripgrep" ;;
     jq)    echo "brew install jq" ;;
-    codex) echo "update the selected Codex CLI using the installation channel that owns the path shown above; do not install a second copy" ;;
+    codex)
+      if [ -n "${CODEX_BIN:-}" ]; then
+        echo "update the selected Codex CLI at $CODEX_BIN using the installation channel that owns that path; do not install a second copy"
+      else
+        echo "install exactly one official Codex CLI on PATH using your existing installation channel; do not install a second copy"
+      fi
+      ;;
     rtk)   echo "brew install rtk   # homebrew-core; not 'cargo install rtk' (name clash)" ;;
     cmux)  echo "download the cmux desktop app (not in a package manager)" ;;
     wt)    echo "brew install worktrunk   # provides the wt shell function" ;;
@@ -79,12 +85,14 @@ prereq_hint() {
 }
 PREREQS="git gh node perl rg jq codex rtk cmux wt bd"
 missing=""
+codex_required_failure=0
 PERL_RUNTIME=/usr/bin/perl
 if [ ! -x "$PERL_RUNTIME" ]; then PERL_RUNTIME=$(command -v perl 2>/dev/null || true); fi
 for t in $PREREQS; do
   if ! command -v "$t" >/dev/null 2>&1; then
     printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
     missing="$missing $t"
+    if [ "$t" = codex ]; then codex_required_failure=1; fi
     continue
   fi
   if [ "$t" = node ]; then
@@ -99,9 +107,10 @@ for t in $PREREQS; do
       printf '  ✓ node %s (supported runtime)\n' "$node_version"
     fi
   elif [ "$t" = codex ]; then
-    if [ -z "$PERL_RUNTIME" ] || ! codex_preflight all; then
+    if ! codex_preflight all; then
       printf '  ✗ codex  (selected CLI is missing, below the stable floor, or lacks a required exec capability) — update the one active CLI using: %s\n' "$(prereq_hint codex)"
       missing="$missing codex-runtime"
+      codex_required_failure=1
     else
       printf '  ✓ codex %s (%s; all required exec capabilities present)\n' "$CODEX_VERSION" "$CODEX_BIN"
     fi
@@ -109,6 +118,10 @@ for t in $PREREQS; do
     printf '  ✓ %s\n' "$t"
   fi
 done
+[ "$codex_required_failure" -eq 0 ] || {
+  log "ERROR: the one active Codex CLI is required and failed preflight; no installation or --check result is valid."
+  exit 1
+}
 if [ -n "$PYTHON3_RUNTIME" ]; then
   printf '  ✓ python3 %s (clean-filter runtime passed)\n' "$PYTHON3_RUNTIME"
 else

@@ -10,12 +10,19 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
 const root = mkdtempSync(join(tmpdir(), 'claude-luna-run-'))
-const fake = join(root, 'codex')
+const repo = fileURLToPath(new URL('../', import.meta.url))
+const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
+const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
+let fixtureParent = dirname(repo)
+while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
+if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
+const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-luna-run-safe-'))
+const fake = join(fixtureRoot, 'codex')
 const argsFile = join(root, 'args')
 const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
@@ -51,7 +58,7 @@ writeFileSync(prompt, promptBytes)
 const wrapper = fileURLToPath(new URL('../scripts/luna-run.sh', import.meta.url))
 const env = {
   ...process.env,
-  PATH: `${root}:${process.env.PATH || ''}`,
+  PATH: `${fixtureRoot}:${process.env.PATH || ''}`,
   TMPDIR: root,
   CODEX_BIN: join(root, 'missing-override'),
   PERL_BIN: join(root, 'missing-perl-override'),
@@ -118,5 +125,6 @@ try { execFileSync(wrapper, [join(root, 'missing-brief'), work], { cwd: work, en
 check('invalid prompt input has a distinct exit code', inputCode === 64, `got ${inputCode}`)
 
 rmSync(root, { recursive: true, force: true })
+rmSync(fixtureRoot, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

@@ -12,6 +12,7 @@ USAGE=64
 MISSING_RUNTIME=69
 RUNTIME_FAILURE=70
 TIMEOUT_FAILURE=124
+PREFLIGHT_FAILURE=68
 
 if [ "$#" -ne 2 ]; then
   echo "luna-run: usage: luna-run.sh PROMPT_FILE WORKING_DIRECTORY" >&2
@@ -21,7 +22,7 @@ fi
 PROMPT_FILE=$1
 WORKING_DIRECTORY=$2
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)" || {
+SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" 2>/dev/null && pwd -P)" || {
   echo "luna-run: wrapper directory could not be resolved" >&2
   exit "$MISSING_RUNTIME"
 }
@@ -109,6 +110,7 @@ if [ "$run_owner" != "$(id -u)" ] || [ "$run_mode" != '700' ]; then
   exit "$MISSING_RUNTIME"
 fi
 out="$run_dir/output"
+preflight_failure="$run_dir/preflight-failure"
 cleanup_out() {
   if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
     rm -rf -- "$run_dir"
@@ -117,6 +119,10 @@ cleanup_out() {
 trap cleanup_out EXIT HUP INT TERM
 (
   cd "$WORKING_DIRECTORY" || exit "$USAGE"
+  if ! codex_preflight_revalidate; then
+    : > "$preflight_failure"
+    exit "$PREFLIGHT_FAILURE"
+  fi
   exec "$PERL_BIN" -e 'setpgrp(0, 0); exec @ARGV' "$CODEX_BIN" exec \
     --model gpt-5.6-luna \
     --sandbox workspace-write \
@@ -204,6 +210,10 @@ while kill -0 "$child_pid" 2>/dev/null; do
 done
 wait "$child_pid" 2>/dev/null
 status=$?
+if [ -e "$preflight_failure" ]; then
+  echo "luna-run: Codex CLI changed after preflight; refusing the implementation run" >&2
+  exit "$MISSING_RUNTIME"
+fi
 cat "$out"
 if [ "$status" -eq 0 ]; then
   exit 0

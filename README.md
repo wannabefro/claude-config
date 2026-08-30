@@ -34,7 +34,10 @@ advertises every `codex exec` flag they use. A higher version with a missing
 capability is incompatible. This setup never scans for another Codex copy,
 honors `CODEX_BIN`, or installs Codex; update the one active CLI through the
 installation channel that owns the selected path shown by `install.sh` when
-the check fails.
+the check fails. The selected executable must also be outside the active
+worktree, this checkout, and macOS temporary roots. Immediately before each
+final exec, wrappers re-resolve the first PATH winner and compare its
+filesystem identity and SHA-256 digest with the preflight snapshot.
 
 `/implement` handles one coherent, clearly scoped unit through exactly one
 Luna implementer. `/build` is for structured work: it chooses `serial` or

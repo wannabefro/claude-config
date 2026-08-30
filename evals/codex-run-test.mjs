@@ -1,7 +1,9 @@
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
+  realpathSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -9,11 +11,18 @@ import {
 } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const root = mkdtempSync(join(tmpdir(), 'claude-codex-run-'))
-const fake = join(root, 'codex')
+const repo = fileURLToPath(new URL('../', import.meta.url))
+const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
+const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
+let fixtureParent = dirname(repo)
+while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
+if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
+const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-codex-run-safe-'))
+const fake = join(fixtureRoot, 'codex')
 const argsFile = join(root, 'args')
 const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
@@ -68,7 +77,7 @@ const wrapper = fileURLToPath(new URL('../scripts/codex-run.sh', import.meta.url
 // The fake is injected through PATH, while CODEX_BIN points at an invalid path.
 // This proves callers cannot replace the approved runtime through the
 // environment, while tests retain a deterministic executable seam.
-const env = { ...process.env, PATH: `${root}:${process.env.PATH || ''}`, TMPDIR: root, CODEX_BIN: join(root, 'missing-override'), FAKE_ARGS: argsFile, FAKE_STDIN: stdinFile }
+const env = { ...process.env, PATH: `${fixtureRoot}:${process.env.PATH || ''}`, TMPDIR: root, CODEX_BIN: join(root, 'missing-override'), FAKE_ARGS: argsFile, FAKE_STDIN: stdinFile }
 const runWithArgs = (args, extraEnv = {}) => execFileSync(wrapper, args, { cwd: work, env: { ...env, ...extraEnv }, encoding: 'utf8' })
 const run = (extraEnv = {}) => runWithArgs(['-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N'], extraEnv)
 
@@ -145,5 +154,6 @@ try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status }
 check('unexpected CLI failure is distinct from an empty answer', runtimeCode === 7, `got ${runtimeCode}`)
 
 rmSync(root, { recursive: true, force: true })
+rmSync(fixtureRoot, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

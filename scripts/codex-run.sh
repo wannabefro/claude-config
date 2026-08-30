@@ -56,6 +56,7 @@ SECRET_FILE=""
 MCP=0
 FROM_FILE=""
 NO_EXPLORE=0
+PREFLIGHT_FAILURE=68
 while [ $# -gt 0 ]; do
   case "$1" in
     -t) TIMEOUT="$2"; shift 2 ;;
@@ -84,7 +85,7 @@ else
   PROMPT="$1"
 fi
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)" || {
+SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" 2>/dev/null && pwd -P)" || {
   echo "codex-run: wrapper directory could not be resolved." >&2
   exit 3
 }
@@ -128,6 +129,7 @@ fi
 out="$run_dir/output"
 last_message="$run_dir/last-message"
 prompt_input="$run_dir/input"
+preflight_failure="$run_dir/preflight-failure"
 cleanup_run_dir() {
   if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
     rm -rf -- "$run_dir"
@@ -150,12 +152,17 @@ MCP_ARGS=()
 run_once() {
   : > "$out"
   : > "$last_message"
+  rm -f "$preflight_failure"
   # Scan the exact bytes that will be sent on stdin, immediately before every
   # Codex exec. Bundle and brief scans above are useful preflight checks, but
   # neither is a substitute for this final payload check.
   if ! "$SECRET_SCANNER" --file "$prompt_input" >/dev/null; then return 98; fi
   (
     cd "$DIR" || exit 1
+    if ! codex_preflight_revalidate; then
+      : > "$preflight_failure"
+      exit "$PREFLIGHT_FAILURE"
+    fi
     exec "$PERL_BIN" -e 'setpgrp(0, 0); alarm shift; exec @ARGV' "$TIMEOUT" "$CODEX_BIN" exec \
       --skip-git-repo-check \
       --model gpt-5.6-sol \
@@ -199,6 +206,9 @@ run_once() {
   done
   wait "$pid" 2>/dev/null
   local rc=$?
+  if [ -e "$preflight_failure" ]; then
+    return 100
+  fi
   # Perl's alarm kills the leader at the hard timeout; reap the whole private
   # process group so descendants cannot survive a timeout.
   if [ "$rc" -eq 142 ]; then kill_group; fi
@@ -217,6 +227,11 @@ refused() {
 }
 
 run_once; rc=$?
+if [ "$rc" -eq 100 ]; then
+  echo 'codex-run: CLI unavailable (selected Codex CLI changed after preflight).' >&2
+  echo 'codex-run: do not retry or hunt processes — report it unavailable.' >&2
+  exit 3
+fi
 if [ "$rc" -eq 98 ]; then
   echo 'codex-run: prompt input failed the secret scan; refusing cross-provider transfer.' >&2
   exit 8

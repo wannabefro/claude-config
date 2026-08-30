@@ -1,6 +1,6 @@
 import { execFileSync as runFile, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -12,6 +12,16 @@ const rollbackSource = join(root, 'rollback source')
 const rollbackTarget = join(root, "claude home's rollback")
 const malformedTarget = join(root, "claude home's malformed")
 const testHome = join(root, 'test home')
+const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
+const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
+let fixtureParent = dirname(repo)
+while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
+if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
+const cliFixtureRoot = mkdtempSync(join(fixtureParent, 'claude-install-cli-safe-'))
+const cliFixture = join(cliFixtureRoot, 'codex')
+const incompatibleTarget = join(root, "claude home's incompatible")
+const missingTarget = join(root, "claude home's missing")
+const checkTarget = join(testHome, '.claude')
 const env = { ...process.env, HOME: testHome, PATH: `/opt/homebrew/opt/node@24/bin:${process.env.PATH || ''}` }
 const git = (cwd, args) => runFile('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: 'pipe' })
 const cloneMain = (source, destination) => {
@@ -26,9 +36,14 @@ const snapshotWorkingInstaller = (source) => {
   if (staged.status === 1) git(source, ['commit', '-qm', 'snapshot installer under test'])
   else if (staged.status !== 0) throw new Error(`could not inspect installer snapshot index: ${staged.status}`)
 }
-const runInstall = (source, target) => spawnSync('/bin/bash', [join(source, 'install.sh'), '--target', target, '--force'], {
+const runInstall = (source, target, extraEnv = {}) => spawnSync('/bin/bash', [join(source, 'install.sh'), '--target', target, '--force'], {
   cwd: source,
-  env,
+  env: { ...env, ...extraEnv },
+  encoding: 'utf8',
+})
+const runCheck = (source, extraEnv = {}) => spawnSync('/bin/bash', [join(source, 'install.sh'), '--check'], {
+  cwd: source,
+  env: { ...env, ...extraEnv },
   encoding: 'utf8',
 })
 let pass = 0
@@ -89,6 +104,44 @@ result = runInstall(cleanSource, malformedTarget)
 check('malformed local settings fail before materialization', result.status !== 0, `${result.status}: ${result.stderr}`)
 check('preflight failure leaves both prior files byte-for-byte intact', readFileSync(join(malformedTarget, 'settings.json'), 'utf8') === malformedSettings && readFileSync(join(malformedTarget, 'agents', 'implementer.md'), 'utf8') === malformedBrief, JSON.stringify({ status: result.status }))
 
+writeFileSync(cliFixture, `#!/bin/sh
+if [ "\$1" = "--version" ]; then printf '%s\\n' "\$FAKE_CODEX_VERSION"; exit 0; fi
+if [ "\$1" = "exec" ] && [ "\$2" = "--help" ]; then
+  printf '%s\\n' 'Usage: codex exec [OPTIONS] [PROMPT]'
+  printf '%s\\n' '  -c, --config <key=value>  -m, --model <MODEL>  -s, --sandbox <SANDBOX_MODE>'
+  printf '%s\\n' '  [possible values: read-only, workspace-write]'
+  printf '%s\\n' '  --skip-git-repo-check  --output-last-message <FILE>  --approve-for-me  --ephemeral  -C, --cd <DIR>'
+  exit 0
+fi
+exit 64
+`)
+chmodSync(cliFixture, 0o755)
+mkdirSync(incompatibleTarget)
+const incompatibleSentinel = 'installer must not backup or mutate this target\n'
+writeFileSync(join(incompatibleTarget, 'sentinel.txt'), incompatibleSentinel)
+const incompatiblePath = join(incompatibleTarget, 'sentinel.txt')
+mkdirSync(checkTarget)
+writeFileSync(join(checkTarget, 'sentinel.txt'), incompatibleSentinel)
+const incompatibleResult = runInstall(cleanSource, incompatibleTarget, {
+  PATH: `${cliFixtureRoot}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`,
+  FAKE_CODEX_VERSION: 'codex-cli 0.149.0',
+})
+check('incompatible Codex blocks install before backup or adoption', incompatibleResult.status !== 0 && readFileSync(incompatiblePath, 'utf8') === incompatibleSentinel && !readdirSync(root).some((name) => name.startsWith("claude home's incompatible.bak-")), `${incompatibleResult.status}: ${incompatibleResult.stdout}${incompatibleResult.stderr}`)
+const incompatibleCheck = runCheck(cleanSource, {
+  PATH: `${cliFixtureRoot}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`,
+  FAKE_CODEX_VERSION: 'codex-cli 0.149.0',
+})
+check('incompatible Codex also makes --check fail closed before touching its target', incompatibleCheck.status !== 0 && readFileSync(join(checkTarget, 'sentinel.txt'), 'utf8') === incompatibleSentinel, `${incompatibleCheck.status}: ${incompatibleCheck.stdout}${incompatibleCheck.stderr}`)
+const missingResult = runInstall(cleanSource, missingTarget, {
+  PATH: '/opt/homebrew/opt/node@24/bin:/usr/bin:/bin',
+})
+check('missing Codex blocks install before creating its target', missingResult.status !== 0 && !existsSync(missingTarget), `${missingResult.status}: ${missingResult.stdout}${missingResult.stderr}`)
+const missingCheck = runCheck(cleanSource, {
+  PATH: '/opt/homebrew/opt/node@24/bin:/usr/bin:/bin',
+})
+check('missing Codex also makes --check fail closed', missingCheck.status !== 0, `${missingCheck.status}: ${missingCheck.stdout}${missingCheck.stderr}`)
+
 rmSync(root, { recursive: true, force: true })
+rmSync(cliFixtureRoot, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
