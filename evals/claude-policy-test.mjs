@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { accessSync, chmodSync, constants as fsConstants, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { homedir, tmpdir, userInfo } from 'node:os'
 import { fileURLToPath } from 'node:url'
 const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8')
 const configRoot = fileURLToPath(new URL('../', import.meta.url)).replace(/[\\/]+$/, '') || '/'
@@ -201,6 +201,8 @@ check('installer validates the MCP command and rejects Apple od', installer.incl
 
 const designCheckHome = mkdtempSync(join(tmpdir(), 'claude-open-design-check-'))
 const designCheckBin = join(designCheckHome, 'bin')
+const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
+const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
 const designCheckOd = join(designCheckBin, 'od')
 const designCheckClaude = join(designCheckBin, 'claude')
 const designCheckMarker = join(designCheckHome, 'od-invoked')
@@ -214,12 +216,51 @@ writeFileSync(designCheckClaude, '#!/bin/sh\nprintf called > "$CLAUDE_MARKER"\ne
 chmodSync(designCheckClaude, 0o755)
 const designCheckConfigText = '{"mcpServers":{"another-server":{"command":"true"}}}\n'
 writeFileSync(designCheckConfig, designCheckConfigText)
+const hostPathEntries = (process.env.PATH || '').split(':').filter((entry) => entry.length > 0 && entry.startsWith('/'))
+if (hostPathEntries.length === 0) throw new Error('the host PATH has no absolute entries')
+const testNodeBin = dirname(process.execPath)
+if (!testNodeBin.startsWith('/')) throw new Error('the eval Node runtime is not absolute')
+const testPathEntries = [testNodeBin, ...hostPathEntries.filter((entry) => entry !== testNodeBin)]
+const isExecutableFile = (candidate) => {
+  try {
+    accessSync(candidate, fsConstants.X_OK)
+    return statSync(candidate).isFile()
+  } catch {
+    return false
+  }
+}
+const authorizedCodex = testPathEntries
+  .map((entry) => join(entry, 'codex'))
+  .find((candidate) => isExecutableFile(candidate))
+if (!authorizedCodex) throw new Error('the host PATH has no executable Codex CLI')
+const authorizedCodexRealpath = realpathSync(authorizedCodex)
+const currentRoot = realpathSync(process.cwd())
+const fixtureParent = [dirname(configRoot), dirname(process.env.PWD || ''), dirname(authorizedCodex), userInfo().homedir, homedir()]
+  .map((candidate) => {
+    try { return realpathSync(candidate) } catch { return '' }
+  })
+  .find((candidate) => candidate && candidate !== '/' && !existsSync(join(candidate, '.git')) && !temporaryRoots.some((rootPath) => isUnder(candidate, rootPath)) && !isUnder(candidate, configRoot) && !isUnder(candidate, currentRoot) && (() => {
+    try { accessSync(candidate, fsConstants.W_OK); return true } catch { return false }
+  })())
+if (!fixtureParent) throw new Error('could not find a writable safe Codex fixture sibling')
+const codexIsolationBin = mkdtempSync(join(fixtureParent, 'claude-policy-codex-safe-'))
+const codexIsolationLink = join(codexIsolationBin, 'codex')
+symlinkSync(authorizedCodex, codexIsolationLink)
+if (realpathSync(codexIsolationLink) !== authorizedCodexRealpath) throw new Error('Codex isolation link does not resolve to the existing CLI')
+const claudeFreePathEntries = testPathEntries.filter((entry) => !isExecutableFile(join(entry, 'claude')))
+const requiredPathTools = ['git', 'gh', 'node', 'perl', 'rg', 'jq', 'python3']
+for (const tool of requiredPathTools) {
+  const source = testPathEntries.map((entry) => join(entry, tool)).find((candidate) => isExecutableFile(candidate))
+  if (source && !claudeFreePathEntries.some((entry) => isExecutableFile(join(entry, tool)))) symlinkSync(source, join(codexIsolationBin, tool))
+}
+const claudeFreePath = [codexIsolationBin, ...claudeFreePathEntries].join(':')
+if (claudeFreePath.split(':').some((entry) => entry.length === 0 || !entry.startsWith('/'))) throw new Error('Claude-free test PATH is not absolute and nonempty')
 const designCheckEnv = {
   ...process.env,
   HOME: designCheckHome,
   OD_MARKER: designCheckMarker,
   CLAUDE_MARKER: designCheckClaudeMarker,
-  PATH: `${designCheckBin}:/opt/homebrew/opt/node@24/bin:${process.env.PATH || ''}`,
+  PATH: `${designCheckBin}:${testPathEntries.join(':')}`,
 }
 const runDesignCheck = (env = designCheckEnv) => {
   try {
@@ -263,10 +304,14 @@ writeFileSync(designCheckConfig, malformedConfigText)
 designCheck = runDesignCheck()
 check('malformed MCP config stays optional, quiet, and non-mutating', designCheck.code === 0 && designCheck.output.includes('Claude Open Design MCP not confirmed (optional)') && !designCheck.output.includes('do-not-print-this-value') && readFileSync(designCheckConfig, 'utf8') === malformedConfigText)
 
-const missingCliEnv = { ...designCheckEnv, PATH: '/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin' }
+const missingCliEnv = { ...designCheckEnv, PATH: claudeFreePath }
+let isolatedCodexCommand = ''
+try { isolatedCodexCommand = execFileSync('/bin/bash', ['-c', 'command -v codex'], { env: missingCliEnv, encoding: 'utf8' }).trim() } catch {}
+check('missing-Claude fixture selects an isolated Codex link to the existing CLI', isolatedCodexCommand === codexIsolationLink && realpathSync(isolatedCodexCommand) === authorizedCodexRealpath, JSON.stringify({ isolatedCodexCommand, codexIsolationLink, authorizedCodexRealpath }))
 designCheck = runDesignCheck(missingCliEnv)
 check('missing Claude CLI keeps the app-present design action optional', designCheck.code === 0 && designCheck.output.includes('Claude CLI not found (optional)') && designCheck.output.includes('od mcp install claude') && readFileSync(designCheckConfig, 'utf8') === malformedConfigText)
 rmSync(designCheckHome, { recursive: true, force: true })
+rmSync(codexIsolationBin, { recursive: true, force: true })
 check('currentness policy records the reviewed CE pin', read('docs/workflow-migration.md').includes('3.23.4') && read('docs/workflow-migration.md').includes('33d9bd92689d60580e732890f94466e5793385b1'))
 
 console.log(`  ---- ${pass} passed, ${fail} failed`)
