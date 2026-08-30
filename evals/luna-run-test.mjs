@@ -21,7 +21,16 @@ const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
 const prompt = join(root, 'brief')
 writeFileSync(fake, `#!/bin/sh
-if [ "$1" = "--version" ]; then exit 0; fi
+if [ "$1" = "--version" ]; then printf '%s\\n' 'codex-cli 0.149.1'; exit 0; fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+  printf '%s\\n' 'Usage: codex exec [OPTIONS] [PROMPT]'
+  printf '%s\\n' '  -c, --config <key=value>'
+  printf '%s\\n' '  -m, --model <MODEL>'
+  printf '%s\\n' '  -s, --sandbox <SANDBOX_MODE>'
+  printf '%s\\n' '  [possible values: read-only, workspace-write, danger-full-access]'
+  printf '%s\\n' '  --approve-for-me  --ephemeral  -C, --cd <DIR>'
+  exit 0
+fi
 : > "$FAKE_ARGS"
 for arg in "$@"; do printf '%s\\n' "$arg" >> "$FAKE_ARGS"; done
 if [ -n "\${GROUP_FILE:-}" ]; then /usr/bin/perl -e 'print "$$ ", getpgrp(), "\\n"' > "$GROUP_FILE"; fi

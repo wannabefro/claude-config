@@ -23,6 +23,12 @@ esac; shift; done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BRANCH="main"
 log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
+# The shared preflight performs the bounded `codex --version` probe and the
+# exact `codex exec` capability check used by both wrappers.
+source "$SCRIPT_DIR/scripts/codex-preflight.sh" || {
+  log "ERROR: shared Codex preflight is unavailable."
+  exit 1
+}
 
 # Resolve one absolute, working Python 3 executable before any install
 # mutation. The clean filter calls this exact path from Git.
@@ -63,7 +69,7 @@ prereq_hint() {
     perl)  echo "xcode-select --install   # or: brew install perl" ;;
     rg)    echo "brew install ripgrep" ;;
     jq)    echo "brew install jq" ;;
-    codex) echo "npm install -g @openai/codex" ;;
+    codex) echo "update the selected Codex CLI using the installation channel that owns the path shown above; do not install a second copy" ;;
     rtk)   echo "brew install rtk   # homebrew-core; not 'cargo install rtk' (name clash)" ;;
     cmux)  echo "download the cmux desktop app (not in a package manager)" ;;
     wt)    echo "brew install worktrunk   # provides the wt shell function" ;;
@@ -93,11 +99,11 @@ for t in $PREREQS; do
       printf '  ✓ node %s (supported runtime)\n' "$node_version"
     fi
   elif [ "$t" = codex ]; then
-    if [ -z "$PERL_RUNTIME" ] || ! "$PERL_RUNTIME" -e 'alarm shift; exec @ARGV' 10 codex --version >/dev/null 2>&1; then
-      printf '  ✗ codex  (CLI runtime probe failed)\n'
+    if [ -z "$PERL_RUNTIME" ] || ! codex_preflight all; then
+      printf '  ✗ codex  (selected CLI is missing, below the stable floor, or lacks a required exec capability) — update the one active CLI using: %s\n' "$(prereq_hint codex)"
       missing="$missing codex-runtime"
     else
-      printf '  ✓ codex (CLI runtime probe passed)\n'
+      printf '  ✓ codex %s (%s; all required exec capabilities present)\n' "$CODEX_VERSION" "$CODEX_BIN"
     fi
   else
     printf '  ✓ %s\n' "$t"

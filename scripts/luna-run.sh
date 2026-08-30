@@ -21,6 +21,18 @@ fi
 PROMPT_FILE=$1
 WORKING_DIRECTORY=$2
 
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)" || {
+  echo "luna-run: wrapper directory could not be resolved" >&2
+  exit "$MISSING_RUNTIME"
+}
+# Keep CLI discovery, version validation, and capability checks identical to
+# the installer and the read-only review wrapper. The helper resolves one
+# realpath and exports it for the exact exec below.
+source "$SCRIPT_DIR/codex-preflight.sh" || {
+  echo "luna-run: shared Codex preflight is unavailable" >&2
+  exit "$MISSING_RUNTIME"
+}
+
 if [ ! -f "$PROMPT_FILE" ] || [ ! -r "$PROMPT_FILE" ]; then
   echo "luna-run: prompt file is missing or unreadable" >&2
   exit "$USAGE"
@@ -41,30 +53,11 @@ if [ ! -d "$WORKING_DIRECTORY" ] || [ ! -r "$WORKING_DIRECTORY" ] || [ ! -x "$WO
   exit "$USAGE"
 fi
 
-CODEX_BIN=$(command -v codex 2>/dev/null || true)
-if [ -z "$CODEX_BIN" ] || [ ! -x "$CODEX_BIN" ]; then
-  echo "luna-run: approved Codex CLI is unavailable" >&2
+if ! codex_preflight writer; then
+  echo "luna-run: Codex CLI failed its local preflight" >&2
   exit "$MISSING_RUNTIME"
 fi
-# Resolve the approved command once. Tests inject a fake approved command by
-# placing it first in PATH; callers cannot replace the runtime with an env var.
-CODEX_BIN=$(realpath "$CODEX_BIN" 2>/dev/null) || {
-  echo "luna-run: approved Codex CLI path could not be resolved" >&2
-  exit "$MISSING_RUNTIME"
-}
-[ -x "$CODEX_BIN" ] || {
-  echo "luna-run: resolved Codex CLI is not executable" >&2
-  exit "$MISSING_RUNTIME"
-}
-
-PERL_BIN=/usr/bin/perl
-if [ ! -x "$PERL_BIN" ]; then
-  PERL_BIN=$(command -v perl 2>/dev/null || true)
-fi
-if [ ! -x "$PERL_BIN" ]; then
-  echo "luna-run: required runtime is unavailable" >&2
-  exit "$MISSING_RUNTIME"
-fi
+PERL_BIN="$CODEX_PREFLIGHT_PERL"
 
 TIMEOUT_SECONDS=${LUNA_RUN_TIMEOUT_SECONDS:-900}
 STALL_SECONDS=${LUNA_RUN_STALL_SECONDS:-0}
@@ -94,13 +87,6 @@ fi
 if ! WORKING_DIRECTORY=$(cd "$WORKING_DIRECTORY" 2>/dev/null && pwd -P); then
   echo "luna-run: cannot resolve working directory" >&2
   exit "$USAGE"
-fi
-
-# A version probe is local and confirms that the selected binary can start.
-# It does not select a model, read a prompt, or contact a provider.
-if ! "$PERL_BIN" -e 'alarm shift; exec @ARGV' 10 "$CODEX_BIN" --version >/dev/null 2>&1; then
-  echo "luna-run: Codex CLI failed its local preflight" >&2
-  exit "$MISSING_RUNTIME"
 fi
 
 process_group() {

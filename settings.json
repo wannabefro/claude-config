@@ -151,7 +151,6 @@
       "Bash(rtk grep *)",
       "Bash(unset NODE_OPTIONS)",
       "Bash(unset NODE_OPTIONS *)",
-      "Bash(codex exec --sandbox read-only *)",
       "Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)",
       "Bash(bash __CLAUDE_HOME__/scripts/codex-run.sh *)",
       "Bash(pbcopy)",
@@ -437,7 +436,7 @@
   },
   "enabledPlugins": {
     "chrome-devtools-mcp@claude-plugins-official": true,
-    "codex@openai-codex": true,
+    "codex@openai-codex": false,
     "compound-engineering@compound-engineering-plugin": true,
     "context-mode@context-mode": true,
     "context7@claude-plugins-official": true,
@@ -478,12 +477,6 @@
       "source": {
         "source": "git",
         "url": "https://github.com/DrCatHicks/learning-opportunities.git"
-      }
-    },
-    "openai-codex": {
-      "source": {
-        "source": "github",
-        "repo": "openai/codex-plugin-cc"
       }
     },
     "thedotmack": {

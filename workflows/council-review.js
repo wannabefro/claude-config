@@ -259,13 +259,12 @@ and relay what IT found. You must not review the code yourself.
 
 ${scope}
 
-STEP 0 — PREFLIGHT, and treat it as a hard gate. Run exactly:
-
-  /usr/bin/perl -e 'alarm shift; exec @ARGV' 10 codex --version; echo "EXIT:$?"
-
-\`--version\` needs no network, no auth and no model, so it is the cheapest possible
-proof the binary starts at all. If it prints EXIT:124, prints nothing, or errors,
-the CLI is wedged — **return \`{"findings": [], "runner_exit_code": 3, "tool_unavailable": true}\` immediately**.
+STEP 0 — PREFLIGHT, and treat it as a hard gate. The required
+\`~/.claude/scripts/codex-run.sh\` wrapper owns the bounded version probe,
+stable-version floor, realpath selection, and exec capability checks. Do not
+invoke \`codex --version\` or \`codex exec\` directly. If the wrapper returns
+exit 3, the selected CLI is missing, incompatible, or wedged — **return
+\`{"findings": [], "runner_exit_code": 3, "tool_unavailable": true}\` immediately**.
 Set \`tool_unavailable\` on ANY path where Codex never produced a review: failed preflight,
 both attempts hung, or empty output every time. Leave it false ONLY when Codex actually ran
 and had nothing to report — the council reports those two outcomes differently, and marking a

@@ -84,25 +84,22 @@ else
   PROMPT="$1"
 fi
 
-CODEX_BIN=$(command -v codex 2>/dev/null || true)
-if [ -z "$CODEX_BIN" ] || [ ! -x "$CODEX_BIN" ]; then
-  echo "codex-run: CLI unavailable (approved Codex command was not found)." >&2
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)" || {
+  echo "codex-run: wrapper directory could not be resolved." >&2
+  exit 3
+}
+source "$SCRIPT_DIR/codex-preflight.sh" || {
+  echo "codex-run: shared Codex preflight is unavailable." >&2
+  exit 3
+}
+if ! codex_preflight review; then
+  echo "codex-run: CLI unavailable (approved Codex command failed preflight)." >&2
   echo "codex-run: do not retry or hunt processes — report it unavailable." >&2
   exit 3
 fi
-# Resolve the approved command once. This prevents a PATH change during the
-# bounded run from swapping the runtime after preflight. Tests inject a fake
-# approved command by placing it first in PATH, not by overriding an env var.
-CODEX_BIN=$(realpath "$CODEX_BIN" 2>/dev/null) || {
-  echo "codex-run: approved Codex CLI path could not be resolved." >&2
-  exit 3
-}
-[ -x "$CODEX_BIN" ] || {
-  echo "codex-run: resolved Codex CLI is not executable." >&2
-  exit 3
-}
+PERL_BIN="$CODEX_PREFLIGHT_PERL"
 
-SECRET_SCANNER="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/review-secret-scan.sh"
+SECRET_SCANNER="$SCRIPT_DIR/review-secret-scan.sh"
 [ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
 if [ -n "$BUNDLE" ]; then
   "$SECRET_SCANNER" "$BUNDLE" >/dev/null || {
@@ -115,23 +112,6 @@ if [ -n "$SECRET_FILE" ]; then
     echo 'codex-run: planning brief failed the secret scan; refusing cross-provider transfer.' >&2
     exit 8
   }
-fi
-
-PERL_BIN=/usr/bin/perl
-if [ ! -x "$PERL_BIN" ]; then
-  PERL_BIN=$(command -v perl 2>/dev/null || true)
-fi
-if [ -z "$PERL_BIN" ] || [ ! -x "$PERL_BIN" ]; then
-  echo "codex-run: portable timeout runtime (perl) unavailable." >&2
-  exit 3
-fi
-
-if ! "$PERL_BIN" -e 'alarm shift; exec @ARGV' 10 "$CODEX_BIN" --version >/dev/null 2>&1; then
-  echo "codex-run: CLI unavailable (preflight timed out or failed)." >&2
-  echo "codex-run: do not retry or hunt processes — report it unavailable." >&2
-  echo "codex-run: if this persists, a wedged syspolicyd has caused it before:" >&2
-  echo "codex-run:   ps -o etime= -p \$(pgrep -x syspolicyd)   # days of uptime is the tell" >&2
-  exit 3
 fi
 
 run_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-codex-run.XXXXXXXX") || {

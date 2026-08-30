@@ -20,7 +20,16 @@ const work = join(root, 'work')
 const prompt = join(root, 'brief')
 mkdirSync(work)
 writeFileSync(fake, `#!/bin/sh
-if [ "$1" = "--version" ]; then exit 0; fi
+if [ "$1" = "--version" ]; then printf '%s\\n' 'codex-cli 0.149.1'; exit 0; fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+  printf '%s\\n' 'Usage: codex exec [OPTIONS] [PROMPT]'
+  printf '%s\\n' '  -c, --config <key=value>'
+  printf '%s\\n' '  -m, --model <MODEL>'
+  printf '%s\\n' '  -s, --sandbox <SANDBOX_MODE>'
+  printf '%s\\n' '  [possible values: read-only, workspace-write, danger-full-access]'
+  printf '%s\\n' '  --skip-git-repo-check  --output-last-message <FILE>'
+  exit 0
+fi
 : > "$FAKE_ARGS"
 last_message=''
 for arg in "$@"; do printf '%s\\n' "$arg" >> "$FAKE_ARGS"; done

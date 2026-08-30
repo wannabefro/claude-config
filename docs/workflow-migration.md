@@ -34,3 +34,14 @@ matters. There is no Open Design plugin for Claude.
 
 Fable is a manual long-horizon escalation after host access is verified. It is
 never an automatic route or a silent fallback.
+
+## Codex CLI compatibility
+
+Claude intentionally supports one active Codex installation per host. Each
+wrapper and `install.sh` selects the first `codex` on `PATH`, resolves that
+binary once, requires stable `0.149.1` or newer, and checks the real `exec`
+surface before running. There is no maximum version pin: a future stable
+release is accepted when it retains every required writer/review flag and
+sandbox value. Missing, malformed, prerelease, or incompatible output fails
+closed with the selected path and a safe update hint; no alternate binary or
+automatic install is attempted.

@@ -35,6 +35,14 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 Never route implementation to the main thread. Never add a permanent designer
 agent. UI reviewers read the frozen design contract and handoff.
 
+The Codex route is one active CLI, selected as the first `codex` on `PATH` and
+resolved once to an absolute realpath. `scripts/luna-run.sh` and
+`scripts/codex-run.sh` share a fail-closed preflight: stable `0.149.1+`, a
+bounded version probe, and the exact `codex exec` flags and sandbox values used
+by the writer or review lane. A future high version that lacks a required flag
+still blocks. Never use `CODEX_BIN`, scan alternate installations, invoke
+`codex exec` directly, or let the installer install/update the CLI.
+
 Fable is a manual long-horizon option only. Verify host access before use.
 Sonnet and `gpt-5.6-terra` are manual fast lanes only. Haiku is limited to
 deterministic plumbing that cannot affect design, implementation, review, or

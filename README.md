@@ -27,6 +27,15 @@ design, diagnosis, review, integration, and final verification. Codex
 after host access is verified. Haiku is limited to deterministic plumbing.
 Unavailable models never trigger a silent fallback.
 
+Claude uses exactly one Codex CLI: the first `codex` found on `PATH`, resolved
+to one absolute realpath for the run. The installer and both wrappers fail
+closed unless that same CLI reports stable version `0.149.1` or newer and
+advertises every `codex exec` flag they use. A higher version with a missing
+capability is incompatible. This setup never scans for another Codex copy,
+honors `CODEX_BIN`, or installs Codex; update the one active CLI through the
+installation channel that owns the selected path shown by `install.sh` when
+the check fails.
+
 `/implement` handles one coherent, clearly scoped unit through exactly one
 Luna implementer. `/build` is for structured work: it chooses `serial` or
 `parallel`, freezes the split, ownership, contracts, exact working directory,
@@ -52,7 +61,7 @@ installs them.
 |---|---|
 | `git`, `gh` | repository and GitHub operations |
 | Node 20–24 LTS, Perl, `rg`, `jq` | hooks and local checks |
-| `codex` | Luna implementation and cross-family review |
+| `codex` | One active CLI for Luna implementation and cross-family review (stable >= 0.149.1) |
 | `rtk`, `cmux`, `wt` | local workflow support |
 | `bd` | optional dependency-aware backlog |
 
