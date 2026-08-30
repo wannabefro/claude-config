@@ -23,6 +23,14 @@ while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temp
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-luna-run-safe-'))
 const fake = join(fixtureRoot, 'codex')
+const hostileRoot = mkdtempSync(join(tmpdir(), 'claude-luna-run-hostile-'))
+const hostileMarker = join(hostileRoot, 'invoked')
+const hostileUtilities = ['mktemp', 'stat', 'id', 'rm', 'cat', 'ps', 'tr', 'wc', 'awk', 'grep', 'pgrep', 'find', 'sleep', 'shasum', 'realpath', 'perl']
+for (const utility of hostileUtilities) {
+  const shim = join(hostileRoot, utility)
+  writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' '${utility}' >> \"$HOSTILE_MARKER\"\nexit 99\n`)
+  chmodSync(shim, 0o755)
+}
 const argsFile = join(root, 'args')
 const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
@@ -42,11 +50,11 @@ fi
 for arg in "$@"; do printf '%s\\n' "$arg" >> "$FAKE_ARGS"; done
 if [ -n "\${GROUP_FILE:-}" ]; then /usr/bin/perl -e 'print "$$ ", getpgrp(), "\\n"' > "$GROUP_FILE"; fi
 if [ -n "\${CHILD_PID_FILE:-}" ]; then
-  (sleep "\${CHILD_DELAY:-3}"; printf '%s\\n' descendant-survived > "$CHILD_MARK") &
+  (/bin/sleep "\${CHILD_DELAY:-3}"; printf '%s\\n' descendant-survived > "$CHILD_MARK") &
   printf '%s\\n' "$!" > "$CHILD_PID_FILE"
 fi
-cat > "$FAKE_STDIN"
-if [ "\${FAKE_SLEEP:-0}" -gt 0 ]; then sleep "$FAKE_SLEEP"; fi
+/bin/cat > "$FAKE_STDIN"
+if [ "\${FAKE_SLEEP:-0}" -gt 0 ]; then /bin/sleep "$FAKE_SLEEP"; fi
 exit "\${FAKE_EXIT:-0}"
 `)
 chmodSync(fake, 0o755)
@@ -97,6 +105,15 @@ check('wrapper ignores arbitrary binary overrides', !args.includes(join(root, 'm
   args.join(' | '))
 check('wrapper cleans its owner-private runtime directory', readdirSync(root).every((name) => !name.startsWith('claude-luna-run.')), readdirSync(root).join(' | '))
 
+const hostileEnv = {
+  PATH: `${hostileRoot}:${fixtureRoot}:${process.env.PATH || ''}`,
+  HOSTILE_MARKER: hostileMarker,
+}
+let hostileCode = 0
+try { run({ ...hostileEnv }) } catch (error) { hostileCode = error.status }
+const hostileInvocations = existsSync(hostileMarker) ? readFileSync(hostileMarker, 'utf8') : ''
+check('wrapper ignores PATH shims for control utilities while using the intended Codex', hostileCode === 0 && hostileInvocations === '', `code=${hostileCode} marker=${JSON.stringify(hostileInvocations)}`)
+
 let runtimeCode = 0
 try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status }
 check('runtime failure has a distinct exit code', runtimeCode === 70, `got ${runtimeCode}`)
@@ -126,5 +143,6 @@ check('invalid prompt input has a distinct exit code', inputCode === 64, `got ${
 
 rmSync(root, { recursive: true, force: true })
 rmSync(fixtureRoot, { recursive: true, force: true })
+rmSync(hostileRoot, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

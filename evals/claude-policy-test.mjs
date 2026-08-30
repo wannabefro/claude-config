@@ -17,6 +17,7 @@ const reviewWorkflow = read('workflows/review.js')
 const wrapper = read('scripts/luna-run.sh')
 const codexRun = read('scripts/codex-run.sh')
 const preflight = read('scripts/codex-preflight.sh')
+const secretScanner = read('scripts/review-secret-scan.sh')
 const worktree = read('scripts/build-worktree.sh')
 const pathFilter = read('scripts/path-clean.py')
 const claude = read('CLAUDE.md')
@@ -28,6 +29,7 @@ const orchestration = read('rules/orchestration.md')
 const guardrailHook = read('hooks/pr-guardrail-review.sh')
 const attributes = read('.gitattributes')
 const installer = read('install.sh')
+const readme = read('README.md')
 const principles = read('rules/principles.md')
 
 let pass = 0
@@ -120,12 +122,28 @@ check('Luna wrapper disables MCP', wrapper.includes("mcp_servers={}"))
 check('Luna wrapper rejects dangerous bypass flags', !wrapper.includes('dangerously-bypass'))
 check('Luna wrapper rejects arbitrary binary overrides', !wrapper.includes('CODEX_BIN=${') && !wrapper.includes('PERL_BIN=${'))
 check('all Codex routes share the one fail-closed preflight', existsSync(new URL('../scripts/codex-preflight.sh', import.meta.url)) && installer.includes('codex_preflight all') && wrapper.includes('codex_preflight writer') && codexRun.includes('codex_preflight review') && preflight.includes('codex-cli') && preflight.includes('exec --help'))
+check('Codex wrappers use fixed absolute control utilities', [
+  'CODEX_PREFLIGHT_MKTEMP=/usr/bin/mktemp',
+  'CODEX_PREFLIGHT_STAT=/usr/bin/stat',
+  'CODEX_PREFLIGHT_ID=/usr/bin/id',
+  'CODEX_PREFLIGHT_RM=/bin/rm',
+  'CODEX_PREFLIGHT_CAT=/bin/cat',
+  'CODEX_PREFLIGHT_PS=/bin/ps',
+  'CODEX_PREFLIGHT_TR=/usr/bin/tr',
+  'CODEX_PREFLIGHT_WC=/usr/bin/wc',
+  'CODEX_PREFLIGHT_AWK=/usr/bin/awk',
+  'CODEX_PREFLIGHT_PGREP=/usr/bin/pgrep',
+  'CODEX_PREFLIGHT_FIND=/usr/bin/find',
+  'CODEX_PREFLIGHT_SLEEP=/bin/sleep',
+].every((path) => preflight.includes(path)) && wrapper.includes('CODEX_PREFLIGHT_MKTEMP') && codexRun.includes('CODEX_PREFLIGHT_PS'))
+check('secret scanner uses fixed Homebrew ripgrep and find', secretScanner.includes('for candidate in /opt/homebrew/bin/rg /usr/local/bin/rg') && secretScanner.includes('FIND_BIN=/usr/bin/find') && secretScanner.includes('case "$rg_status"'))
+check('installer separates required, recommended, and optional prerequisites', installer.includes('REQUIRED_PREREQS="git gh node perl rg jq codex"') && installer.includes('RECOMMENDED_PREREQS="rtk cmux wt"') && installer.includes('OPTIONAL_PREREQS="bd"') && readme.includes('| `rtk`, `cmux`, `wt` | Recommended |') && readme.includes('| `bd` | Optional |'))
 
 check('Codex review wrapper pins Sol xhigh and read-only sandbox', codexRun.includes('--model gpt-5.6-sol') && codexRun.includes("model_reasoning_effort=xhigh") && codexRun.includes('--sandbox read-only') && codexRun.includes('\n      -'))
 check('Codex review wrapper disables MCP by default', codexRun.includes("MCP_ARGS=(-c 'mcp_servers={}')") && codexRun.includes('MCP=0'))
 check('Codex review wrapper has no dangerous bypass flags', !codexRun.includes('dangerously-bypass'))
 check('Codex review wrapper rejects unexpected CLI failures before answer detection', codexRun.includes('RUNTIME FAILURE') && codexRun.indexOf('RUNTIME FAILURE') < codexRun.indexOf('if ! answered'))
-check('install probes supported runtimes and requires the public settings clean filter', installer.includes('Node 20–24 LTS') && installer.includes('node -e') && installer.includes('codex --version') && installer.includes('PYTHON3_RUNTIME') && installer.includes('filter.claudehome.required true') && installer.includes('hash-object --path=settings.json') && installer.includes('hash-object --no-filters') && !installer.includes('timeout 10'))
+check('install probes supported runtimes and requires the public settings clean filter', installer.includes('Node 20–24 LTS') && installer.includes("process.exit(0)") && installer.includes('codex --version') && installer.includes('PYTHON3_RUNTIME') && installer.includes('filter.claudehome.required true') && installer.includes('hash-object --path=settings.json') && installer.includes('hash-object --no-filters') && !installer.includes('timeout 10'))
 check('installer quotes Git filters and protects routing materialization transactionally', installer.includes("printf '%q'") && installer.indexOf('hash-object --path=settings.json') < installer.indexOf('rm -f "$TARGET/settings.json"') && installer.includes('materialization_restore') && installer.includes('status --porcelain -- settings.json agents/implementer.md'))
 check('review bundle utility is present and private', existsSync(new URL('../scripts/review-bundle.sh', import.meta.url)) && read('scripts/review-bundle.sh').includes('umask 077') && read('scripts/review-bundle.sh').includes('mktemp -d'))
 check('private build worktree utility is present', existsSync(new URL('../scripts/build-worktree.sh', import.meta.url)) && read('scripts/build-worktree.sh').includes('unit patch escapes owned canonical paths') && read('scripts/build-worktree.sh').includes('worktree add'))
@@ -139,7 +157,6 @@ check('Open Design manifest pins both Mac architectures', design.releases.arm64.
 check('Open Design manifest pins signing identity', design.bundle_id === 'io.open-design.desktop' && design.signing_identity === 'Developer ID Application: Wei Huang (236R69AWW2)' && design.team_id === '236R69AWW2')
 const designWorkflow = read('docs/design-workflow.md')
 const migration = read('docs/workflow-migration.md')
-const readme = read('README.md')
 const designDocs = `${designWorkflow}\n${migration}\n${readme}`
 check('Open Design manifest pins the official distribution', design.distribution.source === 'https://github.com/nexu-io/open-design-agent-plugins.git' && design.distribution.source_commit === 'c0710761302c69bded82e205362effcce6fde49e' && design.distribution.marketplace === 'open-design' && design.distribution.plugin === 'open-design@open-design' && design.distribution.plugin_version === '0.5.3' && design.distribution.minimum_codex_version === '0.144.6' && design.distribution.minimum_open_design_version === '0.17.0')
 check('Claude uses official host-local MCP setup without a Claude plugin', design.distribution.plugin_hosts.length === 1 && design.distribution.plugin_hosts[0] === 'codex' && design.distribution.mcp_install_targets.includes('claude') && design.mcp.install_commands.claude === 'od mcp install claude' && design.mcp.install_commands.codex === 'od mcp install codex' && designWorkflow.includes('od mcp install claude') && designWorkflow.includes('Claude uses this official MCP integration') && designWorkflow.includes('Claude has no Open Design plugin'))

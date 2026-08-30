@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Bounded Codex planning/review pass with one fixed model and effort.
 #
 #   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-N] "<prompt>"
@@ -115,14 +115,14 @@ if [ -n "$SECRET_FILE" ]; then
   }
 fi
 
-run_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-codex-run.XXXXXXXX") || {
+run_dir=$("$CODEX_PREFLIGHT_MKTEMP" -d "${TMPDIR:-/tmp}/claude-codex-run.XXXXXXXX") || {
   echo "codex-run: private runtime directory could not be created." >&2
   exit 3
 }
-run_owner=$(stat -f '%u' "$run_dir" 2>/dev/null || stat -c '%u' "$run_dir" 2>/dev/null || true)
-run_mode=$(stat -f '%Lp' "$run_dir" 2>/dev/null || stat -c '%a' "$run_dir" 2>/dev/null || true)
-if [ "$run_owner" != "$(id -u)" ] || [ "$run_mode" != '700' ]; then
-  rm -rf -- "$run_dir"
+run_owner=$("$CODEX_PREFLIGHT_STAT" -f '%u' "$run_dir" 2>/dev/null || "$CODEX_PREFLIGHT_STAT" -c '%u' "$run_dir" 2>/dev/null || true)
+run_mode=$("$CODEX_PREFLIGHT_STAT" -f '%Lp' "$run_dir" 2>/dev/null || "$CODEX_PREFLIGHT_STAT" -c '%a' "$run_dir" 2>/dev/null || true)
+if [ "$run_owner" != "$("$CODEX_PREFLIGHT_ID" -u)" ] || [ "$run_mode" != '700' ]; then
+  "$CODEX_PREFLIGHT_RM" -rf -- "$run_dir"
   echo "codex-run: private runtime directory is not owner-private." >&2
   exit 3
 fi
@@ -132,12 +132,12 @@ prompt_input="$run_dir/input"
 preflight_failure="$run_dir/preflight-failure"
 cleanup_run_dir() {
   if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
-    rm -rf -- "$run_dir"
+    "$CODEX_PREFLIGHT_RM" -rf -- "$run_dir"
   fi
 }
 trap cleanup_run_dir EXIT HUP INT TERM
 if [ -n "$FROM_FILE" ]; then
-  if [ "$FROM_FILE" = "-" ]; then cat > "$prompt_input"; else cat "$FROM_FILE" > "$prompt_input"; fi
+  if [ "$FROM_FILE" = "-" ]; then "$CODEX_PREFLIGHT_CAT" > "$prompt_input"; else "$CODEX_PREFLIGHT_CAT" "$FROM_FILE" > "$prompt_input"; fi
 else
   printf '%s' "$PROMPT" > "$prompt_input"
 fi
@@ -152,7 +152,7 @@ MCP_ARGS=()
 run_once() {
   : > "$out"
   : > "$last_message"
-  rm -f "$preflight_failure"
+  "$CODEX_PREFLIGHT_RM" -f "$preflight_failure"
   # Scan the exact bytes that will be sent on stdin, immediately before every
   # Codex exec. Bundle and brief scans above are useful preflight checks, but
   # neither is a substitute for this final payload check.
@@ -175,11 +175,11 @@ run_once() {
   local pid=$! last=0 quiet=0 elapsed=0
   local group_pid self_group
   group_pid=''
-  self_group=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)
+  self_group=$("$CODEX_PREFLIGHT_PS" -o pgid= -p $$ 2>/dev/null | "$CODEX_PREFLIGHT_TR" -d ' ' || true)
   for _ in 1 2 3 4 5; do
-    group_pid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+    group_pid=$("$CODEX_PREFLIGHT_PS" -o pgid= -p "$pid" 2>/dev/null | "$CODEX_PREFLIGHT_TR" -d ' ' || true)
     [ -n "$group_pid" ] && [ "$group_pid" != "$self_group" ] && break
-    sleep 0.05
+    "$CODEX_PREFLIGHT_SLEEP" 0.05
   done
   kill_group() {
     if [[ "$group_pid" =~ ^[0-9]+$ ]] && [ "$group_pid" != '0' ] && [ "$group_pid" != "$self_group" ]; then
@@ -189,9 +189,9 @@ run_once() {
     fi
   }
   while kill -0 "$pid" 2>/dev/null; do
-    sleep 5
+    "$CODEX_PREFLIGHT_SLEEP" 5
     elapsed=$((elapsed+5))
-    local now; now=$(wc -c < "$out" | tr -d ' ')
+    local now; now=$("$CODEX_PREFLIGHT_WC" -c < "$out" | "$CODEX_PREFLIGHT_TR" -d ' ')
     if [ "$now" -gt "$last" ]; then last="$now"; quiet=0; else quiet=$((quiet+5)); fi
     # Output is buffered, so without this the caller cannot tell a working run
     # from a hung one and kills a healthy pass. Measured: that happened twice.
@@ -218,12 +218,12 @@ run_once() {
 answered() {
   # --output-last-message is the authoritative assistant-result channel. A
   # header, echoed prompt, or telemetry line can never satisfy this check.
-  [ -s "$last_message" ] && awk 'NF { found=1; exit } END { exit(found ? 0 : 1) }' "$last_message"
+  [ -s "$last_message" ] && "$CODEX_PREFLIGHT_AWK" 'NF { found=1; exit } END { exit(found ? 0 : 1) }' "$last_message"
 }
 
 # Codex exits 0 on a refusal. Match the exact phrase, or a rate-limit review fails.
 refused() {
-  grep -qiF 'workspace is out of credits' "$out"
+  "$CODEX_PREFLIGHT_GREP" -qiF 'workspace is out of credits' "$out"
 }
 
 run_once; rc=$?
@@ -241,32 +241,32 @@ if [ "$rc" -eq 99 ]; then
   echo "codex-run: MCP is already off unless you passed -M; if you did, drop it." >&2
   echo "codex-run: otherwise re-run with the code/context INLINE so the run needs" >&2
   echo "codex-run: no file reads. Waiting longer does not help." >&2
-  cat "$out" >&2
+  "$CODEX_PREFLIGHT_CAT" "$out" >&2
   exit 4
 fi
 
 if [ "$rc" -ne 0 ]; then
   echo "codex-run: RUNTIME FAILURE — Codex exited with status $rc before returning a review." >&2
-  cat "$out" >&2
+  "$CODEX_PREFLIGHT_CAT" "$out" >&2
   exit 7
 fi
 
 if refused; then
   echo "codex-run: REFUSED — the provider returned no capacity, not a review." >&2
   echo "codex-run: this does NOT satisfy a cross-model pass. Report the gap." >&2
-  cat "$out" >&2
+  "$CODEX_PREFLIGHT_CAT" "$out" >&2
   exit 6
 fi
 
 if ! answered; then
   echo "codex-run: EMPTY — one fixed gpt-5.6-sol xhigh pass produced no assistant result (exit $rc)." >&2
   echo "codex-run: report this as an empty pass. No model or effort fallback was attempted." >&2
-  cat "$out" >&2
+  "$CODEX_PREFLIGHT_CAT" "$out" >&2
   exit 5
 fi
 
 # The provider's transport stream contains headers, telemetry, and sometimes
 # echoed input. Only the explicit assistant-result file is authoritative and
 # may be returned on stdout to the caller.
-cat "$last_message"
+"$CODEX_PREFLIGHT_CAT" "$last_message"
 exit 0

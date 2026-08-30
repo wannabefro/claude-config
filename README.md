@@ -18,7 +18,9 @@ The installer is backup-first and idempotent. It preserves the clean/smudge
 `settings.json` and the implementer instructions. It never installs tools and
 it never syncs credentials. Runtime probes require Node 20–24 LTS (Node 24 is
 recommended), a working Codex CLI, and Perl. The wrappers use Perl's portable
-alarm timeout, so GNU `timeout` is not required.
+alarm timeout, so GNU `timeout` is not required. Missing or incompatible
+required prerequisites make both normal install and `--check` fail before the
+target is backed up or changed.
 
 The policy is fixed: Claude Opus xhigh performs planning, architecture,
 design, diagnosis, review, integration, and final verification. Codex
@@ -60,13 +62,14 @@ It is not the scheduler.
 Install these tools separately. `install.sh` reports missing tools and never
 installs them.
 
-| Tool | Purpose |
-|---|---|
-| `git`, `gh` | repository and GitHub operations |
-| Node 20–24 LTS, Perl, `rg`, `jq` | hooks and local checks |
-| `codex` | One active CLI for Luna implementation and cross-family review (stable >= 0.149.1) |
-| `rtk`, `cmux`, `wt` | local workflow support |
-| `bd` | optional dependency-aware backlog |
+| Tool | Status | Purpose |
+|---|---|---|
+| `git`, `gh` | Required | repository and GitHub operations |
+| Node 20–24 LTS, Perl, trusted Homebrew `rg`, `jq`, Python 3 | Required | hooks, filters, and local checks |
+| `codex` | Required | One active CLI for Luna implementation and cross-family review (stable >= 0.149.1) |
+| Fixed absolute wrapper controls (`mktemp`, `stat`, `id`, `rm`, `cat`, `ps`, `tr`, `wc`, `awk`, `pgrep`, `find`, `sleep`, `realpath`, `shasum`, and `grep`) | Required | bounded, fail-closed process and transfer controls |
+| `rtk`, `cmux`, `wt` | Recommended | local workflow support |
+| `bd` | Optional | dependency-aware backlog |
 
 ## Host-local services
 

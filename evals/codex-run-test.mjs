@@ -23,6 +23,14 @@ while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temp
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-codex-run-safe-'))
 const fake = join(fixtureRoot, 'codex')
+const hostileRoot = mkdtempSync(join(tmpdir(), 'claude-codex-run-hostile-'))
+const hostileMarker = join(hostileRoot, 'invoked')
+const hostileUtilities = ['mktemp', 'stat', 'id', 'rm', 'cat', 'ps', 'tr', 'wc', 'awk', 'grep', 'pgrep', 'find', 'sleep', 'shasum', 'realpath', 'perl']
+for (const utility of hostileUtilities) {
+  const shim = join(hostileRoot, utility)
+  writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' '${utility}' >> \"$HOSTILE_MARKER\"\nexit 99\n`)
+  chmodSync(shim, 0o755)
+}
 const argsFile = join(root, 'args')
 const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
@@ -50,16 +58,16 @@ for i in "$@"; do
   fi
   shift
 done
-cat > "$FAKE_STDIN"
+/bin/cat > "$FAKE_STDIN"
 if [ "\${FAKE_HEADER:-0}" = 1 ]; then
   printf '%s\\n' 'codex exec header only'
   exit 0
 fi
 if [ -n "\${CHILD_PID_FILE:-}" ]; then
-  (sleep 30) &
+  (/bin/sleep 30) &
   printf '%s\\n' "$!" > "$CHILD_PID_FILE"
 fi
-if [ "\${FAKE_SLEEP:-0}" -gt 0 ]; then sleep "$FAKE_SLEEP"; fi
+if [ "\${FAKE_SLEEP:-0}" -gt 0 ]; then /bin/sleep "$FAKE_SLEEP"; fi
 if [ "\${FAKE_REFUSED:-0}" = 1 ]; then
   printf '%s\\n' 'workspace is out of credits'
 else
@@ -106,6 +114,15 @@ check('wrapper sends the prompt through stdin instead of argv', args.includes('-
 check('wrapper pins a read-only sandbox', args.includes('--sandbox') && args.includes('read-only'), args.join(' | '))
 check('wrapper uses no dangerous bypass flags', !args.some((arg) => arg.startsWith('--dangerously-')), args.join(' | '))
 check('wrapper cleans its owner-private runtime directory', readdirSync(root).every((name) => !name.startsWith('claude-codex-run.')), readdirSync(root).join(' | '))
+
+const hostileEnv = {
+  PATH: `${hostileRoot}:${fixtureRoot}:${process.env.PATH || ''}`,
+  HOSTILE_MARKER: hostileMarker,
+}
+let hostileCode = 0
+try { runWithArgs(['-t', '5', '-s', '2', '-f', prompt, '-d', work], hostileEnv) } catch (error) { hostileCode = error.status }
+const hostileInvocations = existsSync(hostileMarker) ? readFileSync(hostileMarker, 'utf8') : ''
+check('wrapper ignores PATH shims for control utilities while using the intended Codex', hostileCode === 0 && hostileInvocations === '', `code=${hostileCode} marker=${JSON.stringify(hostileInvocations)}`)
 
 const exactPrompt = 'byte-preserving brief with a trailing newline\n'
 writeFileSync(prompt, exactPrompt)
@@ -155,5 +172,6 @@ check('unexpected CLI failure is distinct from an empty answer', runtimeCode ===
 
 rmSync(root, { recursive: true, force: true })
 rmSync(fixtureRoot, { recursive: true, force: true })
+rmSync(hostileRoot, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

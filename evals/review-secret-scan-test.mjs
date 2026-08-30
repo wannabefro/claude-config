@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -15,6 +15,13 @@ const script = fileURLToPath(new URL('../scripts/review-secret-scan.sh', import.
 chmodSync(script, 0o755)
 const run = () => execFileSync(script, [bundle], { encoding: 'utf8', stdio: 'pipe' })
 const runFile = () => execFileSync(script, ['--file', join(bundle, 'files', 'after', 'a.txt')], { encoding: 'utf8', stdio: 'pipe' })
+const runCaptured = (program, args, extraEnv = {}) => {
+  try {
+    return { code: 0, output: execFileSync(program, args, { encoding: 'utf8', env: { ...process.env, ...extraEnv }, stdio: 'pipe' }) }
+  } catch (error) {
+    return { code: error.status || 1, output: `${error.stdout || ''}${error.stderr || ''}` }
+  }
+}
 let pass = 0
 let fail = 0
 const check = (name, ok, detail = '') => {
@@ -57,6 +64,36 @@ for (const credential of [
   try { run() } catch (error) { githubCode = error.status || 1 }
   check(`${credential.split('_')[0]} credential shape is blocked`, githubCode === 66, `status=${githubCode}`)
 }
+
+const credentialFixture = join(bundle, 'files', 'after', 'a.txt')
+writeFileSync(credentialFixture, 'token = "credential-shaped-secret-value"\n')
+const hijackBin = join(root, 'hijack-bin')
+const hijackMarker = join(root, 'hijack-marker')
+mkdirSync(hijackBin)
+writeFileSync(join(hijackBin, 'rg'), `#!/bin/sh
+printf called > "$HIJACK_MARKER"
+exit 1
+`)
+chmodSync(join(hijackBin, 'rg'), 0o755)
+const hijacked = runCaptured(script, [bundle], { PATH: `${hijackBin}:${process.env.PATH || ''}`, HIJACK_MARKER: hijackMarker })
+check('PATH ripgrep shims cannot bypass the trusted scanner', hijacked.code === 66 && !existsSync(hijackMarker) && !hijacked.output.includes('credential-shaped-secret-value'), `${hijacked.code}: ${hijacked.output}`)
+
+const missingRg = join(root, 'missing-rg')
+const scannerSource = readFileSync(script, 'utf8')
+const missingScanner = join(root, 'missing-scanner.sh')
+writeFileSync(missingScanner, scannerSource.replaceAll('/opt/homebrew/bin/rg', missingRg).replaceAll('/usr/local/bin/rg', missingRg))
+chmodSync(missingScanner, 0o755)
+const missing = runCaptured(missingScanner, ['--file', credentialFixture])
+check('missing trusted ripgrep fails closed without exposing the credential', missing.code === 67 && !missing.output.includes('credential-shaped-secret-value'), `${missing.code}: ${missing.output}`)
+
+const brokenRg = join(root, 'broken-rg')
+writeFileSync(brokenRg, '#!/bin/sh\nexit 2\n')
+chmodSync(brokenRg, 0o755)
+const brokenScanner = join(root, 'broken-scanner.sh')
+writeFileSync(brokenScanner, scannerSource.replaceAll('/opt/homebrew/bin/rg', brokenRg).replaceAll('/usr/local/bin/rg', brokenRg))
+chmodSync(brokenScanner, 0o755)
+const broken = runCaptured(brokenScanner, ['--file', credentialFixture])
+check('unexpected ripgrep status fails closed without exposing the credential', broken.code === 67 && !broken.output.includes('credential-shaped-secret-value'), `${broken.code}: ${broken.output}`)
 
 rmSync(root, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Shared fail-closed preflight for the one Codex CLI used by this config.
 #
 # Callers source this file and invoke `codex_preflight review|writer|all`.
@@ -11,6 +11,18 @@ CODEX_PREFLIGHT_REALPATH=/bin/realpath
 CODEX_PREFLIGHT_GREP=/usr/bin/grep
 CODEX_PREFLIGHT_STAT=/usr/bin/stat
 CODEX_PREFLIGHT_SHASUM=/usr/bin/shasum
+CODEX_PREFLIGHT_MKTEMP=/usr/bin/mktemp
+CODEX_PREFLIGHT_ID=/usr/bin/id
+CODEX_PREFLIGHT_RM=/bin/rm
+CODEX_PREFLIGHT_CAT=/bin/cat
+CODEX_PREFLIGHT_PS=/bin/ps
+CODEX_PREFLIGHT_TR=/usr/bin/tr
+CODEX_PREFLIGHT_WC=/usr/bin/wc
+CODEX_PREFLIGHT_AWK=/usr/bin/awk
+CODEX_PREFLIGHT_PGREP=/usr/bin/pgrep
+CODEX_PREFLIGHT_FIND=/usr/bin/find
+CODEX_PREFLIGHT_SLEEP=/bin/sleep
+CODEX_PREFLIGHT_RG=''
 CODEX_PREFLIGHT_SCRIPT_ROOT="$(CDPATH= cd -- "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || CODEX_PREFLIGHT_SCRIPT_ROOT=''
 CODEX_PREFLIGHT_CHECKOUT_ROOT=''
 if [ -n "$CODEX_PREFLIGHT_SCRIPT_ROOT" ]; then
@@ -33,15 +45,65 @@ codex_preflight_report() {
   fi
 }
 
+codex_preflight_is_regular_executable() {
+  [ -f "$1" ] && [ -x "$1" ]
+}
+
 codex_preflight_find_perl() {
-  CODEX_PREFLIGHT_PERL=/usr/bin/perl
-  if [ ! -x "$CODEX_PREFLIGHT_PERL" ]; then
-    CODEX_PREFLIGHT_PERL=$(command -v perl 2>/dev/null || true)
-  fi
-  [ -n "$CODEX_PREFLIGHT_PERL" ] && [ -x "$CODEX_PREFLIGHT_PERL" ] || {
-    CODEX_PREFLIGHT_PERL=''
+  local candidate
+  CODEX_PREFLIGHT_PERL=''
+  for candidate in /usr/bin/perl /opt/homebrew/bin/perl /usr/local/bin/perl; do
+    if codex_preflight_is_regular_executable "$candidate"; then
+      CODEX_PREFLIGHT_PERL=$candidate
+      return 0
+    fi
+  done
+  return 1
+}
+
+codex_preflight_find_rg() {
+  local candidate
+  CODEX_PREFLIGHT_RG=''
+  for candidate in /opt/homebrew/bin/rg /usr/local/bin/rg; do
+    if codex_preflight_is_regular_executable "$candidate"; then
+      CODEX_PREFLIGHT_RG=$candidate
+      return 0
+    fi
+  done
+  return 1
+}
+
+codex_preflight_require_control_tools() {
+  local path
+  codex_preflight_find_perl || {
+    codex_preflight_report 'trusted Perl runtime is unavailable'
     return 1
   }
+  codex_preflight_find_rg || {
+    codex_preflight_report 'trusted Homebrew ripgrep is unavailable'
+    return 1
+  }
+  for path in \
+    "$CODEX_PREFLIGHT_REALPATH" \
+    "$CODEX_PREFLIGHT_GREP" \
+    "$CODEX_PREFLIGHT_STAT" \
+    "$CODEX_PREFLIGHT_SHASUM" \
+    "$CODEX_PREFLIGHT_MKTEMP" \
+    "$CODEX_PREFLIGHT_ID" \
+    "$CODEX_PREFLIGHT_RM" \
+    "$CODEX_PREFLIGHT_CAT" \
+    "$CODEX_PREFLIGHT_PS" \
+    "$CODEX_PREFLIGHT_TR" \
+    "$CODEX_PREFLIGHT_WC" \
+    "$CODEX_PREFLIGHT_AWK" \
+    "$CODEX_PREFLIGHT_PGREP" \
+    "$CODEX_PREFLIGHT_FIND" \
+    "$CODEX_PREFLIGHT_SLEEP"; do
+    if ! codex_preflight_is_regular_executable "$path"; then
+      codex_preflight_report "required trusted control utility is unavailable: $path"
+      return 1
+    fi
+  done
   return 0
 }
 
@@ -148,6 +210,9 @@ codex_preflight() {
     codex_preflight_report 'trusted /bin/realpath is unavailable'
     return 1
   }
+  if ! codex_preflight_require_control_tools; then
+    return 1
+  fi
 
   # This is intentionally the sole discovery operation. command -v may
   # return a shell function or alias, so require an absolute executable path
@@ -171,11 +236,6 @@ codex_preflight() {
   fi
   CODEX_FS_ID_INITIAL=$CODEX_FS_ID
   CODEX_DIGEST_INITIAL=$CODEX_DIGEST
-
-  if ! codex_preflight_find_perl; then
-    codex_preflight_report 'bounded preflight runtime (perl) is unavailable'
-    return 1
-  fi
 
   # Keep stdout separate from stderr. Codex may print harmless host warnings
   # on stderr; the version value itself must still be exactly one stable

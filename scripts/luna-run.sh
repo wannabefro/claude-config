@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Run one implementation brief through the fixed Codex Luna writer route.
 #
 # Usage: luna-run.sh PROMPT_FILE WORKING_DIRECTORY
@@ -98,14 +98,14 @@ process_group() {
 # sandbox. `mcp_servers={}` disables MCP for this implementation run.
 # The watcher owns the child process group: a timed-out Codex process cannot
 # leave a descendant alive to keep writing in the private worktree.
-run_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-luna-run.XXXXXXXX") || {
+run_dir=$("$CODEX_PREFLIGHT_MKTEMP" -d "${TMPDIR:-/tmp}/claude-luna-run.XXXXXXXX") || {
   echo "luna-run: private runtime directory could not be created" >&2
   exit "$MISSING_RUNTIME"
 }
-run_owner=$(stat -f '%u' "$run_dir" 2>/dev/null || stat -c '%u' "$run_dir" 2>/dev/null || true)
-run_mode=$(stat -f '%Lp' "$run_dir" 2>/dev/null || stat -c '%a' "$run_dir" 2>/dev/null || true)
-if [ "$run_owner" != "$(id -u)" ] || [ "$run_mode" != '700' ]; then
-  rm -rf -- "$run_dir"
+run_owner=$("$CODEX_PREFLIGHT_STAT" -f '%u' "$run_dir" 2>/dev/null || "$CODEX_PREFLIGHT_STAT" -c '%u' "$run_dir" 2>/dev/null || true)
+run_mode=$("$CODEX_PREFLIGHT_STAT" -f '%Lp' "$run_dir" 2>/dev/null || "$CODEX_PREFLIGHT_STAT" -c '%a' "$run_dir" 2>/dev/null || true)
+if [ "$run_owner" != "$("$CODEX_PREFLIGHT_ID" -u)" ] || [ "$run_mode" != '700' ]; then
+  "$CODEX_PREFLIGHT_RM" -rf -- "$run_dir"
   echo "luna-run: private runtime directory is not owner-private" >&2
   exit "$MISSING_RUNTIME"
 fi
@@ -113,7 +113,7 @@ out="$run_dir/output"
 preflight_failure="$run_dir/preflight-failure"
 cleanup_out() {
   if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
-    rm -rf -- "$run_dir"
+    "$CODEX_PREFLIGHT_RM" -rf -- "$run_dir"
   fi
 }
 trap cleanup_out EXIT HUP INT TERM
@@ -139,7 +139,7 @@ self_group=$(process_group $$)
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   child_group=$(process_group "$child_pid")
   [ -n "$child_group" ] && [ "$child_group" != "$self_group" ] && break
-  sleep 0.05
+  "$CODEX_PREFLIGHT_SLEEP" 0.05
 done
 kill_group() {
   # The background subshell briefly shares the caller's group before Perl's
@@ -152,11 +152,11 @@ kill_group() {
       child_group="$current_group"
       break
     fi
-    sleep 0.05
+    "$CODEX_PREFLIGHT_SLEEP" 0.05
   done
   kill_descendants() {
     local parent=$1 kid
-    for kid in $(pgrep -P "$parent" 2>/dev/null || true); do
+    for kid in $("$CODEX_PREFLIGHT_PGREP" -P "$parent" 2>/dev/null || true); do
       kill_descendants "$kid"
       kill -TERM "$kid" 2>/dev/null || true
       kill -KILL "$kid" 2>/dev/null || true
@@ -168,11 +168,11 @@ kill_group() {
   kill_descendants "$child_pid"
   if [[ "$child_group" =~ ^[0-9]+$ ]] && [ "$child_group" != '0' ] && [ "$child_group" != "$self_group" ]; then
     kill -TERM -- "-$child_group" 2>/dev/null || true
-    sleep 0.1
+    "$CODEX_PREFLIGHT_SLEEP" 0.1
     kill -KILL -- "-$child_group" 2>/dev/null || true
   else
     kill -TERM "$child_pid" 2>/dev/null || true
-    sleep 0.1
+    "$CODEX_PREFLIGHT_SLEEP" 0.1
     kill -KILL "$child_pid" 2>/dev/null || true
   fi
 }
@@ -186,9 +186,9 @@ last_bytes=0
 quiet_seconds=0
 elapsed=0
 while kill -0 "$child_pid" 2>/dev/null; do
-  sleep 1
+  "$CODEX_PREFLIGHT_SLEEP" 1
   elapsed=$((elapsed + 1))
-  now_bytes=$(wc -c < "$out" | tr -d ' ')
+  now_bytes=$("$CODEX_PREFLIGHT_WC" -c < "$out" | "$CODEX_PREFLIGHT_TR" -d ' ')
   if [ "$now_bytes" -gt "$last_bytes" ]; then
     last_bytes=$now_bytes
     quiet_seconds=0
@@ -214,7 +214,7 @@ if [ -e "$preflight_failure" ]; then
   echo "luna-run: Codex CLI changed after preflight; refusing the implementation run" >&2
   exit "$MISSING_RUNTIME"
 fi
-cat "$out"
+"$CODEX_PREFLIGHT_CAT" "$out"
 if [ "$status" -eq 0 ]; then
   exit 0
 fi

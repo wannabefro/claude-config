@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # install.sh — bootstrap this Claude Code config onto a machine.
 #
 # Usage:
@@ -34,17 +34,18 @@ source "$SCRIPT_DIR/scripts/codex-preflight.sh" || {
 # mutation. The clean filter calls this exact path from Git.
 PYTHON3_RUNTIME=""
 for candidate in /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
-  if [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+  if [ -f "$candidate" ] && [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
     PYTHON3_RUNTIME="$candidate"
     break
   fi
 done
-if [ -z "$PYTHON3_RUNTIME" ]; then
-  candidate="$(command -v python3 2>/dev/null || true)"
-  if [ -n "$candidate" ] && [ "${candidate#/}" != "$candidate" ] && [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
-    PYTHON3_RUNTIME="$candidate"
+JQ_RUNTIME=""
+for candidate in /opt/homebrew/bin/jq /usr/local/bin/jq /usr/bin/jq; do
+  if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+    JQ_RUNTIME="$candidate"
+    break
   fi
-fi
+done
 
 # The path filter writes this exact absolute path into the installed agent
 # brief. Resolve relative targets before configuring the filter so the Luna
@@ -57,7 +58,7 @@ TARGET_BASE=$(/usr/bin/basename -- "$TARGET")
 [ -n "$TARGET_BASE" ] || { log 'ERROR: target path is empty.'; exit 1; }
 TARGET="$TARGET_PARENT/$TARGET_BASE"
 
-# --- prereq check (report only) ---------------------------------------------
+# --- prereq check (report only, fail closed) --------------------------------
 log "Checking prerequisites (report only — nothing is installed):"
 # Per-tool install hint (macOS/Homebrew-first), printed only when the tool is
 # missing so the report is directly actionable.
@@ -83,61 +84,121 @@ prereq_hint() {
     *)     echo "see README" ;;
   esac
 }
-PREREQS="git gh node perl rg jq codex rtk cmux wt bd"
-missing=""
-codex_required_failure=0
-PERL_RUNTIME=/usr/bin/perl
-if [ ! -x "$PERL_RUNTIME" ]; then PERL_RUNTIME=$(command -v perl 2>/dev/null || true); fi
-for t in $PREREQS; do
-  if ! command -v "$t" >/dev/null 2>&1; then
-    printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
-    missing="$missing $t"
-    if [ "$t" = codex ]; then codex_required_failure=1; fi
-    continue
-  fi
-  if [ "$t" = node ]; then
-    node_version="$(node --version 2>/dev/null || true)"
-    node_major="${node_version#v}"
-    node_major="${node_major%%.*}"
-    if ! case "$node_major" in ''|*[!0-9]*) false ;; *) [ "$node_major" -ge 20 ] && [ "$node_major" -le 24 ] ;; esac \
-      || ! node -e 'process.exit(0)' >/dev/null 2>&1; then
-      printf '  ✗ node  (unsupported or failed runtime; use Node 20–24 LTS, preferably 24)\n'
-      missing="$missing node-runtime"
-    else
-      printf '  ✓ node %s (supported runtime)\n' "$node_version"
-    fi
-  elif [ "$t" = codex ]; then
-    if ! codex_preflight all; then
-      printf '  ✗ codex  (selected CLI is missing, below the stable floor, or lacks a required exec capability) — update the one active CLI using: %s\n' "$(prereq_hint codex)"
-      missing="$missing codex-runtime"
-      codex_required_failure=1
-    else
-      printf '  ✓ codex %s (%s; all required exec capabilities present)\n' "$CODEX_VERSION" "$CODEX_BIN"
-    fi
-  else
-    printf '  ✓ %s\n' "$t"
-  fi
+REQUIRED_PREREQS="git gh node perl rg jq codex"
+RECOMMENDED_PREREQS="rtk cmux wt"
+OPTIONAL_PREREQS="bd"
+missing_required=""
+missing_recommended=""
+missing_optional=""
+required_failure=0
+control_runtime_ok=1
+if ! codex_preflight_require_control_tools; then
+  printf '  ✗ wrapper control utilities  (one or more trusted absolute tools are unavailable)\n'
+  missing_required="$missing_required wrapper-controls"
+  required_failure=1
+  control_runtime_ok=0
+else
+  printf '  ✓ wrapper control utilities  (trusted absolute paths)\n'
+fi
+for t in $REQUIRED_PREREQS; do
+  case "$t" in
+    perl)
+      if [ -z "${CODEX_PREFLIGHT_PERL:-}" ]; then
+        printf '  ✗ perl  (trusted runtime is missing) — install: %s\n' "$(prereq_hint perl)"
+        missing_required="$missing_required perl"
+        required_failure=1
+      else
+        printf '  ✓ perl (%s)\n' "$CODEX_PREFLIGHT_PERL"
+      fi
+      ;;
+    rg)
+      if [ -z "${CODEX_PREFLIGHT_RG:-}" ]; then
+        printf '  ✗ rg  (trusted Homebrew ripgrep is missing) — install: %s\n' "$(prereq_hint rg)"
+        missing_required="$missing_required rg"
+        required_failure=1
+      else
+        printf '  ✓ rg (%s)\n' "$CODEX_PREFLIGHT_RG"
+      fi
+      ;;
+    jq)
+      if [ -z "$JQ_RUNTIME" ]; then
+        printf '  ✗ jq  (trusted executable is missing) — install: %s\n' "$(prereq_hint jq)"
+        missing_required="$missing_required jq"
+        required_failure=1
+      else
+        printf '  ✓ jq (%s)\n' "$JQ_RUNTIME"
+      fi
+      ;;
+    node)
+      node_runtime="$(command -v node 2>/dev/null || true)"
+      if [ -z "$node_runtime" ] || [ "${node_runtime#/}" = "$node_runtime" ] || [ ! -f "$node_runtime" ] || [ ! -x "$node_runtime" ]; then
+        printf '  ✗ node  (missing or not an absolute executable) — install: %s\n' "$(prereq_hint node)"
+        missing_required="$missing_required node"
+        required_failure=1
+        continue
+      fi
+      node_version="$($node_runtime --version 2>/dev/null || true)"
+      node_major="${node_version#v}"
+      node_major="${node_major%%.*}"
+      if ! case "$node_major" in ''|*[!0-9]*) false ;; *) [ "$node_major" -ge 20 ] && [ "$node_major" -le 24 ] ;; esac \
+        || ! "$node_runtime" -e 'process.exit(0)' >/dev/null 2>&1; then
+        printf '  ✗ node  (unsupported or failed runtime; use Node 20–24 LTS, preferably 24)\n'
+        missing_required="$missing_required node-runtime"
+        required_failure=1
+      else
+        printf '  ✓ node %s (supported runtime)\n' "$node_version"
+      fi
+      ;;
+    codex)
+      if [ "$control_runtime_ok" -eq 0 ] || ! codex_preflight all; then
+        printf '  ✗ codex  (selected CLI is missing, below the stable floor, or lacks a required exec capability) — update the one active CLI using: %s\n' "$(prereq_hint codex)"
+        missing_required="$missing_required codex-runtime"
+        required_failure=1
+      else
+        printf '  ✓ codex %s (%s; all required exec capabilities present)\n' "$CODEX_VERSION" "$CODEX_BIN"
+      fi
+      ;;
+    *)
+      if ! command -v "$t" >/dev/null 2>&1; then
+        printf '  ✗ %s  (missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
+        missing_required="$missing_required $t"
+        required_failure=1
+      else
+        printf '  ✓ %s\n' "$t"
+      fi
+      ;;
+  esac
 done
-[ "$codex_required_failure" -eq 0 ] || {
-  log "ERROR: the one active Codex CLI is required and failed preflight; no installation or --check result is valid."
-  exit 1
-}
 if [ -n "$PYTHON3_RUNTIME" ]; then
   printf '  ✓ python3 %s (clean-filter runtime passed)\n' "$PYTHON3_RUNTIME"
 else
   printf '  ✗ python3  (absolute Python 3 runtime required by the settings clean filter)\n'
-  missing="$missing python3-runtime"
+  missing_required="$missing_required python3-runtime"
+  required_failure=1
 fi
-# The wrappers use the BSD/POSIX tools present on macOS and a Perl alarm for
-# deadlines. Check them explicitly so a partial install cannot fail only after
-# a review or Luna dispatch has started. GNU `timeout` is not required.
-for t in awk grep id mktemp openssl pgrep ps realpath sed shasum stat tr; do
+for t in $RECOMMENDED_PREREQS; do
   if ! command -v "$t" >/dev/null 2>&1; then
-    printf '  ✗ %s  (required by the bounded wrappers)\n' "$t"
-    missing="$missing runtime-$t"
+    printf '  ○ %s  (recommended workflow support missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
+    missing_recommended="$missing_recommended $t"
+  else
+    printf '  ✓ %s (recommended workflow support)\n' "$t"
   fi
 done
-[ -n "$missing" ] && log "Missing:$missing — run the install hints shown above."
+for t in $OPTIONAL_PREREQS; do
+  if ! command -v "$t" >/dev/null 2>&1; then
+    printf '  ○ %s  (optional) — install: %s\n' "$t" "$(prereq_hint "$t")"
+    missing_optional="$missing_optional $t"
+  else
+    printf '  ✓ %s (optional)\n' "$t"
+  fi
+done
+[ -z "$missing_required" ] || log "Missing required:$missing_required — installation is blocked."
+[ -z "$missing_recommended" ] || log "Recommended not installed:$missing_recommended"
+[ -z "$missing_optional" ] || log "Optional not installed:$missing_optional"
+[ "$required_failure" -eq 0 ] || {
+  log "ERROR: required prerequisites failed; no installation or --check result is valid."
+  exit 1
+}
 
 # Open Design is deliberately optional. Report the manual action without
 # adding it to the core prerequisite set or attempting to install a signed GUI
@@ -160,7 +221,7 @@ if [ -n "$open_design_app" ]; then
   # signed Open Design app.
   if ! command -v claude >/dev/null 2>&1; then
     printf '  ○ Claude CLI not found (optional) — after app setup, run: od mcp install claude\n'
-  elif ! command -v jq >/dev/null 2>&1; then
+  elif [ -z "$JQ_RUNTIME" ]; then
     printf '  ○ Claude Open Design MCP not checked (optional) — jq is unavailable; run: od mcp install claude\n'
   else
     open_design_mcp_found=0
@@ -171,11 +232,11 @@ if [ -n "$open_design_app" ]; then
         open_design_mcp_unreadable=1
         continue
       fi
-      if jq -e '([.mcpServers? // {}, ((.projects? // {}) | to_entries[]?.value.mcpServers? // {})] | any(.[]; (."open-design" | if type != "object" then false elif (.command? | type) != "string" then false elif (.command | length) == 0 then false elif (.command | test("^[[:space:]]*$")) then false elif .command == "/usr/bin/od" or .command == "od" then false else true end)))' "$mcp_config" >/dev/null 2>&1; then
+      if "$JQ_RUNTIME" -e '([.mcpServers? // {}, ((.projects? // {}) | to_entries[]?.value.mcpServers? // {})] | any(.[]; (."open-design" | if type != "object" then false elif (.command? | type) != "string" then false elif (.command | length) == 0 then false elif (.command | test("^[[:space:]]*$")) then false elif .command == "/usr/bin/od" or .command == "od" then false else true end)))' "$mcp_config" >/dev/null 2>&1; then
         open_design_mcp_found=1
         break
       fi
-      if ! jq -e '.' "$mcp_config" >/dev/null 2>&1; then
+      if ! "$JQ_RUNTIME" -e '.' "$mcp_config" >/dev/null 2>&1; then
         open_design_mcp_unreadable=1
       fi
     done

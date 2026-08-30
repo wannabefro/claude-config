@@ -19,6 +19,8 @@ while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temp
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const cliFixtureRoot = mkdtempSync(join(fixtureParent, 'claude-install-cli-safe-'))
 const cliFixture = join(cliFixtureRoot, 'codex')
+const node25FixtureRoot = join(cliFixtureRoot, 'node25-bin')
+const node25Fixture = join(node25FixtureRoot, 'node')
 const incompatibleTarget = join(root, "claude home's incompatible")
 const missingTarget = join(root, "claude home's missing")
 const checkTarget = join(testHome, '.claude')
@@ -28,10 +30,10 @@ const cloneMain = (source, destination) => {
   runFile('git', ['clone', '-q', '-b', 'main', source, destination], { encoding: 'utf8', stdio: 'pipe' })
 }
 const snapshotWorkingInstaller = (source) => {
-  for (const relative of ['install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs']) {
+  for (const relative of ['README.md', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs']) {
     writeFileSync(join(source, relative), readFileSync(join(repo, relative)))
   }
-  git(source, ['add', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs'])
+  git(source, ['add', 'README.md', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs'])
   const staged = spawnSync('git', ['-C', source, 'diff', '--cached', '--quiet'], { encoding: 'utf8' })
   if (staged.status === 1) git(source, ['commit', '-qm', 'snapshot installer under test'])
   else if (staged.status !== 0) throw new Error(`could not inspect installer snapshot index: ${staged.status}`)
@@ -72,7 +74,7 @@ check('installer succeeds for a target containing spaces and an apostrophe', res
 check('quoted Git filters materialize both files and leave the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && successfulBrief.includes(successfulTarget) && !successfulSettings.includes('__CLAUDE_HOME__') && !successfulBrief.includes('__CLAUDE_HOME__') && successfulStatus === '' && settingsClean.includes('settings-clean.py') && pathClean.includes('path-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean, pathClean }))
 check('both installed filters remain required', git(successfulTarget, ['config', '--get', 'filter.claudesettings.required']) === 'true\n' && git(successfulTarget, ['config', '--get', 'filter.claudehome.required']) === 'true\n')
 const installedPolicy = spawnSync(process.execPath, [join(successfulTarget, 'evals', 'claude-policy-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
-check('installed materialized policy accepts only the exact current-root wrapper permission', installedPolicy.status === 0 && /---- \d+ passed, 0 failed/.test(installedPolicy.stdout), `${installedPolicy.status}: ${installedPolicy.stderr}`)
+check('installed materialized policy accepts only the exact current-root wrapper permission', installedPolicy.status === 0 && /---- \d+ passed, 0 failed/.test(installedPolicy.stdout), `${installedPolicy.status}: ${installedPolicy.stderr}\n${installedPolicy.stdout}`)
 
 cloneMain(cleanSource, rollbackSource)
 git(rollbackSource, ['config', 'user.email', 'test@example.com'])
@@ -116,6 +118,12 @@ fi
 exit 64
 `)
 chmodSync(cliFixture, 0o755)
+mkdirSync(node25FixtureRoot)
+writeFileSync(node25Fixture, `#!/bin/sh
+if [ "\$1" = "--version" ]; then printf '%s\\n' 'v25.0.0'; exit 0; fi
+exit 0
+`)
+chmodSync(node25Fixture, 0o755)
 mkdirSync(incompatibleTarget)
 const incompatibleSentinel = 'installer must not backup or mutate this target\n'
 writeFileSync(join(incompatibleTarget, 'sentinel.txt'), incompatibleSentinel)
@@ -140,6 +148,43 @@ const missingCheck = runCheck(cleanSource, {
   PATH: '/opt/homebrew/opt/node@24/bin:/usr/bin:/bin',
 })
 check('missing Codex also makes --check fail closed', missingCheck.status !== 0, `${missingCheck.status}: ${missingCheck.stdout}${missingCheck.stderr}`)
+
+const blockedSentinel = 'required prerequisite must preserve this target\n'
+const checkSentinel = join(checkTarget, 'sentinel.txt')
+const blockedCase = (name, source, extraEnv = {}, evidence = '') => {
+  const target = join(root, `claude home's blocked-${name}`)
+  mkdirSync(target)
+  const targetFile = join(target, 'sentinel.txt')
+  writeFileSync(targetFile, blockedSentinel)
+  const installResult = runInstall(source, target, extraEnv)
+  const checkResult = runCheck(source, extraEnv)
+  const installOutput = `${installResult.stdout}${installResult.stderr}`
+  check(`${name} blocks install before backup or target mutation`, installResult.status !== 0 && readFileSync(targetFile, 'utf8') === blockedSentinel && !readdirSync(root).some((entry) => entry.startsWith(`claude home's blocked-${name}.bak-`)) && (!evidence || installOutput.includes(evidence)), `${installResult.status}: ${installOutput}`)
+  check(`${name} blocks --check before touching its existing target`, checkResult.status !== 0 && readFileSync(checkSentinel, 'utf8') === incompatibleSentinel, `${checkResult.status}: ${checkResult.stdout}${checkResult.stderr}`)
+}
+const fakeCliPath = `${cliFixtureRoot}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`
+blockedCase('Node 25', cleanSource, { PATH: `${node25FixtureRoot}:${fakeCliPath}`, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' }, 'unsupported or failed runtime')
+
+const variantSource = (name, replacements) => {
+  const source = join(root, `${name} source`)
+  cloneMain(cleanSource, source)
+  let helperSource = readFileSync(join(source, 'scripts', 'codex-preflight.sh'), 'utf8')
+  for (const [from, to] of replacements) helperSource = helperSource.replaceAll(from, to)
+  writeFileSync(join(source, 'scripts', 'codex-preflight.sh'), helperSource)
+  return source
+}
+blockedCase('missing Perl', variantSource('missing Perl', [
+  ['/usr/bin/perl', '/definitely/missing/perl'],
+  ['/opt/homebrew/bin/perl', '/definitely/missing/perl'],
+  ['/usr/local/bin/perl', '/definitely/missing/perl'],
+]), { PATH: fakeCliPath, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' })
+blockedCase('missing trusted rg', variantSource('missing rg', [
+  ['/opt/homebrew/bin/rg', '/definitely/missing/rg'],
+  ['/usr/local/bin/rg', '/definitely/missing/rg'],
+]), { PATH: fakeCliPath, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' })
+blockedCase('missing trusted mktemp', variantSource('missing mktemp', [
+  ['CODEX_PREFLIGHT_MKTEMP=/usr/bin/mktemp', 'CODEX_PREFLIGHT_MKTEMP=/definitely/missing/mktemp'],
+]), { PATH: fakeCliPath, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' })
 
 rmSync(root, { recursive: true, force: true })
 rmSync(cliFixtureRoot, { recursive: true, force: true })
