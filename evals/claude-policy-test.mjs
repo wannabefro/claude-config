@@ -199,7 +199,10 @@ check('Claude settings do not enable the Open Design marketplace or plugin', con
 check('Claude integration surfaces contain no legacy enrollment or positive Claude plugin policy', !/(?:receipt|enrollment|HMAC|Ed25519|detached signature)/i.test(integrationSurfaces) && !positiveClaudeOpenDesignPluginClaim && /There is no Open Design plugin for Claude|Claude has no Open Design plugin/i.test(integrationSurfaces))
 check('installer validates the MCP command and rejects Apple od', installer.includes('real command') && installer.includes('command? | type') && installer.includes('command == "/usr/bin/od"') && installer.includes('command == "od"') && installer.includes('>/dev/null 2>&1') && installer.includes('never calls `od`'))
 
-const designCheckHome = mkdtempSync(join(tmpdir(), 'claude-open-design-check-'))
+let designCheckHome = ''
+let codexIsolationBin = ''
+try {
+designCheckHome = mkdtempSync(join(tmpdir(), 'claude-open-design-check-'))
 const designCheckBin = join(designCheckHome, 'bin')
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
 const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
@@ -218,9 +221,6 @@ const designCheckConfigText = '{"mcpServers":{"another-server":{"command":"true"
 writeFileSync(designCheckConfig, designCheckConfigText)
 const hostPathEntries = (process.env.PATH || '').split(':').filter((entry) => entry.length > 0 && entry.startsWith('/'))
 if (hostPathEntries.length === 0) throw new Error('the host PATH has no absolute entries')
-const testNodeBin = dirname(process.execPath)
-if (!testNodeBin.startsWith('/')) throw new Error('the eval Node runtime is not absolute')
-const testPathEntries = [testNodeBin, ...hostPathEntries.filter((entry) => entry !== testNodeBin)]
 const isExecutableFile = (candidate) => {
   try {
     accessSync(candidate, fsConstants.X_OK)
@@ -229,11 +229,16 @@ const isExecutableFile = (candidate) => {
     return false
   }
 }
-const authorizedCodex = testPathEntries
+const authorizedCodex = hostPathEntries
   .map((entry) => join(entry, 'codex'))
   .find((candidate) => isExecutableFile(candidate))
 if (!authorizedCodex) throw new Error('the host PATH has no executable Codex CLI')
 const authorizedCodexRealpath = realpathSync(authorizedCodex)
+// Keep Codex bound to the original PATH winner. The eval Node directory is
+// added only afterward so the installer can find the Node runtime used here.
+const testNodeBin = dirname(process.execPath)
+if (!testNodeBin.startsWith('/')) throw new Error('the eval Node runtime is not absolute')
+const testPathEntries = [testNodeBin, ...hostPathEntries.filter((entry) => entry !== testNodeBin)]
 const currentRoot = realpathSync(process.cwd())
 const fixtureParent = [dirname(configRoot), dirname(process.env.PWD || ''), dirname(authorizedCodex), userInfo().homedir, homedir()]
   .map((candidate) => {
@@ -243,7 +248,7 @@ const fixtureParent = [dirname(configRoot), dirname(process.env.PWD || ''), dirn
     try { accessSync(candidate, fsConstants.W_OK); return true } catch { return false }
   })())
 if (!fixtureParent) throw new Error('could not find a writable safe Codex fixture sibling')
-const codexIsolationBin = mkdtempSync(join(fixtureParent, 'claude-policy-codex-safe-'))
+codexIsolationBin = mkdtempSync(join(fixtureParent, 'claude-policy-codex-safe-'))
 const codexIsolationLink = join(codexIsolationBin, 'codex')
 symlinkSync(authorizedCodex, codexIsolationLink)
 if (realpathSync(codexIsolationLink) !== authorizedCodexRealpath) throw new Error('Codex isolation link does not resolve to the existing CLI')
@@ -310,8 +315,12 @@ try { isolatedCodexCommand = execFileSync('/bin/bash', ['-c', 'command -v codex'
 check('missing-Claude fixture selects an isolated Codex link to the existing CLI', isolatedCodexCommand === codexIsolationLink && realpathSync(isolatedCodexCommand) === authorizedCodexRealpath, JSON.stringify({ isolatedCodexCommand, codexIsolationLink, authorizedCodexRealpath }))
 designCheck = runDesignCheck(missingCliEnv)
 check('missing Claude CLI keeps the app-present design action optional', designCheck.code === 0 && designCheck.output.includes('Claude CLI not found (optional)') && designCheck.output.includes('od mcp install claude') && readFileSync(designCheckConfig, 'utf8') === malformedConfigText)
-rmSync(designCheckHome, { recursive: true, force: true })
-rmSync(codexIsolationBin, { recursive: true, force: true })
+} finally {
+  for (const fixture of [codexIsolationBin, designCheckHome]) {
+    if (!fixture) continue
+    try { rmSync(fixture, { recursive: true, force: true }) } catch {}
+  }
+}
 check('currentness policy records the reviewed CE pin', read('docs/workflow-migration.md').includes('3.23.4') && read('docs/workflow-migration.md').includes('33d9bd92689d60580e732890f94466e5793385b1'))
 
 console.log(`  ---- ${pass} passed, ${fail} failed`)
