@@ -37,6 +37,9 @@ DIRECTIVE = re.compile(
 WORDS = re.compile(r"[A-Za-z][A-Za-z'-]*")
 OPT_OUT = re.compile(r"comment-density:\s*ignore-file")
 DOCSTRING = re.compile(r"""^(\s*)(?:[rubfRUBF]{0,2})(\"\"\"|''')""")
+SECTION = re.compile(
+    r"^(Args|Arguments|Attributes|Example|Examples|Note|Notes|Parameters|Raises|"
+    r"Returns|See Also|Todo|Warning|Warnings|Warns|Yields)\s*:$")
 
 MAX_DENSITY = 15.0
 MAX_BLOCK = 2
@@ -92,27 +95,45 @@ def header_end(text):
     return end
 
 
+def section_lines(text):
+    """Lines inside a Google-style docstring section, exempt from block and word limits."""
+    out, in_section = set(), False
+    for lineno, line in enumerate(text.split("\n"), 1):
+        if not line.strip() or not MARKER.match(line):
+            in_section = False
+            continue
+        if SECTION.match(strip_marker(line)):
+            in_section = True
+        if in_section:
+            out.add(lineno)
+    return out
+
+
 def scan(text):
     if OPT_OUT.search(text):
         return {"comment_lines": 0, "code_lines": 0, "density": 0.0,
                 "blocks": [], "verbose": [], "ignored": True}
     text = expand_docstrings(text)
     head = header_end(text)
+    sect = section_lines(text)
     density_c = density_k = 0
     run = 0
     blocks, verbose = [], []
     pending = []
     for lineno, line in enumerate(text.split("\n"), 1):
-        if not line.strip() or SHEBANG.match(line):
+        if SHEBANG.match(line):
             continue
         if MARKER.match(line):
             if DIRECTIVE.match(line):
                 continue
-            density_c += 1
-            run += 1
-            pending.append((lineno, strip_marker(line)))
-            continue
-        density_k += 1
+            if lineno not in sect:
+                density_c += 1
+                run += 1
+                pending.append((lineno, strip_marker(line)))
+                continue
+        elif line.strip():
+            density_k += 1
+        # A blank line, a code line, and a section line all end the run.
         if run > MAX_BLOCK and pending[0][0] > head:
             blocks.append((pending[0][0], run))
         run, pending = 0, []
@@ -122,7 +143,8 @@ def scan(text):
     run = 0
     group = []
     for lineno, line in enumerate(text.split("\n"), 1):
-        is_c = bool(MARKER.match(line)) and not SHEBANG.match(line) and not DIRECTIVE.match(line)
+        is_c = (bool(MARKER.match(line)) and not SHEBANG.match(line)
+                and not DIRECTIVE.match(line) and lineno not in sect)
         if is_c:
             group.append((lineno, strip_marker(line)))
             continue
@@ -254,11 +276,38 @@ import os
 
 def widget(a):
     """Summary line.
-
     This rationale runs past two lines, which rule 2 calls a hard breach, and it
     is indented, so it belongs to a function rather than to the file header.
     """
     return os.path.join(a)
+'''
+
+SECTIONED = '''def widget(a, b, c):
+    """Summary line.
+    Second line.
+
+    Args:
+        a: the first thing that this function accepts and then uses later on
+        b: the second thing that it also accepts and uses in the same manner
+        c: the third thing which is likewise accepted and used identically
+
+    Returns:
+        The combined thing that the caller receives once the work has finished.
+    """
+    return a
+'''
+
+AFTER_SECTION = '''def widget(a):
+    """Summary.
+
+    Args:
+        a: a thing
+
+    This trailing rationale runs to three contiguous lines and must still be
+    reported, because the section ended at the blank line above it, and an
+    exemption that never ends would hide exactly this kind of breach.
+    """
+    return a
 '''
 
 ASSIGNED = '''x = """
@@ -272,6 +321,16 @@ def self_test():
     assert len(g["blocks"]) == 1, f"only the function docstring is a block: {g}"
     assert g["blocks"][0][0] > 5, f"the module docstring must stay exempt: {g}"
     assert g["comment_lines"] > 0, f"docstrings count as comments: {g}"
+    s = scan(SECTIONED)
+    assert s["blocks"] == [], f"a Google-style section is exempt like the header: {s}"
+    assert s["verbose"] == [], f"a section is exempt from the word limit too: {s}"
+    assert s["comment_lines"] == 2, f"section lines count as neither comment nor code: {s}"
+    a = scan(AFTER_SECTION)
+    assert len(a["blocks"]) == 1, f"a blank line ends the section, so prose after it is gated: {a}"
+    split = scan('def f():\n    """A.\n    B.\n\n    C.\n    D.\n    """\n    return 1\n')
+    assert split["blocks"] == [], f"a blank line ends a block, so these are two runs: {split}"
+    joined = scan('def f():\n    """A.\n    B.\n    C.\n    """\n    return 1\n')
+    assert len(joined["blocks"]) == 1, f"three contiguous lines are still a breach: {joined}"
     one = scan('def f():\n    """Summary."""\n    return 1\n')
     assert one["comment_lines"] == 1, f"a one-line docstring is one comment: {one}"
     assert one["code_lines"] == 2, f"it must not swallow the code below it: {one}"
