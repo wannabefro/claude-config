@@ -65,13 +65,7 @@ def transcript(data):
 
 
 def already_delivered(agents_md, data):
-    """True when a nested_memory attachment for this exact path already landed.
-
-    Claude Code attaches AGENTS.md as a `nested_memory` event, not a Read call, and
-    it does so per edited subtree. Filesystem structure does not predict it: a
-    repo-root file can never arrive while cwd sits exactly on it, and a file well
-    outside the cwd chain can arrive anyway. Only the transcript is authoritative.
-    """
+    """True when a nested_memory attachment for this exact path already landed."""
     path = transcript(data)
     if not path:
         return False

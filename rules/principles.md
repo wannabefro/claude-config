@@ -15,6 +15,11 @@ Three countable limits, taken from `rules/simplified-technical-english.md`:
 2. Write a comment or a docstring on **one line**. A second line needs a very good reason. A block
    of **more than 2 lines** is a hard breach: that is a rationale block, and it belongs in the PR
    description. `comment-density.py` gates at 2, so a third line fails a commit.
+   **Docstrings count, since 2026-09-02.** Before that the checker read them as code, so the gate was
+   blind to the place a Python rationale block actually goes: 15 of 17 breaching docstrings in this
+   repo were written while it could not see them. A **module** docstring is the file header and keeps
+   the header exemption — no block or word limit, but its lines still count toward density. A
+   docstring on a function or a class is gated like any comment.
 3. Keep a file at **15% comment lines or fewer**. When you edit a file, match or reduce its density.
 
 Add a comment only when it says what the code cannot: why a non-obvious choice was made, a workaround

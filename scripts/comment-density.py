@@ -36,6 +36,7 @@ DIRECTIVE = re.compile(
     r"ruff|fmt:|nosec|coding[:=]|-\*-|!\[|region|endregion|SPDX|\?xml)")
 WORDS = re.compile(r"[A-Za-z][A-Za-z'-]*")
 OPT_OUT = re.compile(r"comment-density:\s*ignore-file")
+DOCSTRING = re.compile(r"""^(\s*)(?:[rubfRUBF]{0,2})(\"\"\"|''')""")
 
 MAX_DENSITY = 15.0
 MAX_BLOCK = 2
@@ -44,6 +45,38 @@ MAX_WORDS = 20
 
 def strip_marker(line):
     return re.sub(r"^\s*(#+|//+|/\*+|\*/|\*)", "", line).strip()
+
+
+def expand_docstrings(text):
+    """Rewrite docstring lines as comment lines so one rule governs both forms."""
+    lines = text.split("\n")
+    out = list(lines)
+
+    def emit(indent, content):
+        return f"{indent}# {content.strip()}" if content.strip() else ""
+
+    i = 0
+    while i < len(lines):
+        m = DOCSTRING.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        indent, quote = m.group(1), m.group(2)
+        rest = lines[i][m.end():]
+        if quote in rest:
+            out[i] = emit(indent, rest[:rest.index(quote)])
+            i += 1
+            continue
+        end = next((j for j in range(i + 1, len(lines)) if quote in lines[j]), None)
+        if end is None:
+            i += 1
+            continue
+        out[i] = emit(indent, rest)
+        for j in range(i + 1, end):
+            out[j] = emit(indent, lines[j])
+        out[end] = emit(indent, lines[end][:lines[end].index(quote)])
+        i = end + 1
+    return "\n".join(out)
 
 
 def header_end(text):
@@ -63,6 +96,7 @@ def scan(text):
     if OPT_OUT.search(text):
         return {"comment_lines": 0, "code_lines": 0, "density": 0.0,
                 "blocks": [], "verbose": [], "ignored": True}
+    text = expand_docstrings(text)
     head = header_end(text)
     density_c = density_k = 0
     run = 0
@@ -136,6 +170,11 @@ def staged_added(repo):
             continue
         if SKIP_PART & set(pathlib.Path(name).parts):
             continue
+        # The marker sits in the whole file, so a diff fragment never carries it.
+        staged = subprocess.run(["git", "-C", repo, "show", f":{name}"],
+                                capture_output=True, text=True).stdout
+        if OPT_OUT.search(staged):
+            continue
         diff = subprocess.run(
             ["git", "-C", repo, "diff", "--cached", "--unified=0", "--", name],
             capture_output=True, text=True).stdout
@@ -205,7 +244,45 @@ run() {
 '''
 
 
+DOCSTRINGED = '''#!/usr/bin/env python3
+"""tool - one line summary.
+
+A module docstring is the file header, so it is exempt like a header comment.
+"""
+import os
+
+
+def widget(a):
+    """Summary line.
+
+    This rationale runs past two lines, which rule 2 calls a hard breach, and it
+    is indented, so it belongs to a function rather than to the file header.
+    """
+    return os.path.join(a)
+'''
+
+ASSIGNED = '''x = """
+not a docstring, just a literal
+"""
+'''
+
+
 def self_test():
+    g = scan(DOCSTRINGED)
+    assert len(g["blocks"]) == 1, f"only the function docstring is a block: {g}"
+    assert g["blocks"][0][0] > 5, f"the module docstring must stay exempt: {g}"
+    assert g["comment_lines"] > 0, f"docstrings count as comments: {g}"
+    one = scan('def f():\n    """Summary."""\n    return 1\n')
+    assert one["comment_lines"] == 1, f"a one-line docstring is one comment: {one}"
+    assert one["code_lines"] == 2, f"it must not swallow the code below it: {one}"
+    blank = scan('def f():\n    """A.\n\n    B.\n    """\n    return 1\n')
+    assert blank["comment_lines"] == 2, f"a blank line and a bare closer are not comments: {blank}"
+    tail = scan('def f():\n    """A.\n\n    Trailing text."""\n    return 1\n')
+    assert tail["comment_lines"] == 2, f"text on the closing line still counts: {tail}"
+    a = scan(ASSIGNED)
+    assert a["comment_lines"] == 0, f"an assigned literal is not a docstring: {a}"
+    u = scan('def f():\n    """unterminated in a diff fragment\n')
+    assert u["comment_lines"] == 0, f"an unterminated docstring is left alone: {u}"
     d = scan(DIRTY)
     assert len(d["blocks"]) == 1, d
     assert d["blocks"][0][1] == 4, d
