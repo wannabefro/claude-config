@@ -46,6 +46,17 @@ invocation is a bug.
   people, and neither is undone by another commit.
 - Stacked PRs → `gh stack` (`init`/`add`/`submit`/`sync`/`rebase`). Don't hand-roll stacking.
 - Before opening/updating a PR: `/make-pr-easy-to-review`, then open, then `/pr-watch`.
+- **Describe the diff that is there, not the path you took to it.** A PR body is read by someone
+  seeing the branch for the first time, so a section like "Why this PR is smaller than it was" is
+  self-narration: it explains the change against a revision only I ever saw. Cut the abandoned
+  approach, the reverted experiment, and the reasoning that led nowhere.
+  Two carve-outs, both about what the reader can already see:
+    1. **A reviewer has commented on the larger version.** Then the delta since their review is the
+       most useful thing in the body, so state it.
+    2. **The churn is visible in the pushed commits** — an "add X" followed by a "revert X". A
+       reviewer scanning the log will stop on it. **Fix the history, do not annotate it**; that is
+       what `/make-pr-easy-to-review` is for. Reach for a note in the body only when the history has
+       to stand (already reviewed, or someone else's commits).
 - **Review the assembled diff before review-ready.** Use `/review` for the default mechanical or
   normal tier. Normal review uses one Opus xhigh reviewer and one Codex `gpt-5.6-sol` xhigh outsider.
   **Guardrail-critical diffs** (auth, authz, payments, migrations/schema, data mutations, public API,
