@@ -2,10 +2,11 @@
 # Shared fail-closed preflight for the one Codex CLI used by this config.
 #
 # Callers source this file and invoke `codex_preflight review|writer|all`.
-# The first `codex` found on PATH is resolved once to its real path. No caller
-# supplied binary, alternate installation, or package-manager fallback is
-# accepted. The selected path, version, filesystem identity, and digest are
-# retained for the same process to revalidate immediately before its exec.
+# A persistent user install at $HOME/.local/bin/codex is preferred when it is
+# present; otherwise the first `codex` found on PATH is used. No caller
+# supplied binary or package-manager search is accepted. The selected path,
+# version, filesystem identity, and digest are retained for the same process to
+# revalidate immediately before its exec.
 
 CODEX_PREFLIGHT_REALPATH=/bin/realpath
 CODEX_PREFLIGHT_GREP=/usr/bin/grep
@@ -226,6 +227,27 @@ codex_preflight_validate_path() {
   return 0
 }
 
+codex_preflight_discover() {
+  local discovered persistent_candidate
+  local discovered_label=${1:-discovered Codex CLI}
+  local persistent_label=${2:-persistent Codex CLI}
+
+  # A cmux shim can win PATH; prefer the stable user install.
+  # A present invalid path errors, never falls back.
+  if [ -n "${HOME:-}" ]; then
+    persistent_candidate=$HOME/.local/bin/codex
+    if [ -e "$persistent_candidate" ] || [ -L "$persistent_candidate" ]; then
+      codex_preflight_validate_path "$persistent_candidate" "$persistent_label" || return 1
+      printf '%s\n' "$persistent_candidate"
+      return 0
+    fi
+  fi
+
+  discovered=$(command -v codex 2>/dev/null || true)
+  codex_preflight_validate_path "$discovered" "$discovered_label" || return 1
+  printf '%s\n' "$discovered"
+}
+
 codex_preflight() {
   local lane=${1:-}
   local version_output help_output major minor patch
@@ -253,15 +275,14 @@ codex_preflight() {
     return 1
   fi
 
-  # This is intentionally the sole discovery operation. command -v may
-  # return a shell function or alias, so require an absolute executable path
-  # before realpath resolves one stable target for the entire caller run.
+  # command -v returns a function or alias, so require an absolute path.
+  # The persistent install wins over PATH.
   local discovered
-  discovered=$(command -v codex 2>/dev/null || true)
-  if ! codex_preflight_validate_path "$discovered" 'discovered Codex CLI'; then
+  discovered=$(codex_preflight_discover 'discovered Codex CLI' 'persistent Codex CLI' || true)
+  if [ -z "$discovered" ]; then
     CODEX_BIN=''
     CODEX_VERSION=''
-    codex_preflight_report 'approved Codex CLI is unavailable on PATH'
+    codex_preflight_report 'approved Codex CLI is unavailable'
     return 1
   fi
   CODEX_BIN=$("$CODEX_PREFLIGHT_REALPATH" "$discovered" 2>/dev/null || true)
@@ -322,8 +343,9 @@ codex_preflight() {
   if ! codex_preflight_has '(^|[[:space:]])exec([[:space:]]|$)' ||
     ! codex_preflight_has '(^|[[:space:]])-c([,[:space:]]|$)' ||
     ! codex_preflight_has '(^|[[:space:]])--model([[:space:]]|$)' ||
-    ! codex_preflight_has '(^|[[:space:]])--sandbox([[:space:]]|$)'; then
-    codex_preflight_report 'selected Codex CLI lacks a required common exec flag (-c, --model, or --sandbox)'
+    ! codex_preflight_has '(^|[[:space:]])--sandbox([[:space:]]|$)' ||
+    ! codex_preflight_has '(^|[[:space:]])--ignore-user-config([[:space:]]|$)'; then
+    codex_preflight_report 'selected Codex CLI lacks a required common exec flag (-c, --model, --sandbox, or --ignore-user-config)'
     return 1
   fi
 
@@ -352,8 +374,8 @@ codex_preflight_revalidate() {
   if ! codex_preflight_validate_path_env; then
     return 1
   fi
-  discovered=$(command -v codex 2>/dev/null || true)
-  if ! codex_preflight_validate_path "$discovered" 'current Codex CLI'; then
+  discovered=$(codex_preflight_discover 'current Codex CLI' 'current persistent Codex CLI' || true)
+  if [ -z "$discovered" ]; then
     return 1
   fi
   resolved=$("$CODEX_PREFLIGHT_REALPATH" "$discovered" 2>/dev/null || true)

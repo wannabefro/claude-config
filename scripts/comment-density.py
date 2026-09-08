@@ -183,6 +183,9 @@ def files_from(paths):
     return out, skipped
 
 
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
+
+
 def staged_added(repo):
     names = subprocess.run(["git", "-C", repo, "diff", "--cached", "--name-only"],
                            capture_output=True, text=True).stdout.split()
@@ -200,13 +203,21 @@ def staged_added(repo):
         diff = subprocess.run(
             ["git", "-C", repo, "diff", "--cached", "--unified=0", "--", name],
             capture_output=True, text=True).stdout
-        added, saw = [], False
+        # A fragment has no header, so a header edit reads as a top-of-file block.
+        head = header_end(staged)
+        added, saw, lineno = [], False, 0
         for line in diff.split("\n"):
             if line.startswith("@@"):
+                hunk = HUNK.match(line)
+                # An unparseable hunk must report, never silently pass the header.
+                lineno = int(hunk.group(1)) - 1 if hunk else head
                 if saw:
                     added.append("__hunk_break__")
                 continue
             if line.startswith("+") and not line.startswith("+++"):
+                lineno += 1
+                if lineno <= head:
+                    continue
                 added.append(line[1:])
                 saw = True
         if [l for l in added if l != "__hunk_break__"]:
@@ -316,6 +327,28 @@ not a docstring, just a literal
 '''
 
 
+def staged_self_test():
+    """Stage a header edit and a body edit in a throwaway repo, then read both back."""
+    import tempfile
+    base = "#!/bin/bash\n# One.\n# Two.\n\nx=1\n"
+    with tempfile.TemporaryDirectory() as repo:
+        def git(*args):
+            subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, check=True)
+        git("init", "-q")
+        git("config", "user.email", "t@t")
+        git("config", "user.name", "t")
+        target = pathlib.Path(repo, "s.sh")
+        target.write_text(base)
+        git("add", "s.sh")
+        git("commit", "-qm", "base")
+        target.write_text(base.replace("# Two.", "# Two.\n# Three."))
+        git("add", "s.sh")
+        header_only = staged_added(repo)
+        target.write_text(target.read_text() + "# inline note\ny=2\n")
+        git("add", "s.sh")
+        return header_only, staged_added(repo)
+
+
 def self_test():
     g = scan(DOCSTRINGED)
     assert len(g["blocks"]) == 1, f"only the function docstring is a block: {g}"
@@ -356,6 +389,9 @@ def self_test():
     assert h["blocks"] == [], f"a file header is exempt, like a docstring: {h}"
     assert h["verbose"] == [], h
     assert h["comment_lines"] == 5, h
+    staged_header, staged_body = staged_self_test()
+    assert staged_header == {}, f"a staged header edit is exempt: {staged_header}"
+    assert "inline" in "\n".join(staged_body.values()), f"a staged body edit is gated: {staged_body}"
     print(f"self-test OK: dirty {d['density']}% with 1 block of 4 and 1 long comment; "
           f"clean 0.0%; 4 scattered comments give {len(s['blocks'])} blocks; "
           f"a 5-line header gives {len(h['blocks'])}")

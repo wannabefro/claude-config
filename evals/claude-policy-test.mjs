@@ -117,8 +117,8 @@ check('CodeRabbit never replaces the required Sol review seat', routing.includes
 check('guardrail hook leaves classification to review and enforces council', guardrailHook.includes('/review owns classification') && guardrailHook.includes('both tiers still require /council') && !guardrailHook.includes('It already classifies risk itself'))
 
 check('Luna wrapper pins model and effort', wrapper.includes('--model gpt-5.6-luna') && wrapper.includes('model_reasoning_effort=xhigh'))
-check('Luna wrapper pins safe approval and sandbox', wrapper.includes('--sandbox workspace-write') && wrapper.includes('--approve-for-me'))
-check('Luna wrapper disables MCP', wrapper.includes("mcp_servers={}"))
+check('Luna wrapper pins safe approval and sandbox', wrapper.includes('--approve-for-me') && !wrapper.includes('--sandbox workspace-write'))
+check('Luna wrapper disables inherited MCP config', wrapper.includes('--ignore-user-config') && !wrapper.includes("mcp_servers={}"))
 check('Luna wrapper rejects dangerous bypass flags', !wrapper.includes('dangerously-bypass'))
 check('Luna wrapper rejects arbitrary binary overrides', !wrapper.includes('CODEX_BIN=${') && !wrapper.includes('PERL_BIN=${'))
 check('all Codex routes share the one fail-closed preflight', existsSync(new URL('../scripts/codex-preflight.sh', import.meta.url)) && installer.includes('codex_preflight all') && wrapper.includes('codex_preflight writer') && codexRun.includes('codex_preflight review') && preflight.includes('codex-cli') && preflight.includes('exec --help'))
@@ -140,7 +140,7 @@ check('secret scanner uses fixed Homebrew ripgrep and find', secretScanner.inclu
 check('installer separates required, recommended, and optional prerequisites', installer.includes('REQUIRED_PREREQS="git gh node perl rg jq codex"') && installer.includes('RECOMMENDED_PREREQS="rtk cmux wt"') && installer.includes('OPTIONAL_PREREQS="bd"') && readme.includes('| `rtk`, `cmux`, `wt` | Recommended |') && readme.includes('| `bd` | Optional |'))
 
 check('Codex review wrapper pins Sol xhigh and read-only sandbox', codexRun.includes('--model gpt-5.6-sol') && codexRun.includes("model_reasoning_effort=xhigh") && codexRun.includes('--sandbox read-only') && codexRun.includes('\n      -'))
-check('Codex review wrapper disables MCP by default', codexRun.includes("MCP_ARGS=(-c 'mcp_servers={}')") && codexRun.includes('MCP=0'))
+check('Codex review wrapper disables inherited MCP config by default', codexRun.includes('MCP_ARGS=(--ignore-user-config)') && codexRun.includes('MCP=0'))
 check('Codex review wrapper has no dangerous bypass flags', !codexRun.includes('dangerously-bypass'))
 check('Codex review wrapper rejects unexpected CLI failures before answer detection', codexRun.includes('RUNTIME FAILURE') && codexRun.indexOf('RUNTIME FAILURE') < codexRun.indexOf('if ! answered'))
 check('install probes supported runtimes and requires the public settings clean filter', installer.includes('Node 20–24 LTS') && installer.includes("process.exit(0)") && installer.includes('codex --version') && installer.includes('PYTHON3_RUNTIME') && installer.includes('filter.claudehome.required true') && installer.includes('hash-object --path=settings.json') && installer.includes('hash-object --no-filters') && !installer.includes('timeout 10'))

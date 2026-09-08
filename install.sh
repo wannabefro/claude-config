@@ -74,7 +74,7 @@ prereq_hint() {
       if [ -n "${CODEX_BIN:-}" ]; then
         echo "update the selected Codex CLI at $CODEX_BIN using the installation channel that owns that path; do not install a second copy"
       else
-        echo "install exactly one official Codex CLI on PATH using your existing installation channel; do not install a second copy"
+        echo "install one official stable Codex CLI at \$HOME/.local/bin/codex (preferred) or on PATH using your existing installation channel"
       fi
       ;;
     rtk)   echo "brew install rtk   # homebrew-core; not 'cargo install rtk' (name clash)" ;;

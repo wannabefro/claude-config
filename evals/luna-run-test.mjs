@@ -18,7 +18,7 @@ const root = mkdtempSync(join(tmpdir(), 'claude-luna-run-'))
 const repo = fileURLToPath(new URL('../', import.meta.url))
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
 const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
-let fixtureParent = dirname(repo)
+let fixtureParent = process.env.LUNA_RUN_SAFE_FIXTURE_PARENT || dirname(repo)
 while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-luna-run-safe-'))
@@ -34,6 +34,7 @@ for (const utility of hostileUtilities) {
 const argsFile = join(root, 'args')
 const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
+const emptyHome = join(root, 'home')
 const prompt = join(root, 'brief')
 writeFileSync(fake, `#!/bin/sh
 if [ "$1" = "--version" ]; then printf '%s\\n' 'codex-cli 0.149.1'; exit 0; fi
@@ -43,7 +44,7 @@ if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
   printf '%s\\n' '  -m, --model <MODEL>'
   printf '%s\\n' '  -s, --sandbox <SANDBOX_MODE>'
   printf '%s\\n' '  [possible values: read-only, workspace-write, danger-full-access]'
-  printf '%s\\n' '  --approve-for-me  --ephemeral  -C, --cd <DIR>'
+  printf '%s\\n' '  --approve-for-me  --ephemeral  --ignore-user-config  -C, --cd <DIR>'
   exit 0
 fi
 : > "$FAKE_ARGS"
@@ -60,12 +61,14 @@ exit "\${FAKE_EXIT:-0}"
 chmodSync(fake, 0o755)
 // A directory created through the test harness makes the working-root check explicit.
 mkdirSync(work)
+mkdirSync(emptyHome)
 const promptBytes = Buffer.from('exact $dollars `quotes`\nline two\n', 'utf8')
 writeFileSync(prompt, promptBytes)
 
 const wrapper = fileURLToPath(new URL('../scripts/luna-run.sh', import.meta.url))
 const env = {
   ...process.env,
+  HOME: emptyHome,
   PATH: `${fixtureRoot}:${process.env.PATH || ''}`,
   TMPDIR: root,
   CODEX_BIN: join(root, 'missing-override'),
@@ -96,9 +99,10 @@ check('wrapper preserves prompt bytes through stdin', received.equals(promptByte
 check('wrapper invokes noninteractive Codex exec', args[0] === 'exec' && args.at(-1) === '-', args.join(' | '))
 check('wrapper pins Luna model', args.includes('gpt-5.6-luna'), args.join(' | '))
 check('wrapper pins xhigh effort', args.includes('model_reasoning_effort=xhigh'), args.join(' | '))
-check('wrapper pins workspace-write sandbox', args.includes('workspace-write'), args.join(' | '))
+// Codex >= 0.152.0 rejects --sandbox beside --approve-for-me, which itself selects workspace-write.
+check('wrapper takes workspace-write from --approve-for-me and passes no explicit sandbox', args.includes('--approve-for-me') && !args.includes('--sandbox') && !args.includes('-s'), args.join(' | '))
 check('wrapper pins review approval', args.includes('--approve-for-me'), args.join(' | '))
-check('wrapper disables MCP', args.includes('mcp_servers={}'), args.join(' | '))
+check('wrapper disables inherited MCP config', args.includes('--ignore-user-config') && !args.includes('mcp_servers={}'), args.join(' | '))
 check('wrapper has no dangerous bypass flags', !args.some((arg) => arg.startsWith('--dangerously-')), args.join(' | '))
 check('wrapper passes the resolved working directory', args.includes(resolvedWork), args.join(' | '))
 check('wrapper ignores arbitrary binary overrides', !args.includes(join(root, 'missing-override')),

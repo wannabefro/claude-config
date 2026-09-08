@@ -282,7 +282,7 @@ snapshots inline exactly once, then run this fixed command exactly:
 
   ~/.claude/scripts/codex-run.sh -t 900 -s 480 -B '${bundlePath.replaceAll("'", "'\\\"'\\\"'")}' -f <brief-file> -N
 
-The wrapper fixes Codex gpt-5.6-sol at xhigh with MCP disabled. It returns 0
+The wrapper fixes Codex gpt-6-astra at low with MCP disabled. It returns 0
 when Codex reviewed, 3 when unavailable, 4 when stalled, 5 when empty, 6 when
 the provider refused capacity, 7 when Codex failed, and 8 when the secret scan
 refused the transfer. Relay the exact exit code as runner_exit_code. Set status
@@ -306,7 +306,7 @@ return {
     ? 'reviewed'
     : 'blocked',
   coverage: seatsReady && cleanupReady ? 'complete' : 'degraded',
-  reviewers: ['opus-xhigh', 'codex-gpt-5.6-sol-xhigh'],
+  reviewers: ['opus-xhigh', 'codex-gpt-6-astra-low'],
   opus: opusResult || { findings: [], summary: 'Opus returned no result.' },
   codex: codexResult || { status: 'failed', findings: [], detail: 'Codex harness returned no result.' },
   cleanup: cleanupResult || { status: 'failed', detail: 'Cleanup returned no result.' },

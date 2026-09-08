@@ -11,7 +11,7 @@ const review = join(repo, 'scripts', 'codex-run.sh')
 const root = mkdtempSync(join(tmpdir(), 'claude-codex-preflight-'))
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
 const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
-let fixtureParent = dirname(repo)
+let fixtureParent = process.env.CODEX_PREFLIGHT_SAFE_FIXTURE_PARENT || dirname(repo)
 while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-codex-preflight-safe-'))
@@ -30,17 +30,22 @@ const brewMarker = join(root, 'brew-called')
 const hijackBin = join(root, 'hijack-bin')
 const hijackMarker = join(root, 'realpath-hijacked')
 const dirnameMarker = join(root, 'dirname-hijacked')
-const repoWinnerBin = join(repo, '.codex-preflight-test-winner')
+const tempShimMarker = join(root, 'temp-shim-invoked')
+const repoWinnerBin = join(repo, 'scripts')
 const tempWinnerBin = join(root, 'temp-winner-bin')
 const tempTarget = join(root, 'temp-target-codex')
 const safeWinnerBin = join(fixtureRoot, 'safe-winner-bin')
 const resolvedTmpLink = join(root, 'resolved-tmp-link')
+const emptyHome = join(root, 'empty-home')
+const persistentHome = join(fixtureRoot, 'home')
+const persistentBin = join(persistentHome, '.local', 'bin')
 mkdirSync(fakeBin)
 mkdirSync(work)
 mkdirSync(hijackBin)
-mkdirSync(repoWinnerBin)
 mkdirSync(tempWinnerBin)
 mkdirSync(safeWinnerBin)
+mkdirSync(emptyHome)
+mkdirSync(persistentBin, { recursive: true })
 writeFileSync(prompt, 'Return a short confirmation.\n')
 writeFileSync(fakeReal, `#!/bin/sh
 printf '%s\\n' "\${1:-}" >> "\$FAKE_CALLS"
@@ -92,6 +97,7 @@ writeFileSync(join(fakeBin, 'brew'), `#!/bin/sh
 printf called > "$BREW_MARKER"
 exit 99
 `)
+symlinkSync(process.execPath, join(fakeBin, 'node'))
 chmodSync(join(fakeBin, 'npm'), 0o755)
 chmodSync(join(fakeBin, 'brew'), 0o755)
 writeFileSync(join(hijackBin, 'realpath'), `#!/bin/sh
@@ -134,11 +140,13 @@ const fullHelp = `Usage: codex exec [OPTIONS] [PROMPT]
   --output-last-message <FILE>
   --approve-for-me
   --ephemeral
+  --ignore-user-config
   -C, --cd <DIR>
 `
 const reviewOnlyHelp = fullHelp.replace('  --approve-for-me\n', '').replace('  --ephemeral\n', '').replace('  -C, --cd <DIR>\n', '')
 const env = {
   ...process.env,
+  HOME: emptyHome,
   PATH: `${fakeBin}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`,
   FAKE_HELP: fakeHelp,
   FAKE_CALLS: fakeCalls,
@@ -195,6 +203,8 @@ const reviewPass = runPreflight('review', 'codex-cli 99.4.2', reviewOnlyHelp)
 check('a review lane checks only its required review surface', reviewPass.status === 0, reviewPass.output)
 const missingReview = runPreflight('review', 'codex-cli 99.4.2', fullHelp.replace('  --output-last-message <FILE>\n', ''))
 check('a high stable version missing one review flag fails closed', missingReview.status !== 0 && missingReview.output.includes('required review surface'), missingReview.output)
+const missingIsolation = runPreflight('all', 'codex-cli 99.4.2', fullHelp.replace('  --ignore-user-config\n', ''))
+check('a high stable version missing user-config isolation fails closed', missingIsolation.status !== 0 && missingIsolation.output.includes('required common exec flag'), missingIsolation.output)
 const missingExec = runPreflight('review', 'codex-cli 99.4.2', fullHelp.replace('Usage: codex exec', 'Usage: codex run'))
 check('a high stable version missing the exec command fails closed', missingExec.status !== 0 && missingExec.output.includes('required common exec flag'), missingExec.output)
 
@@ -216,15 +226,29 @@ const validRevalidation = runRevalidate(env.PATH)
 check('accepts a valid all-absolute PATH during revalidation', validRevalidation.status === 21 && !existsSync(fakeInvocations), validRevalidation.output)
 
 symlinkSync(fakeReal, join(repoWinnerBin, 'codex'))
-symlinkSync(fakeReal, join(tempWinnerBin, 'codex'))
+writeFileSync(join(tempWinnerBin, 'codex'), `#!/bin/sh
+printf invoked > "$TEMP_SHIM_MARKER"
+exit 99
+`)
+chmodSync(join(tempWinnerBin, 'codex'), 0o755)
+symlinkSync(fakeReal, join(persistentBin, 'codex'))
 writeFileSync(tempTarget, readFileSync(fakeReal))
 chmodSync(tempTarget, 0o755)
 symlinkSync(tempTarget, join(safeWinnerBin, 'codex'))
 symlinkSync(fixtureRoot, resolvedTmpLink)
 const repoWinner = runPreflight('review', 'codex-cli 99.4.2', fullHelp, { PATH: `${repoWinnerBin}:${env.PATH}` })
 check('rejects a Codex winner inside the current checkout', repoWinner.status !== 0 && repoWinner.output.includes('repository'), repoWinner.output)
-const tempWinner = runPreflight('review', 'codex-cli 99.4.2', fullHelp, { PATH: `${tempWinnerBin}:${env.PATH}` })
-check('rejects a Codex winner inside a macOS temporary root', tempWinner.status !== 0 && tempWinner.output.includes('temporary root'), tempWinner.output)
+rmSync(tempShimMarker, { force: true })
+const persistentOverTemp = runPreflight('review', 'codex-cli 99.4.2', fullHelp, {
+  HOME: persistentHome,
+  PATH: `${tempWinnerBin}:/opt/homebrew/bin:/usr/bin:/bin`,
+  CODEX_BIN: join(tempWinnerBin, 'codex'),
+  TEMP_SHIM_MARKER: tempShimMarker,
+})
+check('a persistent user Codex install wins when a cmux temporary shim is first on PATH', persistentOverTemp.status === 0 && persistentOverTemp.stdout.includes(`${fakeReal}|99.4.2`) && !existsSync(tempShimMarker), persistentOverTemp.output)
+rmSync(tempShimMarker, { force: true })
+const tempWinner = runPreflight('review', 'codex-cli 99.4.2', fullHelp, { HOME: emptyHome, PATH: `${tempWinnerBin}:/opt/homebrew/bin:/usr/bin:/bin`, TEMP_SHIM_MARKER: tempShimMarker })
+check('fails closed without a persistent trusted CLI instead of executing a macOS temporary winner', tempWinner.status !== 0 && tempWinner.output.includes('temporary root') && !existsSync(tempShimMarker), tempWinner.output)
 const tempTargetResult = runPreflight('review', 'codex-cli 99.4.2', fullHelp, { PATH: `${safeWinnerBin}:${env.PATH}` })
 check('rejects a resolved Codex target inside a macOS temporary root', tempTargetResult.status !== 0 && tempTargetResult.output.includes('temporary root'), tempTargetResult.output)
 const resolvedTmpResult = runPreflight('review', 'codex-cli 99.4.2', fullHelp, { PATH: `${fakeBin}:${env.PATH}`, TMPDIR: resolvedTmpLink })
@@ -301,6 +325,6 @@ check('Codex preflight is shared by installer and both wrappers', readFileSync(j
 
 rmSync(root, { recursive: true, force: true })
 rmSync(fixtureRoot, { recursive: true, force: true })
-rmSync(repoWinnerBin, { recursive: true, force: true })
+rmSync(join(repoWinnerBin, 'codex'), { force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

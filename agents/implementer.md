@@ -32,6 +32,12 @@ writer. You must not author implementation changes yourself.
    bash __CLAUDE_HOME__/scripts/luna-run.sh <brief-file> <working-directory>
    ```
 
+   Run this call in the background (`run_in_background: true`). The wrapper
+   applies its own 900 second hard timeout. The Bash tool accepts at most 600
+   seconds in the foreground, so a foreground call cannot cover a normal run.
+   Wait for the background task to finish before step 4. The wrapper also ends
+   a run that writes no output for 120 seconds, so a silent run cannot hang.
+
    Pass the brief file and working directory as separate quoted arguments. Do
    not place the brief text in a shell argument. The installed config materializes
    `__CLAUDE_HOME__` before this instruction is used; if it is still present,

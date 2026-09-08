@@ -58,7 +58,7 @@ invocation is a bug.
        what `/make-pr-easy-to-review` is for. Reach for a note in the body only when the history has
        to stand (already reviewed, or someone else's commits).
 - **Review the assembled diff before review-ready.** Use `/review` for the default mechanical or
-  normal tier. Normal review uses one Opus xhigh reviewer and one Codex `gpt-5.6-sol` xhigh outsider.
+  normal tier. Normal review uses one Opus xhigh reviewer and one Codex `gpt-6-astra` low outsider.
   **Guardrail-critical diffs** (auth, authz, payments, migrations/schema, data mutations, public API,
   permissions, secrets, crypto, destructive actions, or high-impact concurrency) need the full
   `/council`; `pr-guardrail-review.sh` pauses on this — honour it. An explicit `/council` always

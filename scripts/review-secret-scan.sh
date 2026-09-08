@@ -35,9 +35,11 @@ status=0
 scan_failed=0
 scan_file() {
   local file=$1 rg_status
-  # Match credential-shaped values, never print their contents.
-  if LC_ALL=C "$RG_BIN" -n -i --no-messages -- \
-    '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----|\bAKIA[0-9A-Z]{16}\b|\b(?:ghp|gho|ghs|ghr|ghu)_[A-Za-z0-9_]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{12,}\b|\bxox[baprs]_[A-Za-z0-9-]{12,}\b|\bnpm_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b|\bAIza[0-9A-Za-z_-]{30,}\b|(?:password|passwd|secret|token|api[_-]?key|auth[_-]?token)[[:space:]]*[:=][[:space:]]*[^[:space:]]{8,}|postgres(?:ql)?://[^[:space:]/]+:[^[:space:]@]+@' "$file" >/dev/null 2>&1; then
+  # Match credential-shaped values, never print their contents. The keyword
+  # rule skips a bare identifier in call-argument position, which is a
+  # reference such as `secret=notary_secret)` rather than a literal.
+  if LC_ALL=C "$RG_BIN" -n -i -P --no-messages -- \
+    '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----|\bAKIA[0-9A-Z]{16}\b|\b(?:ghp|gho|ghs|ghr|ghu)_[A-Za-z0-9_]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{12,}\b|\bxox[baprs]_[A-Za-z0-9-]{12,}\b|\bnpm_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b|\bAIza[0-9A-Za-z_-]{30,}\b|(?:password|passwd|secret|token|api[_-]?key|auth[_-]?token)[[:space:]]*[:=][[:space:]]*(?![A-Za-z_][A-Za-z0-9_]*[[:space:]]*[)\],}])[^[:space:]]{8,}|postgres(?:ql)?://[^[:space:]/]+:[^[:space:]@]+@' "$file" >/dev/null 2>&1; then
     rg_status=0
   else
     rg_status=$?

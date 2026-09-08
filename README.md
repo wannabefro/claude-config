@@ -29,17 +29,20 @@ design, diagnosis, review, integration, and final verification. Codex
 after host access is verified. Haiku is limited to deterministic plumbing.
 Unavailable models never trigger a silent fallback.
 
-Claude uses exactly one Codex CLI: the first `codex` found on `PATH`, resolved
-to one absolute realpath for the run. The installer and both wrappers fail
-closed unless that same CLI reports stable version `0.149.1` or newer and
-advertises every `codex exec` flag they use. A higher version with a missing
-capability is incompatible. This setup never scans for another Codex copy,
-honors `CODEX_BIN`, or installs Codex; update the one active CLI through the
-installation channel that owns the selected path shown by `install.sh` when
-the check fails. The selected executable must also be outside the active
-worktree, this checkout, and macOS temporary roots. Immediately before each
-final exec, wrappers re-resolve the first PATH winner and compare its
-filesystem identity and SHA-256 digest with the preflight snapshot.
+Claude uses exactly one Codex CLI. It prefers the persistent user install at
+`~/.local/bin/codex` when present, otherwise it uses the first `codex` found on
+`PATH`, and resolves that choice to one absolute realpath for the run. This
+keeps GUI and cmux launcher shims from hiding the stable per-user CLI. The
+installer and both wrappers fail closed unless the selected CLI reports stable
+version `0.149.1` or newer and advertises every `codex exec` flag they use. A
+higher version with a missing capability is incompatible. This setup never
+honors inherited `CODEX_BIN`, searches package managers, or installs Codex;
+update the selected CLI through the installation channel that owns the path
+shown by `install.sh` when the check fails. The selected executable must also
+be outside the active worktree, this checkout, and macOS temporary roots.
+Immediately before each final exec, wrappers repeat the same persistent-first
+discovery and compare its realpath, filesystem identity, and SHA-256 digest
+with the preflight snapshot.
 
 `/implement` handles one coherent, clearly scoped unit through exactly one
 Luna implementer. `/build` is for structured work: it chooses `serial` or

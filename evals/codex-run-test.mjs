@@ -18,7 +18,7 @@ const root = mkdtempSync(join(tmpdir(), 'claude-codex-run-'))
 const repo = fileURLToPath(new URL('../', import.meta.url))
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
 const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
-let fixtureParent = dirname(repo)
+let fixtureParent = process.env.CODEX_RUN_SAFE_FIXTURE_PARENT || dirname(repo)
 while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-codex-run-safe-'))
@@ -34,8 +34,10 @@ for (const utility of hostileUtilities) {
 const argsFile = join(root, 'args')
 const stdinFile = join(root, 'stdin')
 const work = join(root, 'work')
+const emptyHome = join(root, 'home')
 const prompt = join(root, 'brief')
 mkdirSync(work)
+mkdirSync(emptyHome)
 writeFileSync(fake, `#!/bin/sh
 if [ "$1" = "--version" ]; then printf '%s\\n' 'codex-cli 0.149.1'; exit 0; fi
 if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
@@ -44,7 +46,7 @@ if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
   printf '%s\\n' '  -m, --model <MODEL>'
   printf '%s\\n' '  -s, --sandbox <SANDBOX_MODE>'
   printf '%s\\n' '  [possible values: read-only, workspace-write, danger-full-access]'
-  printf '%s\\n' '  --skip-git-repo-check  --output-last-message <FILE>'
+  printf '%s\\n' '  --skip-git-repo-check  --output-last-message <FILE>  --ignore-user-config'
   exit 0
 fi
 : > "$FAKE_ARGS"
@@ -85,7 +87,7 @@ const wrapper = fileURLToPath(new URL('../scripts/codex-run.sh', import.meta.url
 // The fake is injected through PATH, while CODEX_BIN points at an invalid path.
 // This proves callers cannot replace the approved runtime through the
 // environment, while tests retain a deterministic executable seam.
-const env = { ...process.env, PATH: `${fixtureRoot}:${process.env.PATH || ''}`, TMPDIR: root, CODEX_BIN: join(root, 'missing-override'), FAKE_ARGS: argsFile, FAKE_STDIN: stdinFile }
+const env = { ...process.env, HOME: emptyHome, PATH: `${fixtureRoot}:${process.env.PATH || ''}`, TMPDIR: root, CODEX_BIN: join(root, 'missing-override'), FAKE_ARGS: argsFile, FAKE_STDIN: stdinFile }
 const runWithArgs = (args, extraEnv = {}) => execFileSync(wrapper, args, { cwd: work, env: { ...env, ...extraEnv }, encoding: 'utf8' })
 const run = (extraEnv = {}) => runWithArgs(['-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N'], extraEnv)
 
@@ -107,13 +109,19 @@ const check = (name, ok, detail = '') => {
 check('wrapper completes a stub Sol pass', code === 0 && output === 'assistant review complete\n', `${code}: ${JSON.stringify(output)}`)
 check('wrapper returns only the authoritative assistant result', !output.includes('transport header') && output === 'assistant review complete\n', JSON.stringify(output))
 check('wrapper requires the explicit assistant-result channel', args.includes('--output-last-message'), args.join(' | '))
-check('wrapper pins the Sol model', args.includes('gpt-5.6-sol'), args.join(' | '))
-check('wrapper pins xhigh without an effort fallback', args.includes('model_reasoning_effort=xhigh') && !args.some((arg) => /reasoning_effort=(none|low|medium|high)$/.test(arg)), args.join(' | '))
-check('wrapper disables MCP by default', args.includes('mcp_servers={}'), args.join(' | '))
+check('wrapper pins the astra review model by default', args.includes('gpt-6-astra'), args.join(' | '))
+check('wrapper pins low effort without a silent fallback', args.includes('model_reasoning_effort=low') && !args.some((arg) => /reasoning_effort=(none|medium|high|xhigh)$/.test(arg)), args.join(' | '))
+check('wrapper disables inherited MCP config by default', args.includes('--ignore-user-config') && !args.includes('mcp_servers={}'), args.join(' | '))
 check('wrapper sends the prompt through stdin instead of argv', args.includes('-') && !promptArg && stdinText.includes(promptText.trimEnd()), `${args.join(' | ')} | stdin=${stdinText}`)
 check('wrapper pins a read-only sandbox', args.includes('--sandbox') && args.includes('read-only'), args.join(' | '))
 check('wrapper uses no dangerous bypass flags', !args.some((arg) => arg.startsWith('--dangerously-')), args.join(' | '))
 check('wrapper cleans its owner-private runtime directory', readdirSync(root).every((name) => !name.startsWith('claude-codex-run.')), readdirSync(root).join(' | '))
+
+// The deep lane is opt-in. Only -X may reach the expensive Sol xhigh route.
+let deepCode = 0
+try { runWithArgs(['-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N', '-X']) } catch (error) { deepCode = error.status }
+const deepArgs = readFileSync(argsFile, 'utf8').trimEnd().split('\n')
+check('-X selects the Sol xhigh deep lane', deepCode === 0 && deepArgs.includes('gpt-5.6-sol') && deepArgs.includes('model_reasoning_effort=xhigh'), `code=${deepCode} ${deepArgs.join(' | ')}`)
 
 const hostileEnv = {
   PATH: `${hostileRoot}:${fixtureRoot}:${process.env.PATH || ''}`,

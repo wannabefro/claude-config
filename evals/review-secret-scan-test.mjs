@@ -65,6 +65,33 @@ for (const credential of [
   check(`${credential.split('_')[0]} credential shape is blocked`, githubCode === 66, `status=${githubCode}`)
 }
 
+// A bare identifier in call-argument position is a reference, not a literal.
+// Real source code names parameters `secret=` and `token=` constantly, and
+// blocking on those made every Python review payload untransferable.
+for (const [name, line] of [
+  ['keyword-argument reference', '        auth=HTTPXNotaryAuth(secret=notary_secret),\n'],
+  ['trailing-comma reference', '            token=notary_secret,\n'],
+  ['dict value reference', '  config = {"api_key": resolved_api_key}\n'],
+]) {
+  writeFileSync(join(bundle, 'files', 'before', 'deleted.txt'), 'ordinary\n')
+  writeFileSync(join(bundle, 'files', 'after', 'a.txt'), line)
+  let refCode = 0
+  try { run() } catch (error) { refCode = error.status || 1 }
+  check(`${name} is not treated as a credential`, refCode === 0, `status=${refCode}`)
+}
+
+// The narrowing above must not blunt detection of a bare literal value.
+for (const [name, line] of [
+  ['unquoted alphabetic value', 'password = correcthorsebatterystaple\n'],
+  ['dotenv-style value', 'API_KEY=abc123def456ghi789\n'],
+  ['quoted value in call position', '  connect(password="hunter2longenough")\n'],
+]) {
+  writeFileSync(join(bundle, 'files', 'after', 'a.txt'), line)
+  let litCode = 0
+  try { run() } catch (error) { litCode = error.status || 1 }
+  check(`${name} still blocks transfer`, litCode === 66, `status=${litCode}`)
+}
+
 const credentialFixture = join(bundle, 'files', 'after', 'a.txt')
 writeFileSync(credentialFixture, 'token = "credential-shaped-secret-value"\n')
 const hijackBin = join(root, 'hijack-bin')

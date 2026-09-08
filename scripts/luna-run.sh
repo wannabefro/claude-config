@@ -13,6 +13,9 @@ MISSING_RUNTIME=69
 RUNTIME_FAILURE=70
 TIMEOUT_FAILURE=124
 PREFLIGHT_FAILURE=68
+# Codex exits 0 with this in the body, so an unfunded run reads as a success
+# that wrote nothing. codex-run.sh catches the same phrase and exits 6.
+REFUSED=77
 
 if [ "$#" -ne 2 ]; then
   echo "luna-run: usage: luna-run.sh PROMPT_FILE WORKING_DIRECTORY" >&2
@@ -61,7 +64,7 @@ fi
 PERL_BIN="$CODEX_PREFLIGHT_PERL"
 
 TIMEOUT_SECONDS=${LUNA_RUN_TIMEOUT_SECONDS:-900}
-STALL_SECONDS=${LUNA_RUN_STALL_SECONDS:-0}
+STALL_SECONDS=${LUNA_RUN_STALL_SECONDS:-}
 case "$TIMEOUT_SECONDS" in
   ''|*[!0-9]*)
     echo "luna-run: timeout must be a positive integer" >&2
@@ -71,6 +74,11 @@ esac
 if [ "$TIMEOUT_SECONDS" -lt 1 ] || [ "$TIMEOUT_SECONDS" -gt 3600 ]; then
   echo "luna-run: timeout must be between 1 and 3600 seconds" >&2
   exit "$USAGE"
+fi
+# The default clamps to the hard timeout; an explicit value above it still fails below.
+if [ -z "$STALL_SECONDS" ]; then
+  STALL_SECONDS=120
+  [ "$TIMEOUT_SECONDS" -lt "$STALL_SECONDS" ] && STALL_SECONDS=$TIMEOUT_SECONDS
 fi
 case "$STALL_SECONDS" in
   ''|*[!0-9]*)
@@ -95,7 +103,8 @@ process_group() {
 }
 
 # `--approve-for-me` uses Codex review approval with the workspace-write
-# sandbox. `mcp_servers={}` disables MCP for this implementation run.
+# sandbox. `--ignore-user-config` keeps user MCP servers out of this fixed
+# implementation lane while continuing to use auth from CODEX_HOME.
 # The watcher owns the child process group: a timed-out Codex process cannot
 # leave a descendant alive to keep writing in the private worktree.
 run_dir=$("$CODEX_PREFLIGHT_MKTEMP" -d "${TMPDIR:-/tmp}/claude-luna-run.XXXXXXXX") || {
@@ -125,11 +134,10 @@ trap cleanup_out EXIT HUP INT TERM
   fi
   exec "$PERL_BIN" -e 'setpgrp(0, 0); exec @ARGV' "$CODEX_BIN" exec \
     --model gpt-5.6-luna \
-    --sandbox workspace-write \
     --approve-for-me \
     --ephemeral \
+    --ignore-user-config \
     -c 'model_reasoning_effort=xhigh' \
-    -c 'mcp_servers={}' \
     -C "$WORKING_DIRECTORY" \
     - < "$PROMPT_FILE"
 ) > "$out" 2>&1 &
@@ -215,6 +223,10 @@ if [ -e "$preflight_failure" ]; then
   exit "$MISSING_RUNTIME"
 fi
 "$CODEX_PREFLIGHT_CAT" "$out"
+if "$CODEX_PREFLIGHT_GREP" -qiF 'workspace is out of credits' "$out"; then
+  echo "luna-run: Codex refused for lack of credits; nothing was implemented" >&2
+  exit "$REFUSED"
+fi
 if [ "$status" -eq 0 ]; then
   exit 0
 fi

@@ -1,9 +1,9 @@
 #!/bin/bash
 # Bounded Codex planning/review pass with one fixed model and effort.
 #
-#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-N] "<prompt>"
-#   codex-run.sh -f brief.md -N        # brief inlined from a file, no exploring
-#   … | codex-run.sh -f - -N           # same, from stdin
+#   codex-run.sh [-t SECONDS] [-s STALL_SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-A] [-N] "<prompt>"
+#   codex-run.sh [-A] -f brief.md -N    # brief inlined from a file, no exploring
+#   … | codex-run.sh [-A] -f - -N       # same, from stdin
 #
 # Use a file to CARRY the prompt, never to REFER to one. `-f` reads the file and
 # sends it through stdin, so the CLI never receives a giant prompt in argv and
@@ -11,9 +11,10 @@
 # Codex open it, and tool use is the measured failure mode. `-N` appends the
 # no-exploration constraint; omit it for a rescue that must read the repo.
 #
-# Planning, diagnosis, and review always use gpt-5.6-sol at xhigh effort. The
-# script makes one attempt only: an empty pass is reported, not retried at a
-# different model or effort.
+# Planning, diagnosis, and review default to gpt-6-astra at low effort; -X
+# selects gpt-5.6-sol at xhigh for a pass that needs the deeper lens. These are
+# the only two permitted models. The script makes one attempt only: an empty
+# pass is reported, not retried at a different model or effort.
 #
 # Exit codes are the point — a caller can branch on them instead of guessing
 # from output shape:
@@ -29,8 +30,9 @@
 #  * Preflight. A wedged syspolicyd left `codex --version` itself hanging for
 #    13d; every downstream call then burned its full timeout. 10s is generous
 #    for a version string, and failing here is decisive rather than a retry.
-#  * Model, effort, and sandbox. The fixed Sol/xhigh/read-only arguments prevent
-#    default-model inheritance and avoid silent effort fallback or writes.
+#  * Model, effort, and sandbox. The two fixed model lanes with xhigh/read-only
+#    arguments prevent default-model inheritance, avoid silent effort fallback
+#    or writes, and accept no caller-supplied model.
 #  * Stall window. Silence inside the run means hung, not thinking. Note the
 #    run is buffered to a temp file, so the CALLER sees nothing until the end
 #    — that is normal, and is why the heartbeat below exists. Never infer a
@@ -56,6 +58,8 @@ SECRET_FILE=""
 MCP=0
 FROM_FILE=""
 NO_EXPLORE=0
+REVIEW_MODEL="gpt-6-astra"
+REVIEW_EFFORT="low"
 PREFLIGHT_FAILURE=68
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -65,6 +69,8 @@ while [ $# -gt 0 ]; do
     -B) BUNDLE="$2"; shift 2 ;;
     -S) SECRET_FILE="$2"; shift 2 ;;
     -M) MCP=1; shift ;;
+    -A) REVIEW_MODEL="gpt-6-astra"; REVIEW_EFFORT="low"; shift ;;
+    -X) REVIEW_MODEL="gpt-5.6-sol"; REVIEW_EFFORT="xhigh"; shift ;;
     -f) FROM_FILE="$2"; shift 2 ;;
     -N) NO_EXPLORE=1; shift ;;
     *) break ;;
@@ -79,7 +85,7 @@ if [ -n "$FROM_FILE" ]; then
   fi
 else
   if [ $# -lt 1 ]; then
-    echo 'usage: codex-run.sh [-t SECS] [-s SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-N] (-f FILE|-|"<prompt>")' >&2
+    echo 'usage: codex-run.sh [-t SECS] [-s SECS] [-d DIR] [-B BUNDLE] [-S FILE] [-M] [-A] [-N] (-f FILE|-|"<prompt>")' >&2
     exit 2
   fi
   PROMPT="$1"
@@ -147,7 +153,7 @@ if [ "$NO_EXPLORE" -eq 1 ]; then
 fi
 
 MCP_ARGS=()
-[ "$MCP" -eq 0 ] && MCP_ARGS=(-c 'mcp_servers={}')
+[ "$MCP" -eq 0 ] && MCP_ARGS=(--ignore-user-config)
 
 run_once() {
   : > "$out"
@@ -165,10 +171,10 @@ run_once() {
     fi
     exec "$PERL_BIN" -e 'setpgrp(0, 0); alarm shift; exec @ARGV' "$TIMEOUT" "$CODEX_BIN" exec \
       --skip-git-repo-check \
-      --model gpt-5.6-sol \
+      --model "$REVIEW_MODEL" \
       --sandbox read-only \
-      "${MCP_ARGS[@]}" \
-      -c 'model_reasoning_effort=xhigh' \
+      ${MCP_ARGS[@]+"${MCP_ARGS[@]}"} \
+      -c "model_reasoning_effort=$REVIEW_EFFORT" \
       --output-last-message "$last_message" \
       -
   ) < "$prompt_input" > "$out" 2>&1 &
@@ -259,7 +265,7 @@ if refused; then
 fi
 
 if ! answered; then
-  echo "codex-run: EMPTY — one fixed gpt-5.6-sol xhigh pass produced no assistant result (exit $rc)." >&2
+  echo "codex-run: EMPTY — one fixed $REVIEW_MODEL $REVIEW_EFFORT pass produced no assistant result (exit $rc)." >&2
   echo "codex-run: report this as an empty pass. No model or effort fallback was attempted." >&2
   "$CODEX_PREFLIGHT_CAT" "$out" >&2
   exit 5

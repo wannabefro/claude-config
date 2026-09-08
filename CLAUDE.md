@@ -19,23 +19,25 @@ unit. Use `/build` for structured multi-unit or genuinely parallel work.
 
 `/build` uses one Luna implementer for serial work or at most three disjoint
 Luna implementers for parallel work. Freeze the graph, interfaces, write
-scopes, acceptance criteria, and verify commands before dispatch. Never use a
-Claude write fallback when Luna is unavailable. Compound Engineering remains
-an explicit on-demand toolbox, not the scheduler.
+scopes, acceptance criteria, and verify commands before dispatch. When Luna is
+unreachable — preflight, missing runtime, or refused for credits — dispatch the
+same frozen unit to a Sonnet `implementer` and say so. Compound Engineering
+remains an explicit on-demand toolbox, not the scheduler.
 
 After implementation, use `/review` for the assembled diff. It selects a
 mechanical, normal, or guardrail tier. Mechanical changes need exact gates
 and an Opus diff inspection. Normal changes need one independent Opus xhigh
-review and one Codex `gpt-5.6-sol` xhigh outsider review. Guardrail changes
+review and one Codex `gpt-6-astra` low outsider review. Guardrail changes
 use the full `/council`. An explicit `/council` always seats the full council,
 even for a mechanical diff.
 
 Authoritative routing contract: Opus xhigh owns judgment and serial integration;
-Luna xhigh is the only writer; active implementation concurrency is at most 3.
-Haiku is limited to deterministic plumbing. Sonnet and `gpt-5.6-terra` are
-manual opt-in fast lanes only. Fable is a manual long-horizon escalation only
-after host availability is verified. No route silently changes model, effort,
-or writer family. If Opus or Luna is unavailable, report the limitation.
+Luna xhigh is the preferred writer and Sonnet is its declared fallback; active
+implementation concurrency is at most 3. Haiku is limited to deterministic
+plumbing. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual
+long-horizon escalation only after host availability is verified. No route
+silently changes model, effort, or writer family — a fallback is named in the
+report. Exit codes and the fallback table: `rules/orchestration.md`.
 
 **`AGENTS.md` is the one the platform does not load for you.** Claude Code reads `CLAUDE.md` and never
 `AGENTS.md`. A repo bridges that with a `CLAUDE.md` holding `@AGENTS.md`, and 887 of 928 do. The

@@ -36,7 +36,7 @@ remain serialized under Opus xhigh. No automatic merge occurs.
 
 `/review` reviews the assembled diff once. Mechanical changes use exact gates
 and one Opus diff inspection. Normal changes use one independent Opus xhigh
-review and one Codex `gpt-5.6-sol` xhigh outsider through the fixed wrapper.
+review and one Codex `gpt-6-astra` low outsider through the fixed wrapper.
 Guardrail changes route to the full `/council`. The explicit `/council` command
 always seats the full council and retains adversarial cross-examination.
 The Codex outsider is required for the normal tier; if it is unavailable,

@@ -8,10 +8,26 @@ Claude Opus xhigh is the automatic orchestration model. It owns requirements,
 architecture, diagnosis, design direction, review, integration, and final
 verification. It must not write implementation files.
 
-Codex `gpt-5.6-luna` xhigh is the only automatic implementation writer. It
+Codex `gpt-5.6-luna` xhigh is the preferred automatic implementation writer. It
 owns application code, tests, scripts, schemas, migrations, build files, and
-engineering configuration. If Opus, Codex, or Luna is unavailable, report the
-limitation. Never substitute Sonnet, Terra, Haiku, or a Claude write route.
+engineering configuration. Never substitute Terra or Haiku, and never write
+implementation files from the main thread.
+
+**Sonnet is a declared fallback, not a silent one.** A writer nobody can reach
+stops the work, and `luna-run.sh` fails in ways this repo has already measured.
+Branch on its exit code:
+
+| `luna-run.sh` exit | what to do |
+|---|---|
+| 0 | Luna wrote it; verify and integrate |
+| 68 preflight, 69 runtime missing, 77 refused for credits | dispatch the same frozen unit to a Sonnet `implementer` |
+| 124 stalled | retry once per `codex-exec-recovery`, then fall back the same way |
+| 64 usage, 70 runtime failure | fix the call or the unit; a fallback hides a real defect |
+
+Say which writer produced the code. "Luna was out of credits, so Sonnet wrote
+this" is a different claim from "Luna wrote this", and the reviewer needs the
+true one — a Sonnet unit reviewed by Opus is same-family, so it loses the
+independence that made Luna preferred.
 
 Fable is a manual long-horizon escalation only. Verify host access before use.
 Sonnet and `gpt-5.6-terra` are manual fast lanes only. Haiku is allowed only

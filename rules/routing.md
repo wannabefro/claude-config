@@ -63,18 +63,18 @@ evidence and method in `docs/routing-rationale.md`.
 `coderabbit` binary that exists on only some machines — never route to it unhanded. `autofix` needs
 only `gh`. Don't offer to install the CLI to unblock a review; use `/council`.
 
-**CodeRabbit is an optional additional lens, not a replacement for Sol.** Codex
+**CodeRabbit is an optional additional lens, not a replacement for the Codex seat.** Codex
 stays the required cross-family reviewer for normal review, because it reasons
 about the diff rather than pattern-matching it. An unavailable CLI (exit 3) or
-a refusal for lack of credits (exit 6) blocks the required Sol seat; CodeRabbit
+a refusal for lack of credits (exit 6) blocks the required Codex seat; CodeRabbit
 can still run as an additional lens or resolve existing PR threads, but it
 never satisfies or replaces that seat.
 
 | `codex-run.sh` exit | what to do |
 |---|---|
 | 0 | the pass happened; use it |
-| 3 unavailable, 6 out of credits | report the missing Sol seat; CodeRabbit may run as an additional lens |
-| 4 stalled, 5 empty | re-run once per `codex-exec-recovery`; a missing Sol result blocks normal review |
+| 3 unavailable, 6 out of credits | report the missing Codex seat; CodeRabbit may run as an additional lens |
+| 4 stalled, 5 empty | re-run once per `codex-exec-recovery`; a missing Codex result blocks normal review |
 
 Branch on the exit code, never on the output, and check for the binary the way the next section
 says. Say which lens ran and why. "Codex was out of credits, so CodeRabbit reviewed it" is a different
