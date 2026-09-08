@@ -30,9 +30,8 @@
 #  * Preflight. A wedged syspolicyd left `codex --version` itself hanging for
 #    13d; every downstream call then burned its full timeout. 10s is generous
 #    for a version string, and failing here is decisive rather than a retry.
-#  * Model, effort, and sandbox. The two fixed model lanes with xhigh/read-only
-#    arguments prevent default-model inheritance, avoid silent effort fallback
-#    or writes, and accept no caller-supplied model.
+#  * Model, effort, and sandbox. Two fixed lanes and a read-only sandbox
+#    prevent default-model inheritance, silent effort fallback, and writes.
 #  * Stall window. Silence inside the run means hung, not thinking. Note the
 #    run is buffered to a temp file, so the CALLER sees nothing until the end
 #    — that is normal, and is why the heartbeat below exists. Never infer a

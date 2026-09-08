@@ -27,7 +27,7 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 |---|---|
 | Read-heavy gathering | `Explore` or a read-only research route |
 | Planning and design direction | Opus xhigh in the main thread |
-| One approved implementation unit | `/implement`: `implementer` dispatcher -> Codex `gpt-5.6-luna` xhigh |
+| One approved implementation unit | `/implement`: `implementer` dispatcher -> Codex `gpt-5.6-luna` medium |
 | Independent approved units | `/build` parallel route, maximum three active Luna units |
 | Integration and final verification | Opus xhigh in serialized order |
 | CodeRabbit review threads | Existing unresolved PR threads use `coderabbit:autofix` before the selected review path; this must not force a full `/council` for a normal PR |

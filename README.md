@@ -24,7 +24,7 @@ target is backed up or changed.
 
 The policy is fixed: Claude Opus xhigh performs planning, architecture,
 design, diagnosis, review, integration, and final verification. Codex
-`gpt-5.6-luna` xhigh is the only automatic implementation writer. Sonnet and
+`gpt-5.6-luna` medium is the only automatic implementation writer. Sonnet and
 `gpt-5.6-terra` are manual fast lanes. Fable is a manual long-horizon option
 after host access is verified. Haiku is limited to deterministic plumbing.
 Unavailable models never trigger a silent fallback.

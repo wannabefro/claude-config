@@ -25,7 +25,7 @@ decomposer returns `parallel` or `serial`:
 
 - `serial` prepares one deterministic private worktree, rechecks the frozen
   fingerprint and HEAD, then dispatches one `implementer`, which calls Codex
-  `gpt-5.6-luna` xhigh through `scripts/luna-run.sh`; only a scope-checked
+  `gpt-5.6-luna` medium through `scripts/luna-run.sh`; only a scope-checked
   patch integrates into the canonical checkout.
 - `parallel` reports the frozen split first. After approval, it dispatches
   disjoint Luna units with a hard maximum of three active workers.

@@ -909,7 +909,7 @@ Return the exact root, token, path, and seed. Do not modify the canonical checko
       }
 
       const r = await agent(
-        `Build the frozen task as one serial implementation unit in the exact private worktree below. Do not write in the canonical checkout. The implementer must dispatch exactly one Codex gpt-5.6-luna xhigh run through its fixed wrapper, then run every exact verify command below.
+        `Build the frozen task as one serial implementation unit in the exact private worktree below. Do not write in the canonical checkout. The implementer must dispatch exactly one Codex gpt-5.6-luna medium run through its fixed wrapper, then run every exact verify command below.
 
 WORK: ${task}
 WORKING DIRECTORY (EXACT PRIVATE WORKTREE): ${serialState.path}

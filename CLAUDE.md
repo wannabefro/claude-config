@@ -13,7 +13,7 @@ pick a third name.
 # Model routing
 
 Claude Opus xhigh owns requirements, architecture, design direction, diagnosis,
-review, integration, and final verification. Codex `gpt-5.6-luna` xhigh is the
+review, integration, and final verification. Codex `gpt-5.6-luna` medium is the
 only implementation writer. Use `/implement` for one coherent, clearly scoped
 unit. Use `/build` for structured multi-unit or genuinely parallel work.
 
@@ -32,7 +32,7 @@ use the full `/council`. An explicit `/council` always seats the full council,
 even for a mechanical diff.
 
 Authoritative routing contract: Opus xhigh owns judgment and serial integration;
-Luna xhigh is the preferred writer and Sonnet is its declared fallback; active
+Luna medium is the preferred writer and Sonnet is its declared fallback; active
 implementation concurrency is at most 3. Haiku is limited to deterministic
 plumbing. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual
 long-horizon escalation only after host availability is verified. No route

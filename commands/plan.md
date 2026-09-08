@@ -21,7 +21,7 @@ simplify, review, and compound-learning passes. A CE pass does not authorize imp
 implementation through `/implement` or `/build`, which delegate writes to Luna.
 
 For UI work, freeze `DESIGN.md`, `design-contract.md`, and `implementation-handoff.md` before
-dispatch. The plan must route application writes to Codex `gpt-5.6-luna` at xhigh. Opus performs
+dispatch. The plan must route application writes to Codex `gpt-5.6-luna` at medium. Opus performs
 integration, review, and final verification. There is no silent model fallback.
 
 ## One cross-family review when warranted
@@ -56,7 +56,7 @@ keeps the run in the foreground, and reports stable exit codes:
 | 8 | secret scan refused | report that the brief was not transferred; do not bypass the scan |
 
 Never let Codex rewrite the plan. It reviews only. A retry, if used for a stall, repeats the same
-fixed model and xhigh effort. It is not an effort fallback.
+fixed model and effort. It is not an effort fallback.
 
 ## Finish
 

@@ -1,6 +1,6 @@
 # Workflow currentness and migration
 
-The automatic workflow uses Opus xhigh for thinking and Codex Luna xhigh for
+The automatic workflow uses Opus xhigh for thinking and Codex Luna medium for
 implementation. One coherent unit uses `/implement`; structured work uses
 `/build`; `/review` selects the risk-appropriate assembled-diff review.
 Compound Engineering remains installed as an on-demand toolbox, not as the

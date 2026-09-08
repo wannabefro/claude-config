@@ -8,7 +8,7 @@ Claude Opus xhigh is the automatic orchestration model. It owns requirements,
 architecture, diagnosis, design direction, review, integration, and final
 verification. It must not write implementation files.
 
-Codex `gpt-5.6-luna` xhigh is the preferred automatic implementation writer. It
+Codex `gpt-5.6-luna` medium is the preferred automatic implementation writer. It
 owns application code, tests, scripts, schemas, migrations, build files, and
 engineering configuration. Never substitute Terra or Haiku, and never write
 implementation files from the main thread.

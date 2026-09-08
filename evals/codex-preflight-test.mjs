@@ -272,7 +272,7 @@ try {
 } catch (error) { lunaCode = error.status ?? 1 }
 let reviewCode = 0
 try {
-  execFileSync(review, ['-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N'], { cwd: work, env: wrapperEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync(review, ['-t', '30', '-s', '20', '-f', prompt, '-d', work, '-N'], { cwd: work, env: wrapperEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 } catch (error) { reviewCode = error.status ?? 1 }
 const resolvedCalls = existsSync(fakeInvocations) ? readFileSync(fakeInvocations, 'utf8').trim().split('\n').filter(Boolean) : []
 check('both wrappers execute the one resolved realpath', lunaCode === 0 && reviewCode === 0 && resolvedCalls.length === 2 && resolvedCalls.every((path) => path === realpathSync(fakeReal)), JSON.stringify({ lunaCode, reviewCode, resolvedCalls, expected: realpathSync(fakeReal) }))

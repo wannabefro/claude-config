@@ -137,7 +137,7 @@ trap cleanup_out EXIT HUP INT TERM
     --approve-for-me \
     --ephemeral \
     --ignore-user-config \
-    -c 'model_reasoning_effort=xhigh' \
+    -c 'model_reasoning_effort=medium' \
     -C "$WORKING_DIRECTORY" \
     - < "$PROMPT_FILE"
 ) > "$out" 2>&1 &

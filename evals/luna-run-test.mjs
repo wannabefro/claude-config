@@ -98,7 +98,7 @@ const resolvedWork = realpathSync(work)
 check('wrapper preserves prompt bytes through stdin', received.equals(promptBytes), received.toString())
 check('wrapper invokes noninteractive Codex exec', args[0] === 'exec' && args.at(-1) === '-', args.join(' | '))
 check('wrapper pins Luna model', args.includes('gpt-5.6-luna'), args.join(' | '))
-check('wrapper pins xhigh effort', args.includes('model_reasoning_effort=xhigh'), args.join(' | '))
+check('wrapper pins medium effort', args.includes('model_reasoning_effort=medium'), args.join(' | '))
 // Codex >= 0.152.0 rejects --sandbox beside --approve-for-me, which itself selects workspace-write.
 check('wrapper takes workspace-write from --approve-for-me and passes no explicit sandbox', args.includes('--approve-for-me') && !args.includes('--sandbox') && !args.includes('-s'), args.join(' | '))
 check('wrapper pins review approval', args.includes('--approve-for-me'), args.join(' | '))

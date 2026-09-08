@@ -438,7 +438,7 @@ log "Done. Next steps:"
 cat <<'EOF'
   1. Install any prerequisites reported missing above. This config never installs tools.
   2. Start a NEW Claude Code session. Model, plugin, permission, and MCP discovery are session-scoped.
-  3. Confirm the policy: Opus xhigh plans, reviews, integrates, and verifies; Codex gpt-5.6-luna xhigh writes.
+  3. Confirm the policy: Opus xhigh plans, reviews, integrates, and verifies; Codex gpt-5.6-luna medium writes.
      `/implement` handles one coherent unit. `/build` handles structured work and allows at most three Luna implementers.
      `/review` selects mechanical, normal, or guardrail review; explicit `/council` always uses full seating.
   4. Re-authenticate only the MCP servers required on this Mac. Credentials and OAuth state are not synced.

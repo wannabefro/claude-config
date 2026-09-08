@@ -45,7 +45,7 @@ Pass `args` as an object. The result must use `route: "parallel"` or
 
 `serial` means one `implementer` starts immediately in one deterministic private
 worktree. The implementer is an Opus dispatcher and verifier; Codex
-`gpt-5.6-luna` xhigh performs the writes. A final fingerprint/HEAD check runs
+`gpt-5.6-luna` medium performs the writes. A final fingerprint/HEAD check runs
 before that dispatch, and the helper rejects any post-write path outside the
 declared ownership before integration. The serial brief contains one frozen
 aggregate `set -e` verification command; every exact unit gate runs in its own

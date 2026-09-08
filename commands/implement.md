@@ -22,7 +22,7 @@ dispatches an agent:
 
 Dispatch exactly one existing `implementer` agent with that brief. The
 implementer must call `scripts/luna-run.sh` exactly once. That wrapper fixes
-Codex `gpt-5.6-luna`, xhigh effort, workspace-write approval, and MCP off.
+Codex `gpt-5.6-luna`, medium effort, workspace-write approval, and MCP off.
 The implementer must run the exact verification command after the Luna call.
 
 Do not write in the main thread. Do not dispatch a second worker. Do not use a
