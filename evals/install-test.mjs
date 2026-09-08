@@ -1,8 +1,8 @@
 import { execFileSync as runFile, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 
 const repo = dirname(fileURLToPath(new URL('../install.sh', import.meta.url)))
 const root = mkdtempSync(join(tmpdir(), 'claude installer regression-'))
@@ -19,19 +19,32 @@ while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temp
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const cliFixtureRoot = mkdtempSync(join(fixtureParent, 'claude-install-cli-safe-'))
 const cliFixture = join(cliFixtureRoot, 'codex')
+// A cmux shim under TMPDIR often wins PATH; the preflight rejects it.
+// Pin a durable Codex on the fixture PATH.
+const durableCliRoot = mkdtempSync(join(fixtureParent, 'claude-install-durable-'))
+const durableCodex = [join(homedir(), '.local', 'bin', 'codex'), ...(process.env.PATH || '').split(':').filter((entry) => entry.startsWith('/')).map((entry) => join(entry, 'codex'))]
+  .find((candidate) => {
+    try { return !temporaryRoots.some((rootPath) => isUnder(realpathSync(candidate), rootPath)) } catch { return false }
+  })
+if (!durableCodex) throw new Error('the host has no Codex CLI outside a temporary root')
+symlinkSync(durableCodex, join(durableCliRoot, 'codex'))
 const node25FixtureRoot = join(cliFixtureRoot, 'node25-bin')
 const node25Fixture = join(node25FixtureRoot, 'node')
 const incompatibleTarget = join(root, "claude home's incompatible")
 const missingTarget = join(root, "claude home's missing")
 const checkTarget = join(testHome, '.claude')
-const env = { ...process.env, HOME: testHome, PATH: `/opt/homebrew/opt/node@24/bin:${process.env.PATH || ''}` }
+const env = { ...process.env, HOME: testHome, PATH: `/opt/homebrew/opt/node@24/bin:${durableCliRoot}:${process.env.PATH || ''}` }
 const git = (cwd, args) => runFile('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: 'pipe' })
 const cloneMain = (source, destination) => {
   runFile('git', ['clone', '-q', '-b', 'main', source, destination], { encoding: 'utf8', stdio: 'pipe' })
 }
+const FILTERED = new Map([['settings.json', 'settings-clean.py'], ['agents/implementer.md', 'path-clean.py']])
+const cleanForCommit = (relative, working) => runFile(process.env.PYTHON3_RUNTIME || '/usr/bin/python3', [join(repo, 'scripts', FILTERED.get(relative)), repo], { input: working, maxBuffer: 32 * 1024 * 1024 })
 const snapshotWorkingInstaller = (source) => {
   for (const relative of ['README.md', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs']) {
-    writeFileSync(join(source, relative), readFileSync(join(repo, relative)))
+    // The clone has no clean filter, so a smudged working file would commit a host path.
+    const working = readFileSync(join(repo, relative))
+    writeFileSync(join(source, relative), FILTERED.has(relative) ? cleanForCommit(relative, working) : working)
   }
   git(source, ['add', 'README.md', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs'])
   const staged = spawnSync('git', ['-C', source, 'diff', '--cached', '--quiet'], { encoding: 'utf8' })
@@ -188,5 +201,6 @@ blockedCase('missing trusted mktemp', variantSource('missing mktemp', [
 
 rmSync(root, { recursive: true, force: true })
 rmSync(cliFixtureRoot, { recursive: true, force: true })
+rmSync(durableCliRoot, { recursive: true, force: true })
 console.log(`  ---- ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

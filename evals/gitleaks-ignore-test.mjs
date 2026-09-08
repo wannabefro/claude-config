@@ -11,9 +11,15 @@ const ignorePath = new URL('../.gitleaksignore', import.meta.url)
 const entries = readFileSync(ignorePath, 'utf8').split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'))
 const fingerprint = /^[0-9a-f]{40}:evals\/[A-Za-z0-9._/-]+\.mjs:[a-z0-9-]+:\d+$/
 let failures = 0
+let skipped = 0
 const check = (name, ok, detail = '') => {
   if (!ok) failures++
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `\n         ${detail}`}`)
+}
+// A missing binary is an unrun check, never a pass and never a regression.
+const skip = (name, reason) => {
+  skipped++
+  console.log(`  SKIP ${name}\n         ${reason}`)
 }
 
 const ignoreStatus = spawnSync('git', ['check-ignore', '-q', '--no-index', '.gitleaksignore'], { encoding: 'utf8' }).status
@@ -35,7 +41,8 @@ writeFileSync(join(repo, '.gitleaksignore'), readFileSync(ignorePath))
 const result = spawnSync('gitleaks', ['git', repo, '--redact', '--no-banner', '--report-format', 'json', '--report-path', '-', '--gitleaks-ignore-path', join(repo, '.gitleaksignore')], { encoding: 'utf8' })
 let findings = []
 try { findings = JSON.parse(result.stdout || '[]') } catch {}
-check('a different commit fingerprint for the same rule remains detectable', result.status === 1 && findings.length === 1 && findings[0].RuleID === 'github-pat' && !expected.includes(findings[0].Fingerprint), JSON.stringify({ status: result.status, findings: findings.map((finding) => finding.Fingerprint) }))
+if (result.error && result.error.code === 'ENOENT') skip('a different commit fingerprint for the same rule remains detectable', 'gitleaks is not installed on this machine')
+else check('a different commit fingerprint for the same rule remains detectable', result.status === 1 && findings.length === 1 && findings[0].RuleID === 'github-pat' && !expected.includes(findings[0].Fingerprint), JSON.stringify({ status: result.status, findings: findings.map((finding) => finding.Fingerprint) }))
 rmSync(root, { recursive: true, force: true })
-console.log(`  ---- ${failures === 0 ? 4 : 'some'} checks passed, ${failures} failed`)
+console.log(`  ---- ${4 - failures - skipped} passed, ${failures} failed, ${skipped} skipped`)
 process.exit(failures ? 1 : 0)

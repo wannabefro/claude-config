@@ -168,13 +168,16 @@ check('Open Design remains optional and manually installed', designWorkflow.incl
 check('Claude policy contains no legacy enrollment protocol', !/(?:host enrollment|enrollment receipt|HMAC|Ed25519|detached signature)/i.test(designDocs))
 check('installer reports missing Open Design as an optional action', installer.includes('Open Design app not found (optional)') && installer.includes('od mcp install claude') && !/missing Open Design[^\n]*required/i.test(installer))
 
+// Only tracked files: vendored third-party skills must not trip a policy check.
+// The policy governs what this repo ships.
 const readTree = (directory) => {
-  const walk = (relativeDirectory) => readdirSync(new URL(`../${relativeDirectory}/`, import.meta.url), { withFileTypes: true })
-    .flatMap((entry) => {
-      const relativePath = `${relativeDirectory}/${entry.name}`
-      return entry.isDirectory() ? walk(relativePath) : [read(relativePath)]
-    })
-  return walk(directory).join('\u0000')
+  let listed = ''
+  try {
+    listed = execFileSync('git', ['ls-files', '-z', '--', directory], { cwd: configRoot, encoding: 'utf8' })
+  } catch {
+    return ''
+  }
+  return listed.split('\u0000').filter(Boolean).map(read).join('\u0000')
 }
 const integrationSurfaces = [
   readme,
@@ -234,10 +237,11 @@ const isExecutableFile = (candidate) => {
     return false
   }
 }
-const authorizedCodex = hostPathEntries
-  .map((entry) => join(entry, 'codex'))
+// A cmux shim under TMPDIR often wins PATH, and the preflight rejects it.
+// Mirror the preflight's order.
+const authorizedCodex = [join(homedir(), '.local', 'bin', 'codex'), ...hostPathEntries.map((entry) => join(entry, 'codex'))]
   .find((candidate) => isExecutableFile(candidate))
-if (!authorizedCodex) throw new Error('the host PATH has no executable Codex CLI')
+if (!authorizedCodex) throw new Error('the host has no executable Codex CLI')
 const authorizedCodexRealpath = realpathSync(authorizedCodex)
 // Keep Codex bound to the original PATH winner. The eval Node directory is
 // added only afterward so the installer can find the Node runtime used here.
@@ -257,6 +261,7 @@ codexIsolationBin = mkdtempSync(join(fixtureParent, 'claude-policy-codex-safe-')
 const codexIsolationLink = join(codexIsolationBin, 'codex')
 symlinkSync(authorizedCodex, codexIsolationLink)
 if (realpathSync(codexIsolationLink) !== authorizedCodexRealpath) throw new Error('Codex isolation link does not resolve to the existing CLI')
+check('the pinned Codex resolves outside every temporary root', !temporaryRoots.some((rootPath) => isUnder(authorizedCodexRealpath, rootPath)), authorizedCodexRealpath)
 const claudeFreePathEntries = testPathEntries.filter((entry) => !isExecutableFile(join(entry, 'claude')))
 const requiredPathTools = ['git', 'gh', 'node', 'perl', 'rg', 'jq', 'python3']
 for (const tool of requiredPathTools) {
@@ -270,7 +275,7 @@ const designCheckEnv = {
   HOME: designCheckHome,
   OD_MARKER: designCheckMarker,
   CLAUDE_MARKER: designCheckClaudeMarker,
-  PATH: `${designCheckBin}:${testPathEntries.join(':')}`,
+  PATH: `${designCheckBin}:${codexIsolationBin}:${testPathEntries.join(':')}`,
 }
 const runDesignCheck = (env = designCheckEnv) => {
   try {
