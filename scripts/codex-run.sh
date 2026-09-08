@@ -201,7 +201,7 @@ run_once() {
     # Output is buffered, so without this the caller cannot tell a working run
     # from a hung one and kills a healthy pass. Measured: that happened twice.
     if [ $((elapsed % 30)) -eq 0 ]; then
-      echo "codex-run: Sol xhigh, ${elapsed}s elapsed, ${now} bytes, ${quiet}s quiet" >&2
+      echo "codex-run: $REVIEW_MODEL $REVIEW_EFFORT, ${elapsed}s elapsed, ${now} bytes, ${quiet}s quiet" >&2
     fi
     if [ "$quiet" -ge "$STALL" ]; then
       kill_group
