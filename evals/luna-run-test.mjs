@@ -44,17 +44,31 @@ if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
   printf '%s\\n' '  -m, --model <MODEL>'
   printf '%s\\n' '  -s, --sandbox <SANDBOX_MODE>'
   printf '%s\\n' '  [possible values: read-only, workspace-write, danger-full-access]'
-  printf '%s\\n' '  --approve-for-me  --ephemeral  --ignore-user-config  -C, --cd <DIR>'
+  printf '%s\\n' '  --approve-for-me  --ephemeral  --ignore-user-config  --output-last-message <FILE>  -C, --cd <DIR>'
   exit 0
 fi
 : > "$FAKE_ARGS"
-for arg in "$@"; do printf '%s\\n' "$arg" >> "$FAKE_ARGS"; done
+last=''
+previous=''
+for arg in "$@"; do
+  printf '%s\\n' "$arg" >> "$FAKE_ARGS"
+  if [ "$previous" = '--output-last-message' ]; then last="$arg"; fi
+  previous="$arg"
+done
 if [ -n "\${GROUP_FILE:-}" ]; then /usr/bin/perl -e 'print "$$ ", getpgrp(), "\\n"' > "$GROUP_FILE"; fi
 if [ -n "\${CHILD_PID_FILE:-}" ]; then
   (/bin/sleep "\${CHILD_DELAY:-3}"; printf '%s\\n' descendant-survived > "$CHILD_MARK") &
   printf '%s\\n' "$!" > "$CHILD_PID_FILE"
 fi
 /bin/cat > "$FAKE_STDIN"
+if [ -n "\${last:-}" ]; then
+  case "\${FAKE_LAST_MESSAGE:-nonempty}" in
+    missing) ;;
+    empty) : > "$last" ;;
+    whitespace) printf '  \n' > "$last" ;;
+    *) printf '%s\n' 'assistant result' > "$last" ;;
+  esac
+fi
 if [ "\${FAKE_SLEEP:-0}" -gt 0 ]; then /bin/sleep "$FAKE_SLEEP"; fi
 exit "\${FAKE_EXIT:-0}"
 `)
@@ -99,6 +113,7 @@ check('wrapper preserves prompt bytes through stdin', received.equals(promptByte
 check('wrapper invokes noninteractive Codex exec', args[0] === 'exec' && args.at(-1) === '-', args.join(' | '))
 check('wrapper pins Luna model', args.includes('gpt-5.6-luna'), args.join(' | '))
 check('wrapper pins medium effort', args.includes('model_reasoning_effort=medium'), args.join(' | '))
+check('wrapper captures the authoritative last message', args.includes('--output-last-message'), args.join(' | '))
 // Codex >= 0.152.0 rejects --sandbox beside --approve-for-me, which itself selects workspace-write.
 check('wrapper takes workspace-write from --approve-for-me and passes no explicit sandbox', args.includes('--approve-for-me') && !args.includes('--sandbox') && !args.includes('-s'), args.join(' | '))
 check('wrapper pins review approval', args.includes('--approve-for-me'), args.join(' | '))
@@ -121,6 +136,32 @@ check('wrapper ignores PATH shims for control utilities while using the intended
 let runtimeCode = 0
 try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status }
 check('runtime failure has a distinct exit code', runtimeCode === 70, `got ${runtimeCode}`)
+
+let emptyCode = 0
+try { run({ FAKE_LAST_MESSAGE: 'empty' }) } catch (error) { emptyCode = error.status }
+check('empty last message is a failed empty pass', emptyCode === 75, `got ${emptyCode}`)
+
+let whitespaceCode = 0
+try { run({ FAKE_LAST_MESSAGE: 'whitespace' }) } catch (error) { whitespaceCode = error.status }
+check('whitespace-only last message is a failed empty pass', whitespaceCode === 75, `got ${whitespaceCode}`)
+
+let nonemptyCode = 0
+try { run({ FAKE_LAST_MESSAGE: 'nonempty' }) } catch (error) { nonemptyCode = error.status }
+check('non-empty last message succeeds', nonemptyCode === 0, `got ${nonemptyCode}`)
+
+let stallCode = 0
+let stallError = ''
+try { run({ FAKE_SLEEP: '3', LUNA_RUN_TIMEOUT_SECONDS: '5', LUNA_RUN_STALL_SECONDS: '1' }) } catch (error) { stallCode = error.status; stallError = error.stderr?.toString() || '' }
+check('stall watcher has a distinct exit code', stallCode === 76 && stallError.includes('stalled'), `code=${stallCode} stderr=${stallError}`)
+
+let hardTimeoutCode = 0
+let hardTimeoutError = ''
+try { run({ FAKE_SLEEP: '120', LUNA_RUN_TIMEOUT_SECONDS: '31', LUNA_RUN_STALL_SECONDS: '31' }) } catch (error) { hardTimeoutCode = error.status; hardTimeoutError = error.stderr?.toString() || '' }
+check('hard timeout has a distinct exit code and message', hardTimeoutCode === 124 && hardTimeoutError.includes('hard timeout'), `code=${hardTimeoutCode} stderr=${hardTimeoutError}`)
+check('heartbeat reports Luna progress on stderr', hardTimeoutError.includes('luna-run: gpt-5.6-luna medium, 30s elapsed'), hardTimeoutError)
+
+const wrapperSource = readFileSync(wrapper, 'utf8')
+check('wrapper source keeps the integer guard on the wc reading', wrapperSource.includes("''|[!0-9]*|[0-9]*[!0-9]*) ;;"), 'missing non-integer wc guard')
 
 const childPidFile = join(root, 'child-pid')
 const childMark = join(root, 'child-mark')

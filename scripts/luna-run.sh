@@ -13,8 +13,9 @@ MISSING_RUNTIME=69
 RUNTIME_FAILURE=70
 TIMEOUT_FAILURE=124
 PREFLIGHT_FAILURE=68
-# Codex exits 0 with this in the body, so an unfunded run reads as a success
-# that wrote nothing. codex-run.sh catches the same phrase and exits 6.
+EMPTY_RESULT=75
+STALLED=76
+# Codex exits 0 with this phrase, so an unfunded run looks successful.
 REFUSED=77
 
 if [ "$#" -ne 2 ]; then
@@ -29,9 +30,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" 2>/dev/null && pwd -P)
   echo "luna-run: wrapper directory could not be resolved" >&2
   exit "$MISSING_RUNTIME"
 }
-# Keep CLI discovery, version validation, and capability checks identical to
-# the installer and the read-only review wrapper. The helper resolves one
-# realpath and exports it for the exact exec below.
+# Keep discovery and capability checks identical across Codex routes.
 source "$SCRIPT_DIR/codex-preflight.sh" || {
   echo "luna-run: shared Codex preflight is unavailable" >&2
   exit "$MISSING_RUNTIME"
@@ -75,7 +74,7 @@ if [ "$TIMEOUT_SECONDS" -lt 1 ] || [ "$TIMEOUT_SECONDS" -gt 3600 ]; then
   echo "luna-run: timeout must be between 1 and 3600 seconds" >&2
   exit "$USAGE"
 fi
-# The default clamps to the hard timeout; an explicit value above it still fails below.
+# The default clamps to the hard timeout; larger explicit values fail below.
 if [ -z "$STALL_SECONDS" ]; then
   STALL_SECONDS=120
   [ "$TIMEOUT_SECONDS" -lt "$STALL_SECONDS" ] && STALL_SECONDS=$TIMEOUT_SECONDS
@@ -91,8 +90,7 @@ if [ "$STALL_SECONDS" -gt "$TIMEOUT_SECONDS" ]; then
   exit "$USAGE"
 fi
 
-# Resolve the directory before the child starts. This rejects a path that looks
-# valid but cannot become the requested working root.
+# Resolve the directory before the child starts to reject unusable roots.
 if ! WORKING_DIRECTORY=$(cd "$WORKING_DIRECTORY" 2>/dev/null && pwd -P); then
   echo "luna-run: cannot resolve working directory" >&2
   exit "$USAGE"
@@ -102,11 +100,7 @@ process_group() {
   "$PERL_BIN" -e 'my $group = getpgrp(shift); print $group if defined $group && $group >= 0' "$1" 2>/dev/null || true
 }
 
-# `--approve-for-me` uses Codex review approval with the workspace-write
-# sandbox. `--ignore-user-config` keeps user MCP servers out of this fixed
-# implementation lane while continuing to use auth from CODEX_HOME.
-# The watcher owns the child process group: a timed-out Codex process cannot
-# leave a descendant alive to keep writing in the private worktree.
+# Approval selects workspace-write; ignored config fixes the lane, and the watcher owns descendants.
 run_dir=$("$CODEX_PREFLIGHT_MKTEMP" -d "${TMPDIR:-/tmp}/claude-luna-run.XXXXXXXX") || {
   echo "luna-run: private runtime directory could not be created" >&2
   exit "$MISSING_RUNTIME"
@@ -119,6 +113,7 @@ if [ "$run_owner" != "$("$CODEX_PREFLIGHT_ID" -u)" ] || [ "$run_mode" != '700' ]
   exit "$MISSING_RUNTIME"
 fi
 out="$run_dir/output"
+last_message="$run_dir/last-message"
 preflight_failure="$run_dir/preflight-failure"
 cleanup_out() {
   if [ -n "${run_dir:-}" ] && [ -d "$run_dir" ] && [ ! -L "$run_dir" ]; then
@@ -139,6 +134,7 @@ trap cleanup_out EXIT HUP INT TERM
     --ignore-user-config \
     -c 'model_reasoning_effort=medium' \
     -C "$WORKING_DIRECTORY" \
+    --output-last-message "$last_message" \
     - < "$PROMPT_FILE"
 ) > "$out" 2>&1 &
 child_pid=$!
@@ -150,9 +146,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   "$CODEX_PREFLIGHT_SLEEP" 0.05
 done
 kill_group() {
-  # The background subshell briefly shares the caller's group before Perl's
-  # setpgrp runs. Refresh at the point of termination so a slow exec cannot
-  # force the unsafe PID-only fallback.
+  # Refresh the group before termination because the subshell initially shares the caller's group.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     local current_group
     current_group=$(process_group "$child_pid")
@@ -170,9 +164,7 @@ kill_group() {
       kill -KILL "$kid" 2>/dev/null || true
     done
   }
-  # Keep the recursive fallback even when a process-group id was observed: a
-  # provider may daemonize or deliberately create a new session, in which case
-  # that descendant is outside the original group.
+  # Keep recursive cleanup because daemonized descendants may create a new session outside the group.
   kill_descendants "$child_pid"
   if [[ "$child_group" =~ ^[0-9]+$ ]] && [ "$child_group" != '0' ] && [ "$child_group" != "$self_group" ]; then
     kill -TERM -- "-$child_group" 2>/dev/null || true
@@ -197,23 +189,31 @@ while kill -0 "$child_pid" 2>/dev/null; do
   "$CODEX_PREFLIGHT_SLEEP" 1
   elapsed=$((elapsed + 1))
   now_bytes=$("$CODEX_PREFLIGHT_WC" -c < "$out" | "$CODEX_PREFLIGHT_TR" -d ' ')
-  if [ "$now_bytes" -gt "$last_bytes" ]; then
-    last_bytes=$now_bytes
-    quiet_seconds=0
-  else
-    quiet_seconds=$((quiet_seconds + 1))
+  case "$now_bytes" in
+    ''|[!0-9]*|[0-9]*[!0-9]*) ;;
+    *)
+      if [ "$now_bytes" -gt "$last_bytes" ]; then
+        last_bytes=$now_bytes
+        quiet_seconds=0
+      else
+        quiet_seconds=$((quiet_seconds + 1))
+      fi
+      ;;
+  esac
+  if [ $((elapsed % 30)) -eq 0 ]; then
+    echo "luna-run: gpt-5.6-luna medium, ${elapsed}s elapsed, ${now_bytes:-$last_bytes} bytes, ${quiet_seconds}s quiet" >&2
   fi
   if [ "$elapsed" -ge "$TIMEOUT_SECONDS" ]; then
     kill_group
     wait "$child_pid" 2>/dev/null || true
-    echo "luna-run: Codex implementation timed out; private process group was terminated and reaped" >&2
+    echo "luna-run: Codex implementation hard timeout fired; private process group was terminated and reaped" >&2
     exit "$TIMEOUT_FAILURE"
   fi
   if [ "$STALL_SECONDS" -gt 0 ] && [ "$quiet_seconds" -ge "$STALL_SECONDS" ]; then
     kill_group
     wait "$child_pid" 2>/dev/null || true
     echo "luna-run: Codex implementation stalled; private process group was terminated and reaped" >&2
-    exit "$TIMEOUT_FAILURE"
+    exit "$STALLED"
   fi
 done
 wait "$child_pid" 2>/dev/null
@@ -228,6 +228,10 @@ if "$CODEX_PREFLIGHT_GREP" -qiF 'workspace is out of credits' "$out"; then
   exit "$REFUSED"
 fi
 if [ "$status" -eq 0 ]; then
+  if [ ! -s "$last_message" ] || ! "$CODEX_PREFLIGHT_AWK" 'NF { found=1; exit } END { exit(found ? 0 : 1) }' "$last_message"; then
+    echo "luna-run: empty pass implemented nothing; last-message file is empty or missing: $last_message" >&2
+    exit "$EMPTY_RESULT"
+  fi
   exit 0
 fi
 echo "luna-run: Codex implementation failed" >&2

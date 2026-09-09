@@ -121,7 +121,7 @@ check('Luna wrapper pins safe approval and sandbox', wrapper.includes('--approve
 check('Luna wrapper disables inherited MCP config', wrapper.includes('--ignore-user-config') && !wrapper.includes("mcp_servers={}"))
 check('Luna wrapper rejects dangerous bypass flags', !wrapper.includes('dangerously-bypass'))
 check('Luna wrapper rejects arbitrary binary overrides', !wrapper.includes('CODEX_BIN=${') && !wrapper.includes('PERL_BIN=${'))
-check('all Codex routes share the one fail-closed preflight', existsSync(new URL('../scripts/codex-preflight.sh', import.meta.url)) && installer.includes('codex_preflight all') && wrapper.includes('codex_preflight writer') && codexRun.includes('codex_preflight review') && preflight.includes('codex-cli') && preflight.includes('exec --help'))
+check('all Codex routes share the one fail-closed preflight', existsSync(new URL('../scripts/codex-preflight.sh', import.meta.url)) && installer.includes('codex_preflight all') && wrapper.includes('codex_preflight writer') && wrapper.includes('--output-last-message') && codexRun.includes('codex_preflight review') && preflight.includes('codex-cli') && preflight.includes('exec --help') && preflight.includes('writer surface') && preflight.includes('--output-last-message'))
 check('Codex wrappers use fixed absolute control utilities', [
   'CODEX_PREFLIGHT_MKTEMP=/usr/bin/mktemp',
   'CODEX_PREFLIGHT_STAT=/usr/bin/stat',

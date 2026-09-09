@@ -26,9 +26,12 @@ import argparse, pathlib, re, subprocess, sys
 
 SUFFIX = {".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".tsx",
           ".swift", ".go", ".rs", ".java", ".kt", ".rb", ".yaml", ".yml"}
+BLOCK_COMMENT_SUFFIX = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".swift", ".go",
+                        ".rs", ".java", ".kt"}
 SKIP_PART = {"node_modules", "__pycache__", ".git", "dist", "build", "target",
              "coverage", "vendor", "plugins", ".venv"}
 MARKER = re.compile(r"^\s*(#|//|/\*|\*/|\*(?!\w))")
+HASH_MARKER = re.compile(r"^\s*#")
 SHEBANG = re.compile(r"^#!")
 DIRECTIVE = re.compile(
     r"^\s*(#|//)\s*("
@@ -82,24 +85,30 @@ def expand_docstrings(text):
     return "\n".join(out)
 
 
-def header_end(text):
+def marker_for(language):
+    return MARKER if language in BLOCK_COMMENT_SUFFIX else HASH_MARKER
+
+
+def header_end(text, language=None):
     """Last line of the leading header block, the shell analogue of a docstring."""
+    marker = marker_for(language)
     end = 0
     for lineno, line in enumerate(text.split("\n"), 1):
         if not line.strip() or SHEBANG.match(line):
             continue
-        if MARKER.match(line):
+        if marker.match(line):
             end = lineno
             continue
         break
     return end
 
 
-def section_lines(text):
+def section_lines(text, language=None):
     """Lines inside a Google-style docstring section, exempt from block and word limits."""
+    marker = marker_for(language)
     out, in_section = set(), False
     for lineno, line in enumerate(text.split("\n"), 1):
-        if not line.strip() or not MARKER.match(line):
+        if not line.strip() or not marker.match(line):
             in_section = False
             continue
         if SECTION.match(strip_marker(line)):
@@ -109,13 +118,14 @@ def section_lines(text):
     return out
 
 
-def scan(text):
+def scan(text, language=None):
     if OPT_OUT.search(text):
         return {"comment_lines": 0, "code_lines": 0, "density": 0.0,
                 "blocks": [], "verbose": [], "ignored": True}
+    marker = marker_for(language)
     text = expand_docstrings(text)
-    head = header_end(text)
-    sect = section_lines(text)
+    head = header_end(text, language)
+    sect = section_lines(text, language)
     density_c = density_k = 0
     run = 0
     blocks, verbose = [], []
@@ -123,7 +133,7 @@ def scan(text):
     for lineno, line in enumerate(text.split("\n"), 1):
         if SHEBANG.match(line):
             continue
-        if MARKER.match(line):
+        if marker.match(line):
             if DIRECTIVE.match(line):
                 continue
             if lineno not in sect:
@@ -143,7 +153,7 @@ def scan(text):
     run = 0
     group = []
     for lineno, line in enumerate(text.split("\n"), 1):
-        is_c = (bool(MARKER.match(line)) and not SHEBANG.match(line)
+        is_c = (bool(marker.match(line)) and not SHEBANG.match(line)
                 and not DIRECTIVE.match(line) and lineno not in sect)
         if is_c:
             group.append((lineno, strip_marker(line)))
@@ -204,7 +214,7 @@ def staged_added(repo):
             ["git", "-C", repo, "diff", "--cached", "--unified=0", "--", name],
             capture_output=True, text=True).stdout
         # A fragment has no header, so a header edit reads as a top-of-file block.
-        head = header_end(staged)
+        head = header_end(staged, pathlib.Path(name).suffix)
         added, saw, lineno = [], False, 0
         for line in diff.split("\n"):
             if line.startswith("@@"):
@@ -229,7 +239,7 @@ def report(named, max_density):
     bad = 0
     print(f"{'density':>8} {'cmt':>5} {'code':>5} {'blk':>4} {'long':>5}  file")
     for name, text in named:
-        r = scan(text)
+        r = scan(text, pathlib.Path(name).suffix)
         sizeable = r["comment_lines"] + r["code_lines"] >= 10
         flag = ((r["density"] > max_density and sizeable) or r["blocks"] or r["verbose"])
         if not flag and not sizeable:
@@ -327,6 +337,13 @@ not a docstring, just a literal
 '''
 
 
+SHELL_CASES = '''case "$value" in
+*[!0-9.]*|*.*.*.*) codex_preflight_report '...'; return 1 ;;
+*.*.*) ;;
+*) codex_preflight_report '...'; return 1 ;;
+'''
+
+
 def staged_self_test():
     """Stage a header edit and a body edit in a throwaway repo, then read both back."""
     import tempfile
@@ -375,6 +392,14 @@ def self_test():
     assert a["comment_lines"] == 0, f"an assigned literal is not a docstring: {a}"
     u = scan('def f():\n    """unterminated in a diff fragment\n')
     assert u["comment_lines"] == 0, f"an unterminated docstring is left alone: {u}"
+    cases = scan(SHELL_CASES, ".sh")
+    assert cases["comment_lines"] == 0 and cases["blocks"] == [], cases
+    block = scan("x;\n/* one\n * two\n * three\n */", ".ts")
+    assert len(block["blocks"]) == 1, f"C-style continuation lines remain comments: {block}"
+    slash_ts = scan("// note\n", ".ts")
+    slash_sh = scan("// note\n", ".sh")
+    assert slash_ts["comment_lines"] == 1, slash_ts
+    assert slash_sh["comment_lines"] == 0 and slash_sh["code_lines"] == 1, slash_sh
     d = scan(DIRTY)
     assert len(d["blocks"]) == 1, d
     assert d["blocks"][0][1] == 4, d

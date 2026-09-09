@@ -256,8 +256,7 @@ codex_preflight() {
     *) codex_preflight_usage; return 2 ;;
   esac
 
-  # Clear inherited values first. In particular, CODEX_BIN is never an input
-  # override; only the path discovered below may populate it.
+  # Clear inherited values; only the discovered path may populate CODEX_BIN.
   CODEX_BIN=''
   CODEX_VERSION=''
   CODEX_FS_ID=''
@@ -297,9 +296,7 @@ codex_preflight() {
   CODEX_FS_ID_INITIAL=$CODEX_FS_ID
   CODEX_DIGEST_INITIAL=$CODEX_DIGEST
 
-  # Keep stdout separate from stderr. Codex may print harmless host warnings
-  # on stderr; the version value itself must still be exactly one stable
-  # `codex-cli X.Y.Z` line. The alarm bounds a wedged executable.
+  # Keep warnings off stdout; require one stable version line and bound the probe.
   CODEX_VERSION=''
   version_output=$("$CODEX_PREFLIGHT_PERL" -e 'alarm shift; exec @ARGV' 10 "$CODEX_BIN" --version 2>/dev/null) || {
     codex_preflight_report 'selected Codex CLI failed its bounded --version probe'
@@ -312,9 +309,7 @@ codex_preflight() {
       return 1
       ;;
   esac
-  # The shell glob above establishes the shape; split and validate every
-  # component so prereleases, builds, extra components, and leading zeroes do
-  # not sneak through as a stable release.
+  # Validate each component so prereleases, builds, extras, and zeroes fail.
   CODEX_VERSION=${version_output#codex-cli }
   case "$CODEX_VERSION" in
     *[!0-9.]*|*.*.*.*) codex_preflight_report 'selected Codex CLI returned malformed or non-stable version output'; return 1 ;;
@@ -332,9 +327,7 @@ codex_preflight() {
     return 1
   fi
 
-  # Help is the capability contract, not a version guess. Check the exact
-  # flags and sandbox values used by the wrappers, so a future CLI with a high
-  # version but a missing surface fails closed.
+  # Help is the capability contract; check wrapper flags so missing surfaces fail closed.
   help_output=$("$CODEX_PREFLIGHT_PERL" -e 'alarm shift; exec @ARGV' 10 "$CODEX_BIN" exec --help 2>&1) || {
     codex_preflight_report 'selected Codex CLI failed its bounded exec help probe'
     return 1
@@ -361,8 +354,9 @@ codex_preflight() {
     if ! codex_preflight_has '(^|[[:space:]])--approve-for-me([[:space:]]|$)' ||
       ! codex_preflight_has '(^|[[:space:]])--ephemeral([[:space:]]|$)' ||
       ! codex_preflight_has '(^|[[:space:]])-C([,[:space:]]|$)' ||
+      ! codex_preflight_has '(^|[[:space:]])--output-last-message([[:space:]]|$)' ||
       ! codex_preflight_has '(^|[[:space:]])workspace-write([[:space:]]|[,.)]|$)'; then
-      codex_preflight_report 'selected Codex CLI lacks a required writer surface (--approve-for-me, --ephemeral, -C, or workspace-write sandbox)'
+      codex_preflight_report 'selected Codex CLI lacks a required writer surface (--approve-for-me, --ephemeral, -C, --output-last-message, or workspace-write sandbox)'
       return 1
     fi
   fi

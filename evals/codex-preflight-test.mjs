@@ -197,8 +197,12 @@ for (const version of [
   const result = runPreflight('all', version)
   check(`rejects unsupported version output ${version}`, result.status !== 0 && result.output.includes(fakeReal), result.output)
 }
+const dottedVersionResults = ['codex-cli ..4.', 'codex-cli .9.11.27'].map((version) => runPreflight('all', version))
+check('a leading or doubled dot in the version is rejected as non-stable', dottedVersionResults.every((result) => result.status !== 0 && result.output.includes(fakeReal) && result.output.includes('malformed or non-stable')), dottedVersionResults.map((result) => result.output).join('\n'))
 const missingWriter = runPreflight('all', 'codex-cli 99.4.2', reviewOnlyHelp)
 check('a high stable version missing one writer flag fails closed', missingWriter.status !== 0 && missingWriter.output.includes('required writer surface'), missingWriter.output)
+const missingWriterResultCapture = runPreflight('writer', 'codex-cli 99.4.2', fullHelp.replace('  --output-last-message <FILE>\n', ''))
+check('a writer lane requires last-message capture', missingWriterResultCapture.status !== 0 && missingWriterResultCapture.output.includes('--output-last-message'), missingWriterResultCapture.output)
 const reviewPass = runPreflight('review', 'codex-cli 99.4.2', reviewOnlyHelp)
 check('a review lane checks only its required review surface', reviewPass.status === 0, reviewPass.output)
 const missingReview = runPreflight('review', 'codex-cli 99.4.2', fullHelp.replace('  --output-last-message <FILE>\n', ''))

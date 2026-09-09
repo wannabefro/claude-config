@@ -21,7 +21,9 @@ Branch on its exit code:
 |---|---|
 | 0 | Luna wrote it; verify and integrate |
 | 68 preflight, 69 runtime missing, 77 refused for credits | dispatch the same frozen unit to a Sonnet `implementer` |
-| 124 stalled | retry once per `codex-exec-recovery`, then fall back the same way |
+| 75 empty result | report a real failure; do not trigger a Sonnet fallback |
+| 76 stalled | retry once per `codex-exec-recovery`, then fall back to Sonnet |
+| 124 hard timeout | the unit is too large; decompose it rather than retry |
 | 64 usage, 70 runtime failure | fix the call or the unit; a fallback hides a real defect |
 
 Say which writer produced the code. "Luna was out of credits, so Sonnet wrote
