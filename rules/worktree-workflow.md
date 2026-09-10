@@ -12,9 +12,20 @@ wt merge main            # commit + merge back + remove worktree & branch + cd h
 Also `wt list`, `wt switch <name>` (existing), `wt remove`. worktrunk has **no branch-prefix setting**
 — type the prefix yourself (these examples use initials); it's convention, not config.
 
-Every worktree lead has auto teammate mode on, but it self-gates. For side reasoning whose output
-shouldn't persist, prefer `Agent`-tool subagents over teammates — ephemeral, and raw output stays out
-of context.
+Every worktree lead has auto teammate mode on, but it self-gates. Prefer `Agent`-tool subagents over
+teammates for two reasons, and the second is the load-bearing one.
+
+1. A subagent is ephemeral, so its raw output stays out of context.
+2. **A subagent returns its report to the caller. A teammate does not.** A teammate signals idle, and
+   since CLI 2.1.251 its final answer rides in that idle notification. When the teammate ends its turn
+   with no final message, the notification is empty and the lead must ask for the report by hand.
+
+Measured over 306 dispatches on this machine: 190 were `in_process_teammate` and 116 were `Agent`-tool
+subagents. The subagents returned a report 113 of 114 times; the single miss was a stall. So "the agent
+went idle without delivering its report" is teammate semantics, not a broken agent.
+
+**Give every dispatch an explicit output contract.** Name the exact fields to return. A brief that only
+describes work lets a worker end its turn on a tool call, which is what produces an empty notification.
 
 ## Session boundaries
 
