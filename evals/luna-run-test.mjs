@@ -25,7 +25,7 @@ const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-luna-run-safe-'))
 const fake = join(fixtureRoot, 'codex')
 const hostileRoot = mkdtempSync(join(tmpdir(), 'claude-luna-run-hostile-'))
 const hostileMarker = join(hostileRoot, 'invoked')
-const hostileUtilities = ['mktemp', 'stat', 'id', 'rm', 'cat', 'ps', 'tr', 'wc', 'awk', 'grep', 'pgrep', 'find', 'sleep', 'shasum', 'realpath', 'perl']
+const hostileUtilities = ['mktemp', 'stat', 'id', 'rm', 'cat', 'ps', 'tr', 'wc', 'awk', 'grep', 'pgrep', 'find', 'sleep', 'shasum', 'realpath', 'perl', 'date']
 for (const utility of hostileUtilities) {
   const shim = join(hostileRoot, utility)
   writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' '${utility}' >> \"$HOSTILE_MARKER\"\nexit 99\n`)
@@ -61,6 +61,10 @@ if [ -n "\${CHILD_PID_FILE:-}" ]; then
   printf '%s\\n' "$!" > "$CHILD_PID_FILE"
 fi
 /bin/cat > "$FAKE_STDIN"
+if [ "\${FAKE_REFUSED:-0}" = 1 ]; then
+  printf '%s\\n' 'workspace is out of credits'
+  exit "\${FAKE_EXIT:-0}"
+fi
 if [ -n "\${last:-}" ]; then
   case "\${FAKE_LAST_MESSAGE:-nonempty}" in
     missing) ;;
@@ -185,6 +189,42 @@ check('missing CLI has a distinct exit code', missingCode === 69, `got ${missing
 let inputCode = 0
 try { execFileSync(wrapper, [join(root, 'missing-brief'), work], { cwd: work, env }) } catch (error) { inputCode = error.status }
 check('invalid prompt input has a distinct exit code', inputCode === 64, `got ${inputCode}`)
+
+// Refusal cache: each case gets its own TMPDIR so its marker cannot leak into another case.
+const refusalMarker = (dir) => join(dir, 'claude-codex-refused')
+const nowEpoch = () => Math.floor(Date.now() / 1000)
+
+const refusalRoot1 = mkdtempSync(join(root, 'refusal-'))
+let refusalWriteCode = 0
+try { run({ FAKE_REFUSED: '1', TMPDIR: refusalRoot1 }) } catch (error) { refusalWriteCode = error.status }
+check('a refusal writes the marker', refusalWriteCode === 77 && existsSync(refusalMarker(refusalRoot1)), `code=${refusalWriteCode} exists=${existsSync(refusalMarker(refusalRoot1))}`)
+
+const refusalRoot2 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot2), `${nowEpoch()} writer test\n`)
+rmSync(argsFile, { force: true })
+let cachedCode = 0
+let cachedStderr = ''
+try { run({ TMPDIR: refusalRoot2 }) } catch (error) { cachedCode = error.status; cachedStderr = error.stderr?.toString() || '' }
+check('a fresh marker exits 77 without invoking the fake CLI', cachedCode === 77 && !existsSync(argsFile), `code=${cachedCode} argsExists=${existsSync(argsFile)}`)
+check('the cached-refusal message names the override', cachedStderr.includes('CODEX_IGNORE_REFUSAL=1'), cachedStderr)
+
+const refusalRoot3 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot3), '1 writer old-test\n')
+let expiredCode = 0
+try { run({ TMPDIR: refusalRoot3 }) } catch (error) { expiredCode = error.status }
+check('an expired marker lets the run proceed', expiredCode === 0, `got ${expiredCode}`)
+
+const refusalRoot4 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot4), '1 writer old-test\n')
+let successCode = 0
+try { run({ TMPDIR: refusalRoot4 }) } catch (error) { successCode = error.status }
+check('a successful run clears the marker', successCode === 0 && !existsSync(refusalMarker(refusalRoot4)), `code=${successCode}`)
+
+const refusalRoot5 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot5), `${nowEpoch()} writer test\n`)
+let bypassCode = 0
+try { run({ TMPDIR: refusalRoot5, CODEX_IGNORE_REFUSAL: '1' }) } catch (error) { bypassCode = error.status }
+check('CODEX_IGNORE_REFUSAL=1 runs even with a fresh marker', bypassCode === 0, `got ${bypassCode}`)
 
 rmSync(root, { recursive: true, force: true })
 rmSync(fixtureRoot, { recursive: true, force: true })

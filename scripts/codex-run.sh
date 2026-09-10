@@ -105,6 +105,12 @@ if ! codex_preflight review; then
 fi
 PERL_BIN="$CODEX_PREFLIGHT_PERL"
 
+if [ "${CODEX_IGNORE_REFUSAL:-}" != 1 ] && codex_preflight_refusal_fresh; then
+  echo "codex-run: cached Codex refusal is ${CODEX_REFUSAL_AGE}s old; skipping this dispatch" >&2
+  echo "codex-run: set CODEX_IGNORE_REFUSAL=1 to force a retry" >&2
+  exit 6
+fi
+
 SECRET_SCANNER="$SCRIPT_DIR/review-secret-scan.sh"
 [ -x "$SECRET_SCANNER" ] || { echo 'codex-run: cross-provider secret scanner unavailable; refusing transfer.' >&2; exit 3; }
 if [ -n "$BUNDLE" ]; then
@@ -158,9 +164,8 @@ run_once() {
   : > "$out"
   : > "$last_message"
   "$CODEX_PREFLIGHT_RM" -f "$preflight_failure"
-  # Scan the exact bytes that will be sent on stdin, immediately before every
-  # Codex exec. Bundle and brief scans above are useful preflight checks, but
-  # neither is a substitute for this final payload check.
+  # Scan the exact stdin bytes immediately before every Codex exec.
+  # The bundle and brief scans above do not replace it.
   if ! "$SECRET_SCANNER" --file "$prompt_input" >/dev/null; then return 98; fi
   (
     cd "$DIR" || exit 1
@@ -198,8 +203,7 @@ run_once() {
     elapsed=$((elapsed+5))
     local now; now=$("$CODEX_PREFLIGHT_WC" -c < "$out" | "$CODEX_PREFLIGHT_TR" -d ' ')
     if [ "$now" -gt "$last" ]; then last="$now"; quiet=0; else quiet=$((quiet+5)); fi
-    # Output is buffered, so without this the caller cannot tell a working run
-    # from a hung one and kills a healthy pass. Measured: that happened twice.
+    # Output is buffered, so this heartbeat is the only way to tell a hung run from a live one.
     if [ $((elapsed % 30)) -eq 0 ]; then
       echo "codex-run: $REVIEW_MODEL $REVIEW_EFFORT, ${elapsed}s elapsed, ${now} bytes, ${quiet}s quiet" >&2
     fi
@@ -214,8 +218,8 @@ run_once() {
   if [ -e "$preflight_failure" ]; then
     return 100
   fi
-  # Perl's alarm kills the leader at the hard timeout; reap the whole private
-  # process group so descendants cannot survive a timeout.
+  # Perl's alarm kills the leader at the timeout. Reap the
+  # whole process group so descendants cannot survive.
   if [ "$rc" -eq 142 ]; then kill_group; fi
   return "$rc"
 }
@@ -257,6 +261,7 @@ if [ "$rc" -ne 0 ]; then
 fi
 
 if refused; then
+  codex_preflight_record_refusal review 'workspace spend cap'
   echo "codex-run: REFUSED — the provider returned no capacity, not a review." >&2
   echo "codex-run: this does NOT satisfy a cross-model pass. Report the gap." >&2
   "$CODEX_PREFLIGHT_CAT" "$out" >&2
@@ -270,8 +275,8 @@ if ! answered; then
   exit 5
 fi
 
-# The provider's transport stream contains headers, telemetry, and sometimes
-# echoed input. Only the explicit assistant-result file is authoritative and
-# may be returned on stdout to the caller.
+# The transport stream carries headers, telemetry, and echoed input.
+# Only the assistant-result file is authoritative output.
+codex_preflight_clear_refusal
 "$CODEX_PREFLIGHT_CAT" "$last_message"
 exit 0

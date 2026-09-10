@@ -327,6 +327,29 @@ check('Codex plugin route is explicitly disabled', settings.enabledPlugins['code
 check('direct Codex exec permission is absent', !settings.permissions.allow.some((permission) => permission.startsWith('Bash(codex exec ')), JSON.stringify(settings.permissions.allow.filter((permission) => permission.includes('codex'))))
 check('Codex preflight is shared by installer and both wrappers', readFileSync(join(repo, 'install.sh'), 'utf8').includes('codex_preflight all') && readFileSync(luna, 'utf8').includes('codex_preflight writer') && readFileSync(review, 'utf8').includes('codex_preflight review'))
 
+const helperSource = readFileSync(helper, 'utf8')
+const refusalHelpers = ['codex_preflight_refusal_path', 'codex_preflight_refusal_fresh', 'codex_preflight_record_refusal', 'codex_preflight_clear_refusal']
+check('refusal cache helpers exist', refusalHelpers.every((name) => helperSource.includes(`${name}()`)), refusalHelpers.join(', '))
+
+const refusalProbe = join(root, 'refusal-probe.sh')
+writeFileSync(refusalProbe, `#!/bin/bash
+set -u
+source "$1"
+export TMPDIR="$2"
+printf '%s writer test\\n' "$3" > "$(codex_preflight_refusal_path)"
+if codex_preflight_refusal_fresh; then echo fresh; else echo stale; fi
+`)
+chmodSync(refusalProbe, 0o755)
+const refusalProbeDir = mkdtempSync(join(root, 'refusal-probe-'))
+const probeEpoch = Math.floor(Date.now() / 1000)
+// A few seconds of margin absorbs subprocess spawn latency around the 1800s boundary.
+const justInside = spawnSync('/bin/bash', [refusalProbe, helper, refusalProbeDir, String(probeEpoch - 1795)], { encoding: 'utf8' })
+const justOutside = spawnSync('/bin/bash', [refusalProbe, helper, refusalProbeDir, String(probeEpoch - 1805)], { encoding: 'utf8' })
+check('refusal cache TTL defaults to 1800 seconds', justInside.stdout.trim() === 'fresh' && justOutside.stdout.trim() === 'stale', `inside=${JSON.stringify(justInside)} outside=${JSON.stringify(justOutside)}`)
+
+const futureDated = spawnSync('/bin/bash', [refusalProbe, helper, refusalProbeDir, String(probeEpoch + 86400)], { encoding: 'utf8' })
+check('a future-dated refusal marker expires instead of wedging the lane', futureDated.stdout.trim() === 'stale', JSON.stringify(futureDated))
+
 rmSync(root, { recursive: true, force: true })
 rmSync(fixtureRoot, { recursive: true, force: true })
 rmSync(join(repoWinnerBin, 'codex'), { force: true })

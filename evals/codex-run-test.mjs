@@ -25,7 +25,7 @@ const fixtureRoot = mkdtempSync(join(fixtureParent, 'claude-codex-run-safe-'))
 const fake = join(fixtureRoot, 'codex')
 const hostileRoot = mkdtempSync(join(tmpdir(), 'claude-codex-run-hostile-'))
 const hostileMarker = join(hostileRoot, 'invoked')
-const hostileUtilities = ['mktemp', 'stat', 'id', 'rm', 'cat', 'ps', 'tr', 'wc', 'awk', 'grep', 'pgrep', 'find', 'sleep', 'shasum', 'realpath', 'perl']
+const hostileUtilities = ['mktemp', 'stat', 'id', 'rm', 'cat', 'ps', 'tr', 'wc', 'awk', 'grep', 'pgrep', 'find', 'sleep', 'shasum', 'realpath', 'perl', 'date']
 for (const utility of hostileUtilities) {
   const shim = join(hostileRoot, utility)
   writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' '${utility}' >> \"$HOSTILE_MARKER\"\nexit 99\n`)
@@ -173,10 +173,48 @@ check('stall kills the complete Codex process group', stallCode === 4 && !childA
 let refusedCode = 0
 try { run({ FAKE_REFUSED: '1' }) } catch (error) { refusedCode = error.status }
 check('provider refusal remains a distinct result', refusedCode === 6, `got ${refusedCode}`)
+// The refusal above records a marker in the shared root; clear it so it does not cache-block the next case.
+rmSync(join(root, 'claude-codex-refused'), { force: true })
 
 let runtimeCode = 0
 try { run({ FAKE_EXIT: '7' }) } catch (error) { runtimeCode = error.status }
 check('unexpected CLI failure is distinct from an empty answer', runtimeCode === 7, `got ${runtimeCode}`)
+
+// Refusal cache: each case gets its own TMPDIR so its marker cannot leak into another case.
+const refusalMarker = (dir) => join(dir, 'claude-codex-refused')
+const nowEpoch = () => Math.floor(Date.now() / 1000)
+
+const refusalRoot1 = mkdtempSync(join(root, 'refusal-'))
+let refusalWriteCode = 0
+try { run({ FAKE_REFUSED: '1', TMPDIR: refusalRoot1 }) } catch (error) { refusalWriteCode = error.status }
+check('a refusal writes the marker', refusalWriteCode === 6 && existsSync(refusalMarker(refusalRoot1)), `code=${refusalWriteCode} exists=${existsSync(refusalMarker(refusalRoot1))}`)
+
+const refusalRoot2 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot2), `${nowEpoch()} review test\n`)
+rmSync(argsFile, { force: true })
+let cachedCode = 0
+let cachedStderr = ''
+try { run({ TMPDIR: refusalRoot2 }) } catch (error) { cachedCode = error.status; cachedStderr = error.stderr?.toString() || '' }
+check('a fresh marker exits 6 without invoking the fake CLI', cachedCode === 6 && !existsSync(argsFile), `code=${cachedCode} argsExists=${existsSync(argsFile)}`)
+check('the cached-refusal message names the override', cachedStderr.includes('CODEX_IGNORE_REFUSAL=1'), cachedStderr)
+
+const refusalRoot3 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot3), '1 review old-test\n')
+let expiredCode = 0
+try { run({ TMPDIR: refusalRoot3 }) } catch (error) { expiredCode = error.status }
+check('an expired marker lets the run proceed', expiredCode === 0, `got ${expiredCode}`)
+
+const refusalRoot4 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot4), '1 review old-test\n')
+let successCode = 0
+try { run({ TMPDIR: refusalRoot4 }) } catch (error) { successCode = error.status }
+check('a successful run clears the marker', successCode === 0 && !existsSync(refusalMarker(refusalRoot4)), `code=${successCode}`)
+
+const refusalRoot5 = mkdtempSync(join(root, 'refusal-'))
+writeFileSync(refusalMarker(refusalRoot5), `${nowEpoch()} review test\n`)
+let bypassCode = 0
+try { run({ TMPDIR: refusalRoot5, CODEX_IGNORE_REFUSAL: '1' }) } catch (error) { bypassCode = error.status }
+check('CODEX_IGNORE_REFUSAL=1 runs even with a fresh marker', bypassCode === 0, `got ${bypassCode}`)
 
 rmSync(root, { recursive: true, force: true })
 rmSync(fixtureRoot, { recursive: true, force: true })

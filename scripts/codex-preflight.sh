@@ -23,6 +23,7 @@ CODEX_PREFLIGHT_AWK=/usr/bin/awk
 CODEX_PREFLIGHT_PGREP=/usr/bin/pgrep
 CODEX_PREFLIGHT_FIND=/usr/bin/find
 CODEX_PREFLIGHT_SLEEP=/bin/sleep
+CODEX_PREFLIGHT_DATE=/bin/date
 CODEX_PREFLIGHT_RG=''
 CODEX_PREFLIGHT_SCRIPT_ROOT="$(CDPATH= cd -- "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || CODEX_PREFLIGHT_SCRIPT_ROOT=''
 CODEX_PREFLIGHT_CHECKOUT_ROOT=''
@@ -99,7 +100,8 @@ codex_preflight_require_control_tools() {
     "$CODEX_PREFLIGHT_AWK" \
     "$CODEX_PREFLIGHT_PGREP" \
     "$CODEX_PREFLIGHT_FIND" \
-    "$CODEX_PREFLIGHT_SLEEP"; do
+    "$CODEX_PREFLIGHT_SLEEP" \
+    "$CODEX_PREFLIGHT_DATE"; do
     if ! codex_preflight_is_regular_executable "$path"; then
       codex_preflight_report "required trusted control utility is unavailable: $path"
       return 1
@@ -361,6 +363,35 @@ codex_preflight() {
     fi
   fi
   return 0
+}
+
+codex_preflight_refusal_path() {
+  printf '%s\n' "${TMPDIR:-/tmp}/claude-codex-refused"
+}
+
+codex_preflight_refusal_fresh() {
+  local path stored_epoch now ttl
+  path=$(codex_preflight_refusal_path)
+  CODEX_REFUSAL_AGE=''
+  [ -f "$path" ] || return 1
+  stored_epoch=$("$CODEX_PREFLIGHT_AWK" '{print $1; exit}' "$path" 2>/dev/null)
+  case "$stored_epoch" in ''|*[!0-9]*) return 1 ;; esac
+  ttl=${CODEX_REFUSAL_TTL_SECONDS:-}
+  case "$ttl" in ''|*[!0-9]*|0) ttl=1800 ;; esac
+  now=$("$CODEX_PREFLIGHT_DATE" +%s)
+  CODEX_REFUSAL_AGE=$((now - stored_epoch))
+  # A clock skew that yields a negative age must open the lane, not wedge it.
+  [ "$CODEX_REFUSAL_AGE" -ge 0 ] || return 1
+  [ "$CODEX_REFUSAL_AGE" -lt "$ttl" ]
+}
+
+codex_preflight_record_refusal() {
+  local lane=$1 reason=$2
+  printf '%s %s %s\n' "$("$CODEX_PREFLIGHT_DATE" +%s)" "$lane" "$reason" > "$(codex_preflight_refusal_path)"
+}
+
+codex_preflight_clear_refusal() {
+  "$CODEX_PREFLIGHT_RM" -f -- "$(codex_preflight_refusal_path)"
 }
 
 codex_preflight_revalidate() {

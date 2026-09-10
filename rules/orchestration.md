@@ -27,6 +27,10 @@ branch on `luna-run.sh`'s exit code:
 | 124 hard timeout | the unit is too large; decompose it rather than retry |
 | 64 usage, 70 runtime failure | fix the call or the unit; a fallback hides a real defect |
 
+The wrapper caches a refusal for 30 minutes. A second dispatch then fails fast
+at exit 77 and does not pay for the discovery again. Set
+`CODEX_IGNORE_REFUSAL=1` to force a retry.
+
 Say which writer produced the code. "Luna was out of credits, so Sonnet wrote
 this" is a different claim from "Luna wrote this", and the reviewer needs the
 true one — a Sonnet unit reviewed by Opus is same-family, so it loses the

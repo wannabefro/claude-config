@@ -62,6 +62,12 @@ if ! codex_preflight writer; then
 fi
 PERL_BIN="$CODEX_PREFLIGHT_PERL"
 
+if [ "${CODEX_IGNORE_REFUSAL:-}" != 1 ] && codex_preflight_refusal_fresh; then
+  echo "luna-run: cached Codex refusal is ${CODEX_REFUSAL_AGE}s old; skipping this dispatch" >&2
+  echo "luna-run: set CODEX_IGNORE_REFUSAL=1 to force a retry" >&2
+  exit "$REFUSED"
+fi
+
 TIMEOUT_SECONDS=${LUNA_RUN_TIMEOUT_SECONDS:-900}
 STALL_SECONDS=${LUNA_RUN_STALL_SECONDS:-}
 case "$TIMEOUT_SECONDS" in
@@ -224,6 +230,7 @@ if [ -e "$preflight_failure" ]; then
 fi
 "$CODEX_PREFLIGHT_CAT" "$out"
 if "$CODEX_PREFLIGHT_GREP" -qiE 'workspace is out of credits|spend cap' "$out"; then
+  codex_preflight_record_refusal writer 'workspace spend cap'
   echo "luna-run: Codex refused for lack of credits; nothing was implemented" >&2
   exit "$REFUSED"
 fi
@@ -232,6 +239,7 @@ if [ "$status" -eq 0 ]; then
     echo "luna-run: empty pass implemented nothing; last-message file is empty or missing: $last_message" >&2
     exit "$EMPTY_RESULT"
   fi
+  codex_preflight_clear_refusal
   exit 0
 fi
 echo "luna-run: Codex implementation failed" >&2

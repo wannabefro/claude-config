@@ -76,6 +76,9 @@ never satisfies or replaces that seat.
 | 3 unavailable, 6 out of credits | report the missing Codex seat; CodeRabbit may run as an additional lens |
 | 4 stalled, 5 empty | re-run once per `codex-exec-recovery`; a missing Codex result blocks normal review |
 
+The wrapper caches a refusal for 30 minutes, so a second run fails fast at exit
+6. Set `CODEX_IGNORE_REFUSAL=1` to force a retry.
+
 Branch on the exit code, never on the output, and check for the binary the way the next section
 says. Say which lens ran and why. "Codex was out of credits, so CodeRabbit reviewed it" is a different
 claim from "Codex reviewed it", and a guardrail diff deserves the true one. If neither lens is
