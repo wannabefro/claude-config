@@ -151,7 +151,7 @@ check('private build worktree utility is present', existsSync(new URL('../script
 const routingSection = claude.indexOf('\n# Model routing')
 const afterRouting = claude.indexOf('\n# ', routingSection + 1)
 const contractAt = claude.indexOf('Authoritative routing contract')
-check('authoritative routing contract sits inside Model routing', contractAt > routingSection && contractAt < afterRouting && claude.includes('Luna medium is the preferred writer') && claude.includes('serial integration'))
+check('authoritative routing contract sits inside Model routing', contractAt > routingSection && contractAt < afterRouting && claude.includes('Sonnet is the default writer') && claude.includes('serial integration'))
 check('authoritative contract names direct and tiered review paths', claude.includes('Use `/implement`') && claude.includes('Use `/build` for structured') && claude.includes('use `/review`') && claude.includes('full `/council`'))
 check('planning is native Opus with explicit CE only', plan.includes('native planner') && plan.includes('only when the user explicitly requests') && !/Run `ce-(brainstorm|plan)`/.test(plan))
 check('recovery docs match fixed Sol xhigh behavior', recovery.includes('gpt-5.6-sol') && recovery.includes('xhigh') && recovery.includes('runtime failure') && recovery.includes('secret scan refused') && recovery.includes('scripts/codex-run.sh') && !recovery.includes('timeout 600 codex exec') && !recovery.includes('model_reasoning_effort=medium') && !recovery.includes('retry once at'))

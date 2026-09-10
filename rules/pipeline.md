@@ -24,7 +24,8 @@ implementer calls the fixed Luna wrapper exactly once.
 decomposer returns `parallel` or `serial`:
 
 - `serial` prepares one deterministic private worktree, rechecks the frozen
-  fingerprint and HEAD, then dispatches one `implementer`, which calls Codex
+  fingerprint and HEAD, then dispatches one `implementer`, which writes with
+  Sonnet by default or, only when asked for by name, calls Codex
   `gpt-5.6-luna` medium through `scripts/luna-run.sh`; only a scope-checked
   patch integrates into the canonical checkout.
 - `parallel` reports the frozen split first. After approval, it dispatches

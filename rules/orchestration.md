@@ -9,14 +9,14 @@ architecture, diagnosis, design direction, review, integration, and final
 verification. It runs at high effort and escalates to xhigh for planning,
 architecture, diagnosis, and review. It must not write implementation files.
 
-Codex `gpt-5.6-luna` medium is the preferred automatic implementation writer. It
-owns application code, tests, scripts, schemas, migrations, build files, and
-engineering configuration. Never substitute Terra or Haiku, and never write
-implementation files from the main thread.
+Sonnet is the default automatic implementation writer. It owns application code,
+tests, scripts, schemas, migrations, build files, and engineering configuration.
+Codex `gpt-5.6-luna` medium is a manual opt-in lane for work that benefits from a
+writer outside the Claude family; ask for it by name. Never substitute Terra, and
+never write implementation files from the main thread.
 
-**Sonnet is a declared fallback, not a silent one.** A writer nobody can reach
-stops the work, and `luna-run.sh` fails in ways this repo has already measured.
-Branch on its exit code:
+**Luna is opt-in, and its failures still need naming.** When you do choose Luna,
+branch on `luna-run.sh`'s exit code:
 
 | `luna-run.sh` exit | what to do |
 |---|---|

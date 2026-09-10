@@ -23,11 +23,12 @@ required prerequisites make both normal install and `--check` fail before the
 target is backed up or changed.
 
 The policy is fixed: Claude Opus xhigh performs planning, architecture,
-design, diagnosis, review, integration, and final verification. Codex
-`gpt-5.6-luna` medium is the only automatic implementation writer. Sonnet and
-`gpt-5.6-terra` are manual fast lanes. Fable is a manual long-horizon option
-after host access is verified. Haiku is limited to deterministic plumbing.
-Unavailable models never trigger a silent fallback.
+design, diagnosis, review, integration, and final verification. Sonnet is the
+default automatic implementation writer. Codex `gpt-5.6-luna` medium is a
+manual opt-in lane, used only when asked for by name. `gpt-5.6-terra` is a
+manual fast lane. Fable is a manual long-horizon option after host access is
+verified. Haiku is limited to deterministic plumbing. Unavailable models
+never trigger a silent fallback.
 
 Claude uses exactly one Codex CLI. It prefers the persistent user install at
 `~/.local/bin/codex` when present, otherwise it uses the first `codex` found on

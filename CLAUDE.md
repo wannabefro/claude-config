@@ -16,8 +16,8 @@ Claude Opus owns requirements, architecture, design direction, diagnosis,
 review, integration, and final verification. The main thread runs at high
 effort and escalates to xhigh for planning, architecture, diagnosis, and
 review. Dispatched reviewers and the implementer dispatcher stay pinned at
-xhigh in their own frontmatter. Codex `gpt-5.6-luna` medium is the
-only implementation writer. Use `/implement` for one coherent, clearly scoped
+xhigh in their own frontmatter. Sonnet is the default implementation writer. Codex `gpt-5.6-luna` medium is a
+manual opt-in lane, available when you ask for it by name. Use `/implement` for one coherent, clearly scoped
 unit. Use `/build` for structured multi-unit or genuinely parallel work.
 
 `/build` uses one Luna implementer for serial work or at most three disjoint
@@ -36,7 +36,7 @@ even for a mechanical diff.
 
 Authoritative routing contract: Opus owns judgment and serial integration at high
 effort, escalating to xhigh for planning, diagnosis, and review;
-Luna medium is the preferred writer and Sonnet is its declared fallback; active
+Sonnet is the default writer and Luna medium is a manual opt-in lane; active
 implementation concurrency is at most 3. Haiku is limited to deterministic
 plumbing. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual
 long-horizon escalation only after host availability is verified. No route
