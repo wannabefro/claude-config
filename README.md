@@ -97,6 +97,11 @@ After bootstrap, start a new Claude Code session. Plugins, permissions, model
 settings, and MCP discovery are session-scoped. Verify `/plugins`, the MCP
 list, `/implement`, `/build`, and `/review` after the restart.
 
+## Local checks
+
+Run `scripts/run-evals.sh` to check every suite in `evals/`. It runs all
+suites in parallel and exits non-zero if any suite fails.
+
 ## Currentness
 
 Compound Engineering `3.23.4` and Open Design `0.21.0` are current pins under
