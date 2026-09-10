@@ -223,7 +223,7 @@ if [ -e "$preflight_failure" ]; then
   exit "$MISSING_RUNTIME"
 fi
 "$CODEX_PREFLIGHT_CAT" "$out"
-if "$CODEX_PREFLIGHT_GREP" -qiF 'workspace is out of credits' "$out"; then
+if "$CODEX_PREFLIGHT_GREP" -qiE 'workspace is out of credits|spend cap' "$out"; then
   echo "luna-run: Codex refused for lack of credits; nothing was implemented" >&2
   exit "$REFUSED"
 fi

@@ -226,9 +226,9 @@ answered() {
   [ -s "$last_message" ] && "$CODEX_PREFLIGHT_AWK" 'NF { found=1; exit } END { exit(found ? 0 : 1) }' "$last_message"
 }
 
-# Codex exits 0 on a refusal. Match the exact phrase, or a rate-limit review fails.
+# Codex exits 0 on a refusal. Match the known phrases, or a rate-limit review fails.
 refused() {
-  "$CODEX_PREFLIGHT_GREP" -qiF 'workspace is out of credits' "$out"
+  "$CODEX_PREFLIGHT_GREP" -qiE 'workspace is out of credits|spend cap' "$out"
 }
 
 run_once; rc=$?
