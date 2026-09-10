@@ -41,7 +41,7 @@ const check = (name, ok, detail = '') => {
 }
 
 check('default model remains Opus one-million context', settings.model === 'opus[1m]')
-check('persisted effort uses xhigh', settings.effortLevel === 'xhigh')
+check('persisted effort is high, with xhigh escalated per task', settings.effortLevel === 'high')
 check('global worker ceiling is three', settings.env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS === '3')
 check('experimental agent teams are absent', !('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' in settings.env))
 check('disabled automatic feature-dev', settings.enabledPlugins['feature-dev@claude-plugins-official'] === false)

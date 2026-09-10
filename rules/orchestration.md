@@ -4,9 +4,10 @@ description: Opus orchestration, Luna implementation, frozen delegation contract
 
 # Orchestration and delegation
 
-Claude Opus xhigh is the automatic orchestration model. It owns requirements,
+Claude Opus is the automatic orchestration model. It owns requirements,
 architecture, diagnosis, design direction, review, integration, and final
-verification. It must not write implementation files.
+verification. It runs at high effort and escalates to xhigh for planning,
+architecture, diagnosis, and review. It must not write implementation files.
 
 Codex `gpt-5.6-luna` medium is the preferred automatic implementation writer. It
 owns application code, tests, scripts, schemas, migrations, build files, and

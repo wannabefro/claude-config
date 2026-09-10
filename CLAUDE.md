@@ -12,8 +12,11 @@ pick a third name.
 
 # Model routing
 
-Claude Opus xhigh owns requirements, architecture, design direction, diagnosis,
-review, integration, and final verification. Codex `gpt-5.6-luna` medium is the
+Claude Opus owns requirements, architecture, design direction, diagnosis,
+review, integration, and final verification. The main thread runs at high
+effort and escalates to xhigh for planning, architecture, diagnosis, and
+review. Dispatched reviewers and the implementer dispatcher stay pinned at
+xhigh in their own frontmatter. Codex `gpt-5.6-luna` medium is the
 only implementation writer. Use `/implement` for one coherent, clearly scoped
 unit. Use `/build` for structured multi-unit or genuinely parallel work.
 
@@ -31,7 +34,8 @@ review and one Codex `gpt-6-astra` low outsider review. Guardrail changes
 use the full `/council`. An explicit `/council` always seats the full council,
 even for a mechanical diff.
 
-Authoritative routing contract: Opus xhigh owns judgment and serial integration;
+Authoritative routing contract: Opus owns judgment and serial integration at high
+effort, escalating to xhigh for planning, diagnosis, and review;
 Luna medium is the preferred writer and Sonnet is its declared fallback; active
 implementation concurrency is at most 3. Haiku is limited to deterministic
 plumbing. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual

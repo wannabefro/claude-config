@@ -26,10 +26,10 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 | Work | Route |
 |---|---|
 | Read-heavy gathering | `Explore` or a read-only research route |
-| Planning and design direction | Opus xhigh in the main thread |
+| Planning and design direction | Opus in the main thread, escalated to xhigh |
 | One approved implementation unit | `/implement`: `implementer` dispatcher -> Codex `gpt-5.6-luna` medium |
 | Independent approved units | `/build` parallel route, maximum three active Luna units |
-| Integration and final verification | Opus xhigh in serialized order |
+| Integration and final verification | Opus in serialized order |
 | CodeRabbit review threads | Existing unresolved PR threads use `coderabbit:autofix` before the selected review path; this must not force a full `/council` for a normal PR |
 
 Never route implementation to the main thread. Never add a permanent designer
