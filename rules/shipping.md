@@ -57,6 +57,8 @@ invocation is a bug.
        reviewer scanning the log will stop on it. **Fix the history, do not annotate it**; that is
        what `/make-pr-easy-to-review` is for. Reach for a note in the body only when the history has
        to stand (already reviewed, or someone else's commits).
+  `scripts/pr-body-lint.py` checks a body for this narration. Run it with
+  `python3 scripts/pr-body-lint.py --pr <N>` before you open or update a PR.
 - **Review the assembled diff before review-ready.** Use `/review` for the default mechanical or
   normal tier. Normal review uses one Opus xhigh reviewer and one Codex `gpt-6-astra` low outsider.
   **Guardrail-critical diffs** (auth, authz, payments, migrations/schema, data mutations, public API,
