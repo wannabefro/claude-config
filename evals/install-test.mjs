@@ -41,12 +41,12 @@ const cloneMain = (source, destination) => {
 const FILTERED = new Map([['settings.json', 'settings-clean.py'], ['agents/implementer.md', 'path-clean.py']])
 const cleanForCommit = (relative, working) => runFile(process.env.PYTHON3_RUNTIME || '/usr/bin/python3', [join(repo, 'scripts', FILTERED.get(relative)), repo], { input: working, maxBuffer: 32 * 1024 * 1024 })
 const snapshotWorkingInstaller = (source) => {
-  for (const relative of ['README.md', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs']) {
+  for (const relative of ['README.md', 'install.sh', '.gitattributes', 'settings.json', 'CLAUDE.md', 'rules/routing.md', 'rules/orchestration.md', 'agents/implementer.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs']) {
     // The clone has no clean filter, so a smudged working file would commit a host path.
     const working = readFileSync(join(repo, relative))
     writeFileSync(join(source, relative), FILTERED.has(relative) ? cleanForCommit(relative, working) : working)
   }
-  git(source, ['add', 'README.md', 'install.sh', '.gitattributes', 'settings.json', 'rules/routing.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs'])
+  git(source, ['add', 'README.md', 'install.sh', '.gitattributes', 'settings.json', 'CLAUDE.md', 'rules/routing.md', 'rules/orchestration.md', 'agents/implementer.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/luna-run.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs'])
   const staged = spawnSync('git', ['-C', source, 'diff', '--cached', '--quiet'], { encoding: 'utf8' })
   if (staged.status === 1) git(source, ['commit', '-qm', 'snapshot installer under test'])
   else if (staged.status !== 0) throw new Error(`could not inspect installer snapshot index: ${staged.status}`)

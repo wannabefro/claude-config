@@ -25,7 +25,8 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 
 | Work | Route |
 |---|---|
-| Read-heavy gathering | `Explore` or a read-only research route |
+| Read-heavy gathering | `Explore`, which runs on Haiku; fan out up to 8 in one message |
+| A well-scoped mechanical task | Haiku, one task for each worker, dispatched in one message |
 | Planning and design direction | Opus in the main thread, escalated to xhigh |
 | One approved implementation unit | `/implement` with a Sonnet writer; Luna only when asked for by name |
 | Independent approved units | `/build` parallel route, maximum three active Luna units |
@@ -48,8 +49,9 @@ winner and require the captured filesystem identity and SHA-256 digest to
 match.
 
 Fable is a manual long-horizon option only. Verify host access before use.
-Sonnet and `gpt-5.6-terra` are manual fast lanes only. Haiku is limited to
-deterministic plumbing that cannot affect design, implementation, review, or
+`gpt-5.6-terra` is a manual fast lane only. Haiku is the default for a
+well-scoped task; `rules/orchestration.md` lists the five shapes and the four
+exclusions. Opus keeps design, diagnosis, review severity, and final
 verification.
 Review at checkpoints, not per edit.
 

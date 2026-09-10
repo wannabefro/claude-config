@@ -42,7 +42,7 @@ const check = (name, ok, detail = '') => {
 
 check('default model remains Opus one-million context', settings.model === 'opus[1m]')
 check('persisted effort is high, with xhigh escalated per task', settings.effortLevel === 'high')
-check('global worker ceiling is three', settings.env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS === '3')
+check('global subagent ceiling is eight, writers stay capped at three', settings.env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS === '8')
 check('experimental agent teams are absent', !('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' in settings.env))
 check('disabled automatic feature-dev', settings.enabledPlugins['feature-dev@claude-plugins-official'] === false)
 check('disabled automatic looper', settings.enabledPlugins['looper@sam'] === false)
@@ -64,9 +64,12 @@ check('settings allow only the fixed wrapper command', onlyFixedLunaPermissions(
 check('wrapper permission predicate rejects an arbitrary Luna-run path', onlyFixedLunaPermissions([placeholderWrapperPermission]) && !onlyFixedLunaPermissions([placeholderWrapperPermission, 'Bash(bash /tmp/other/luna-run.sh *)']))
 check('CodeRabbit marketplace uses strict validation', marketplace.plugins.find((p) => p.name === 'coderabbit')?.strict === true)
 check('tier-router file is removed', !existsSync(new URL('../tier-router.json', import.meta.url)))
+// settings.local.json env is not delivered to hooks; the override must ride in settings.json.
+check('tier-router override rides in settings.json, not settings.local.json', settings.env.TIER_ROUTER_OVERRIDE === '__CLAUDE_HOME__/tier-router.local.json' || settings.env.TIER_ROUTER_OVERRIDE?.endsWith('/tier-router.local.json'))
+check('Haiku is a documented default, not a prohibition', orchestration.includes('Haiku is the default for a well-scoped task') && !/Haiku is allowed only/.test(orchestration) && !/Haiku is limited to/.test(routing))
 
 const frontmatter = implementationAgent.split('---')[1] || ''
-check('implementer is pinned to Opus xhigh', /model:\s*opus/.test(frontmatter) && /effort:\s*xhigh/.test(frontmatter))
+check('implementer is pinned to Sonnet xhigh', /model:\s*sonnet/.test(frontmatter) && /effort:\s*xhigh/.test(frontmatter))
 check('implementer has no native writer capabilities', !/(^|\n)\s*-\s*(Write|Edit|NotebookEdit|Skill|Agent)\s*$/m.test(frontmatter), frontmatter)
 check('implementer calls the fixed Luna wrapper', implementationAgent.includes('scripts/luna-run.sh') && implementationAgent.includes('exactly once'))
 check('settings and implementer use explicit content-bound filters', attributes.includes('settings.json filter=claudesettings') && attributes.includes('agents/implementer.md filter=claudehome') && pathFilter.includes('content-agnostic') && installer.includes('filter.claudesettings.required true') && installer.includes('filter.claudehome.required true'))

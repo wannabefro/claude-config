@@ -37,15 +37,53 @@ true one — a Sonnet unit reviewed by Opus is same-family, so it loses the
 independence that made Luna preferred.
 
 Fable is a manual long-horizon escalation only. Verify host access before use.
-Sonnet and `gpt-5.6-terra` are manual fast lanes only. Haiku is allowed only
-for deterministic, non-judgmental plumbing that cannot affect design, code,
-review severity, or verification.
+`gpt-5.6-terra` is a manual fast lane only.
 
-**Haiku needs all four conditions, or use the Luna implementer.** Use Haiku only
-for one-file deterministic plumbing with a failing-then-green verify command, no
-API or contract decision, and a known transformation rather than invention.
-Treat a Haiku failure as evidence that the unit needs clearer decomposition; do
-not silently upgrade it or substitute another writer.
+## Haiku is the default for a well-scoped task
+
+A task is well scoped when it states its own success condition. The caller can
+then check the answer without repeating the work. Dispatch Haiku for these five
+shapes:
+
+| shape | example |
+|---|---|
+| Read-only search and location | find every caller of a name; list the files that match a pattern |
+| Mechanical transformation with a known target | reflow a comment; apply one rename across a listed set of sites |
+| One-file plumbing with a failing-then-green verify command | add a missing export; correct one type error |
+| Extraction into a stated schema | take the failure lines from one log; list the exports of one file |
+| One fact for each worker in a fan-out | count the matches in each of 6 repositories and report the numbers |
+
+Keep Haiku away from four things: design and architecture, diagnosis, review
+severity, and final verification. Opus keeps those, and Opus stays the brain of
+every route. A Haiku failure means the brief was not scoped. Rewrite the brief;
+do not promote the model.
+
+## A worker costs 12 to 20 seconds and about 60,000 tokens before it reads anything
+
+Measured on this machine on 2026-09-10. Two benchmarks, both scored by exact
+match against a scripted ground truth:
+
+| task | 3 Haiku in parallel | 1 Sonnet alone | main thread, no worker |
+|---|---|---|---|
+| List the `check()` names in 3 eval files | 15.0 s, 190k tokens | 15.7 s, 91k tokens | not run |
+| Run 3 eval suites, report exit code and counts | 20.4 s, 184k tokens | 16.3 s, 94k tokens | **4 s** |
+
+Every arm returned 36 of 36 items correct. Haiku matched Sonnet on accuracy, at
+a lower price for each token. Speed is the surprise: the fan-out won nothing,
+because each worker paid a startup larger than the work.
+
+Two rules follow:
+
+1. **Do the work in the main thread when it takes seconds.** One shell command,
+   one search, or one file read is faster with no worker.
+2. **Fan out when each unit needs more than about 30 seconds of its own work.**
+   Dispatch every unit in one message, up to 8. Give each unit to Haiku when it
+   fits a shape in the table above.
+
+**Dispatch independent work in one message.** Measured over 28 days on this
+machine, 416 of 421 dispatch bursts held exactly one agent. Two independent
+questions are two dispatches in one message, not two turns. The extra turn is a
+full round trip, and the round trip is the latency.
 
 ## Frozen delegation contract
 
@@ -58,8 +96,12 @@ Before any implementation dispatch, Opus must freeze:
 - the acceptance criteria and one executable verify command per unit;
 - the workspace choice and the dependency constraints that govern eligibility.
 
-At most three independent Luna implementation units may run at once. The
-global setting and `workflows/build-parallel.js` enforce this ceiling. Parallel
+At most three independent implementation units may run at once.
+`workflows/build-parallel.js` enforces that ceiling with
+`MAX_ACTIVE_IMPLEMENTERS = 3`. The global setting
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` is 8, and it caps every subagent, not
+the writers alone. Read-only and mechanical fan-out uses the full 8. Only
+writers are capped at 3. Parallel
 units must have disjoint files and ordered shared contracts. `/implement` uses
 one implementer immediately for one coherent unit. `/build` serial work uses
 one deterministic private worktree and one implementer for structured coupled

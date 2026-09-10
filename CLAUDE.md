@@ -37,8 +37,9 @@ even for a mechanical diff.
 Authoritative routing contract: Opus owns judgment and serial integration at high
 effort, escalating to xhigh for planning, diagnosis, and review;
 Sonnet is the default writer and Luna medium is a manual opt-in lane; active
-implementation concurrency is at most 3. Haiku is limited to deterministic
-plumbing. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual
+implementation concurrency is at most 3, while read-only and mechanical fan-out
+runs up to 8. Haiku is the default for a well-scoped task, and
+`rules/orchestration.md` lists the five shapes. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual
 long-horizon escalation only after host availability is verified. No route
 silently changes model, effort, or writer family — a fallback is named in the
 report. Exit codes and the fallback table: `rules/orchestration.md`.
