@@ -11,9 +11,9 @@ in `manifests/design.json`.
    use Codex `gpt-5.6-sol` xhigh for direction and critique.
 3. Freeze `DESIGN.md`, `design-contract.md`, and
    `implementation-handoff.md` before any implementation dispatch.
-4. Use Codex `gpt-5.6-luna` medium for an optional prototype and for every
+4. Use the Sonnet `implementer` for an optional prototype and for every
    artifact or code write.
-5. Use at most three disjoint Luna workers for independent production units.
+5. Use at most three disjoint implementers for independent production units.
 6. Use Opus xhigh for serialized integration, visual critique, accessibility
    review, and final sign-off.
 

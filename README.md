@@ -24,10 +24,9 @@ target is backed up or changed.
 
 The policy is fixed: Claude Opus xhigh performs planning, architecture,
 design, diagnosis, review, integration, and final verification. Sonnet is the
-default automatic implementation writer. Codex `gpt-5.6-luna` medium is a
-manual opt-in lane, used only when asked for by name. `gpt-5.6-terra` is a
+only implementation writer, through the `implementer` agent. `gpt-5.6-terra` is a
 manual fast lane. Fable is a manual long-horizon option after host access is
-verified. Haiku is limited to deterministic plumbing. Unavailable models
+verified. Haiku is the default for a well-scoped task. Unavailable models
 never trigger a silent fallback.
 
 Claude uses exactly one Codex CLI. It prefers the persistent user install at
@@ -46,7 +45,7 @@ discovery and compare its realpath, filesystem identity, and SHA-256 digest
 with the preflight snapshot.
 
 `/implement` handles one coherent, clearly scoped unit through exactly one
-Luna implementer. `/build` is for structured work: it chooses `serial` or
+implementer. `/build` is for structured work: it chooses `serial` or
 `parallel`, freezes the split, ownership, contracts, exact working directory,
 and verification gates before approval, then starts every ready independent
 unit concurrently up to three. Shared parallel execution is guarded by
@@ -70,7 +69,7 @@ installs them.
 |---|---|---|
 | `git`, `gh` | Required | repository and GitHub operations |
 | Node 20–24 LTS, Perl, trusted Homebrew `rg`, `jq`, Python 3 | Required | hooks, filters, and local checks |
-| `codex` | Required | One active CLI for Luna implementation and cross-family review (stable >= 0.149.1) |
+| `codex` | Required | One active CLI for cross-family review (stable >= 0.149.1) |
 | Fixed absolute wrapper controls (`mktemp`, `stat`, `id`, `rm`, `cat`, `ps`, `tr`, `wc`, `awk`, `pgrep`, `find`, `sleep`, `realpath`, `shasum`, and `grep`) | Required | bounded, fail-closed process and transfer controls |
 | `rtk`, `cmux`, `wt` | Recommended | local workflow support |
 | `bd` | Optional | dependency-aware backlog |

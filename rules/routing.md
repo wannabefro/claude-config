@@ -1,5 +1,5 @@
 ---
-description: Skill and agent routing for the Opus planning, Luna implementation, and review loop.
+description: Skill and agent routing for the Opus planning, Sonnet implementation, and review loop.
 ---
 
 # Routing
@@ -11,12 +11,12 @@ Skill descriptions decide routing. Use the narrowest matching skill.
 | Need | Route |
 |---|---|
 | Requirements, architecture, or a plan | `/plan` with native Opus xhigh; CE only when explicitly requested |
-| One coherent implementation unit | `/implement`, exactly one Luna implementer |
-| Structured implementation | `/build`, then `parallel` or `serial` Luna dispatch |
+| One coherent implementation unit | `/implement`, exactly one Sonnet implementer |
+| Structured implementation | `/build`, then `parallel` or `serial` implementer dispatch |
 | Diagnosis | `compound-engineering:ce-debug`, then `/implement` or `/build` by scope |
 | Simplification or durable learning | `compound-engineering:ce-simplify-code` or `ce-compound` |
 | Review | `/review` once on the assembled diff; guardrail tier routes to full `/council` |
-| Cross-family review or rescue | bounded Codex wrapper, review-only unless explicitly dispatched as Luna implementation |
+| Cross-family review or rescue | bounded Codex wrapper, review-only; Codex never writes implementation |
 
 Compound Engineering is on-demand. It is not a scheduler. Any CE execution
 that reaches code changes returns through `/implement` or `/build`, by scope.
@@ -28,8 +28,8 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 | Read-heavy gathering | `Explore`, which runs on Haiku; fan out up to 8 in one message |
 | A well-scoped mechanical task | Haiku, one task for each worker, dispatched in one message |
 | Planning and design direction | Opus in the main thread, escalated to xhigh |
-| One approved implementation unit | `/implement` with a Sonnet writer; Luna only when asked for by name |
-| Independent approved units | `/build` parallel route, maximum three active Luna units |
+| One approved implementation unit | `/implement` with the Sonnet `implementer` |
+| Independent approved units | `/build` parallel route, maximum three active implementers |
 | Integration and final verification | Opus in serialized order |
 | CodeRabbit review threads | Existing unresolved PR threads use `coderabbit:autofix` before the selected review path; this must not force a full `/council` for a normal PR |
 
@@ -37,10 +37,9 @@ Never route implementation to the main thread. Never add a permanent designer
 agent. UI reviewers read the frozen design contract and handoff.
 
 The Codex route is one active CLI, selected as the first `codex` on `PATH` and
-resolved once to an absolute realpath. `scripts/luna-run.sh` and
-`scripts/codex-run.sh` share a fail-closed preflight: stable `0.149.1+`, a
-bounded version probe, and the exact `codex exec` flags and sandbox values used
-by the writer or review lane. A future high version that lacks a required flag
+resolved once to an absolute realpath. `scripts/codex-run.sh` runs a
+fail-closed preflight: stable `0.149.1+`, a bounded version probe, and the
+exact `codex exec` flags and sandbox values used by the review lane. A future high version that lacks a required flag
 still blocks. Never use `CODEX_BIN`, scan alternate installations, invoke
 `codex exec` directly, or let the installer install/update the CLI. The
 selected executable must be outside the current worktree, this checkout, and

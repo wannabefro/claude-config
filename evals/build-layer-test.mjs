@@ -96,7 +96,7 @@ check('every unit runs or is dependency-gated without swallowed errors',
 check('at least two independent worker calls overlap physically',
   result.maxActive >= 2 && result.dispatched.filter(d=>d.label.startsWith('build:')).length===12,
   `max active=${result.maxActive}`)
-check('scheduler never exceeds three active Luna workers', result.maxActive <= 3, `max active=${result.maxActive}`)
+check('scheduler never exceeds three active implementers', result.maxActive <= 3, `max active=${result.maxActive}`)
 check('worker prompts carry distinct exact private worktree roots',
   new Set(result.dispatched.filter(d=>d.label.startsWith('build:')).map(d=>d.prompt.match(/EXACT PRIVATE WORKTREE\): ([^\n]+)/)?.[1])).size===12,
   JSON.stringify(result.dispatched))

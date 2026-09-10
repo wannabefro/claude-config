@@ -1,10 +1,10 @@
 export const meta = {
   name: 'build-parallel',
-  description: 'Route approved work to parallel or serial Luna implementation units behind executable done-criteria',
+  description: 'Route approved work to parallel or serial Sonnet implementation units behind executable done-criteria',
   whenToUse: 'The entry point for approved structured work: multiple units, dependencies, shared contracts, coupled multi-file work, or genuinely parallel work. One coherent unit uses /implement.',
   phases: [
     { title: 'Decompose', detail: 'Opus splits the work into units with executable done-criteria' },
-    { title: 'Build', detail: 'each Luna unit starts as soon as its dependencies are green, in the approved workspace' },
+    { title: 'Build', detail: 'each unit starts as soon as its dependencies are green, in the approved workspace' },
     { title: 'Integrate', detail: 'completion-order integration under a mutex; dependency order remains gated' },
   ],
 }
@@ -262,7 +262,7 @@ if (!invocationNonce || !/^[0-9a-f]{64}$/.test(invocationNonce)) {
 }
 let frozenPlanHash = ''
 
-// Reporting the plan is the default for a parallel fan-out; structured serial work starts one Luna implementer immediately.
+// Reporting the plan is the default for a parallel fan-out; structured serial work starts one implementer immediately.
 const build = opts.build === true
 
 // Approval is a capability boundary, not a second planning pass. The caller
@@ -533,14 +533,14 @@ if (validationErrors.length) {
 // every malformed plan can return a useful recommendation without dispatch.
 const planPath = (task.match(/[\w./-]*docs\/plans\/[\w.-]+\.md/) || [])[0] || null
 const routeOf = (r) => r === 'parallel'
-  ? 'parallel Luna implementers after approval of the frozen split'
-  : `one serial Luna implementer${planPath ? ` using the explicit plan path: \`${planPath}\`` : ''}`
+  ? 'parallel implementers after approval of the frozen split'
+  : `one serial implementer${planPath ? ` using the explicit plan path: \`${planPath}\`` : ''}`
 // The decomposer's route always wins; the regex is only a fallback when none is returned.
 const fallbackRoute = routeOf(plan.route || 'serial')
 
 // Graph and contract validation must precede path ownership checks as well as
 // route dispatch. A malformed serial plan cannot spend an explorer gate call,
-// create a worktree, call Luna, or mutate the canonical checkout.
+// create a worktree, dispatch an implementer, or mutate the canonical checkout.
 const lexicalPaths = new Map(plan.units.flatMap((unit) => unit.files.map((file) => [`${unit.id}\0${file}`, { unit: unit.id, file, physical: `${plan.working_directory}/${file}`, identity: `path:${plan.working_directory}/${file}` }])))
 const earlySemanticPlanError = validatePlanSemantics(lexicalPaths)
 if (earlySemanticPlanError) return earlySemanticPlanError
@@ -590,9 +590,7 @@ if (pathErrors.length) {
 }
 
 // Keep every graph, ownership, and contract invariant in one fail-closed
-// preflight. This function is invoked before either route dispatches, so a
-// malformed serial plan cannot create a worktree, call Luna, or mutate the
-// canonical checkout before it is rejected.
+// preflight, invoked before either route dispatches.
 function validatePlanSemantics(paths) {
 
   // Ids must be unique — the scheduler keys a promise per id, so duplicates collapse but still count twice.
@@ -836,7 +834,7 @@ if (plan.route !== 'parallel' || !plan.units || !plan.units.length) {
   if (plan.route === 'serial' && plan.units && plan.units.length) {
     phase('Build')
     // Serial is still isolated: it uses one deterministic private worktree and
-    // one Luna writer, then applies only the declared owned patch. This keeps
+    // one Sonnet writer, then applies only the declared owned patch. This keeps
     // coupled work sequential without reopening the main checkout as a write
     // target or trusting a worker's claimed scope.
     const serialId = 'serial'
@@ -909,7 +907,7 @@ Return the exact root, token, path, and seed. Do not modify the canonical checko
       }
 
       const r = await agent(
-        `Build the frozen task as one serial implementation unit in the exact private worktree below. Do not write in the canonical checkout. The implementer must dispatch exactly one Codex gpt-5.6-luna medium run through its fixed wrapper, then run every exact verify command below.
+        `Build the frozen task as one serial implementation unit in the exact private worktree below. Do not write in the canonical checkout. The implementer writes with Sonnet at xhigh effort, then runs every exact verify command below.
 
 WORK: ${task}
 WORKING DIRECTORY (EXACT PRIVATE WORKTREE): ${serialState.path}
@@ -962,7 +960,7 @@ The helper must validate the private worktree identity, reject every changed pat
     route: plan.route || 'serial',
     reason: plan.reason,
     route_reason: plan.route_reason,
-    // Units still travel on the serial route as a frozen task list for one Luna implementer.
+    // Units still travel on the serial route as a frozen task list for one implementer.
     units: plan.units || [],
     fallback: fallbackRoute,
     recommendation: `Build this serially via ${fallbackRoute}. Fanning it out would cost more in merge conflicts than it saves.`,

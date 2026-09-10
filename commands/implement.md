@@ -1,5 +1,5 @@
 ---
-description: Execute one frozen implementation unit through exactly one Codex Luna writer
+description: Execute one frozen implementation unit through exactly one Sonnet writer
 argument-hint: "[task, plan path, or one implementation unit]"
 ---
 
@@ -21,13 +21,12 @@ dispatches an agent:
 - any interfaces or guardrail surfaces that make this unit ineligible.
 
 Dispatch exactly one existing `implementer` agent with that brief. The
-implementer must call `scripts/luna-run.sh` exactly once. That wrapper fixes
-Codex `gpt-5.6-luna`, medium effort, workspace-write approval, and MCP off.
-The implementer must run the exact verification command after the Luna call.
+implementer writes with Sonnet at xhigh effort inside the frozen ownership.
+The implementer must run the exact verification command after it writes.
 
 Do not write in the main thread. Do not dispatch a second worker. Do not use a
-native Claude write, Sonnet, Terra, Haiku, Fable, direct Codex command, or any
-silent fallback when Luna is unavailable. Report the limitation.
+native main-thread write, Terra, Haiku, Fable, or a direct Codex command as a
+substitute. Report any limitation.
 
 Inspect status and the complete diff after the handoff. Confirm that all files
 stay inside the frozen ownership. Then run `/review` on the assembled diff.

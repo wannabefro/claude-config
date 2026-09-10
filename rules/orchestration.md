@@ -1,5 +1,5 @@
 ---
-description: Opus orchestration, Luna implementation, frozen delegation contracts, and bounded parallel execution.
+description: Opus orchestration, Sonnet implementation, frozen delegation contracts, and bounded parallel execution.
 ---
 
 # Orchestration and delegation
@@ -9,32 +9,15 @@ architecture, diagnosis, design direction, review, integration, and final
 verification. It runs at high effort and escalates to xhigh for planning,
 architecture, diagnosis, and review. It must not write implementation files.
 
-Sonnet is the default automatic implementation writer. It owns application code,
+Sonnet is the only automatic implementation writer. It owns application code,
 tests, scripts, schemas, migrations, build files, and engineering configuration.
-Codex `gpt-5.6-luna` medium is a manual opt-in lane for work that benefits from a
-writer outside the Claude family; ask for it by name. Never substitute Terra, and
-never write implementation files from the main thread.
+The `implementer` agent writes with Sonnet at xhigh effort. Never substitute
+Terra, and never write implementation files from the main thread.
 
-**Luna is opt-in, and its failures still need naming.** When you do choose Luna,
-branch on `luna-run.sh`'s exit code:
-
-| `luna-run.sh` exit | what to do |
-|---|---|
-| 0 | Luna wrote it; verify and integrate |
-| 68 preflight, 69 runtime missing, 77 refused for credits | dispatch the same frozen unit to a Sonnet `implementer` |
-| 75 empty result | report a real failure; do not trigger a Sonnet fallback |
-| 76 stalled | retry once per `codex-exec-recovery`, then fall back to Sonnet |
-| 124 hard timeout | the unit is too large; decompose it rather than retry |
-| 64 usage, 70 runtime failure | fix the call or the unit; a fallback hides a real defect |
-
-The wrapper caches a refusal for 30 minutes. A second dispatch then fails fast
-at exit 77 and does not pay for the discovery again. Set
-`CODEX_IGNORE_REFUSAL=1` to force a retry.
-
-Say which writer produced the code. "Luna was out of credits, so Sonnet wrote
-this" is a different claim from "Luna wrote this", and the reviewer needs the
-true one — a Sonnet unit reviewed by Opus is same-family, so it loses the
-independence that made Luna preferred.
+**There is no Codex writer lane.** Codex serves one purpose here: the
+`gpt-6-astra` cross-family review seat through `scripts/codex-run.sh`. A Sonnet
+unit reviewed by Opus is same-family, so that outside review seat is what keeps
+the independence. Guard it, and report it honestly when it is unavailable.
 
 Fable is a manual long-horizon escalation only. Verify host access before use.
 `gpt-5.6-terra` is a manual fast lane only.
@@ -126,13 +109,13 @@ completes first.
 ## Implementer boundary
 
 The `implementer` agent is an Opus dispatcher and verifier. It creates one
-private brief, calls `scripts/luna-run.sh` exactly once, runs the exact verify
+frozen unit, writes the implementation with Sonnet, runs the exact verify
 command, inspects status and diff read-only, and returns the structured handoff.
 It has no native implementation tools and has no write fallback.
 
 Compound Engineering remains installed as an explicit toolbox for brainstorm,
 plan, debug, simplify, review, and compound learning. Any CE path that reaches
-implementation returns through `/implement` or `/build` and the Luna
+implementation returns through `/implement` or `/build` and the Sonnet
 implementer. CE does not schedule or replace the frozen delegation contract.
 
 The roster stays exactly four agents: `explorer`, `planner`, `reviewer`, and
@@ -145,7 +128,7 @@ There is no permanent designer agent.
 `/build` gives every parallel unit an exact private git worktree. Advisory file
 ownership is not physical isolation: an accidental formatter or generated file
 can still collide in a shared checkout. The dispatcher rejects shared plans,
-creates and seeds the worktrees, passes each exact path to Luna, rejects any
+creates and seeds the worktrees, passes each exact path to the implementer, rejects any
 patch outside its canonical owned files, integrates completed eligible patches
 in completion order under one canonical writer lock, and cleans up in a
 `finally` path. If any capability check fails, no parallel unit starts.

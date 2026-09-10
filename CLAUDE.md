@@ -16,15 +16,13 @@ Claude Opus owns requirements, architecture, design direction, diagnosis,
 review, integration, and final verification. The main thread runs at high
 effort and escalates to xhigh for planning, architecture, diagnosis, and
 review. Dispatched reviewers and the implementer dispatcher stay pinned at
-xhigh in their own frontmatter. Sonnet is the default implementation writer. Codex `gpt-5.6-luna` medium is a
-manual opt-in lane, available when you ask for it by name. Use `/implement` for one coherent, clearly scoped
+xhigh in their own frontmatter. Sonnet is the only implementation writer, and
+the `implementer` agent writes with it. Use `/implement` for one coherent, clearly scoped
 unit. Use `/build` for structured multi-unit or genuinely parallel work.
 
-`/build` uses one Luna implementer for serial work or at most three disjoint
-Luna implementers for parallel work. Freeze the graph, interfaces, write
-scopes, acceptance criteria, and verify commands before dispatch. When Luna is
-unreachable — preflight, missing runtime, or refused for credits — dispatch the
-same frozen unit to a Sonnet `implementer` and say so. Compound Engineering
+`/build` uses one implementer for serial work or at most three disjoint
+implementers for parallel work. Freeze the graph, interfaces, write
+scopes, acceptance criteria, and verify commands before dispatch. Compound Engineering
 remains an explicit on-demand toolbox, not the scheduler.
 
 After implementation, use `/review` for the assembled diff. It selects a
@@ -36,7 +34,7 @@ even for a mechanical diff.
 
 Authoritative routing contract: Opus owns judgment and serial integration at high
 effort, escalating to xhigh for planning, diagnosis, and review;
-Sonnet is the default writer and Luna medium is a manual opt-in lane; active
+Sonnet is the only implementation writer; active
 implementation concurrency is at most 3, while read-only and mechanical fan-out
 runs up to 8. Haiku is the default for a well-scoped task, and
 `rules/orchestration.md` lists the five shapes. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual

@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os'
 
 const repo = fileURLToPath(new URL('..', import.meta.url))
 const helper = join(repo, 'scripts', 'codex-preflight.sh')
-const luna = join(repo, 'scripts', 'luna-run.sh')
 const review = join(repo, 'scripts', 'codex-run.sh')
 const root = mkdtempSync(join(tmpdir(), 'claude-codex-preflight-'))
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
@@ -270,26 +269,15 @@ const wrapperEnv = {
   TMPDIR: root,
 }
 writeFileSync(fakeHelp, fullHelp)
-let lunaCode = 0
-try {
-  execFileSync(luna, [prompt, work], { cwd: work, env: wrapperEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-} catch (error) { lunaCode = error.status ?? 1 }
 let reviewCode = 0
 try {
   execFileSync(review, ['-t', '30', '-s', '20', '-f', prompt, '-d', work, '-N'], { cwd: work, env: wrapperEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 } catch (error) { reviewCode = error.status ?? 1 }
 const resolvedCalls = existsSync(fakeInvocations) ? readFileSync(fakeInvocations, 'utf8').trim().split('\n').filter(Boolean) : []
-check('both wrappers execute the one resolved realpath', lunaCode === 0 && reviewCode === 0 && resolvedCalls.length === 2 && resolvedCalls.every((path) => path === realpathSync(fakeReal)), JSON.stringify({ lunaCode, reviewCode, resolvedCalls, expected: realpathSync(fakeReal) }))
-check('wrappers use the trusted dirname for their script root', !existsSync(dirnameMarker), JSON.stringify({ lunaCode, reviewCode, dirnameHijacked: existsSync(dirnameMarker) }))
+check('the wrapper executes the one resolved realpath', reviewCode === 0 && resolvedCalls.length === 1 && resolvedCalls.every((path) => path === realpathSync(fakeReal)), JSON.stringify({ reviewCode, resolvedCalls, expected: realpathSync(fakeReal) }))
+check('the wrapper uses the trusted dirname for its script root', !existsSync(dirnameMarker), JSON.stringify({ reviewCode, dirnameHijacked: existsSync(dirnameMarker) }))
 check('callers cannot replace the selected binary through CODEX_BIN', !readFileSync(fakeCalls, 'utf8').includes('ignored-override'), readFileSync(fakeCalls, 'utf8'))
 
-rmSync(fakeCodex, { force: true })
-symlinkSync(fakeReal, fakeCodex)
-let replacementLunaCode = 0
-try {
-  execFileSync(luna, [prompt, work], { cwd: work, env: { ...wrapperEnv, REPLACE_AFTER_HELP: '1', FAKE_LINK: fakeCodex, FAKE_REPLACEMENT: replacement, REPLACEMENT_MARKER: replacementMarker }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-} catch (error) { replacementLunaCode = error.status ?? 1 }
-check('Luna refuses a Codex symlink replacement before workspace-write exec', replacementLunaCode === 69 && !existsSync(replacementMarker), JSON.stringify({ replacementLunaCode, invoked: existsSync(replacementMarker) }))
 rmSync(fakeCodex, { force: true })
 symlinkSync(fakeReal, fakeCodex)
 let replacementReviewCode = 0
@@ -303,11 +291,11 @@ symlinkSync(fakeReal, fakeCodex)
 writeFileSync(fakeReal, originalFake)
 chmodSync(fakeReal, 0o755)
 rmSync(replacementMarker, { force: true })
-let inPlaceLunaCode = 0
+let inPlaceReviewCode = 0
 try {
-  execFileSync(luna, [prompt, work], { cwd: work, env: { ...wrapperEnv, REPLACE_IN_PLACE: '1', FAKE_TARGET: fakeReal, FAKE_REPLACEMENT: replacement, REPLACEMENT_MARKER: replacementMarker }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-} catch (error) { inPlaceLunaCode = error.status ?? 1 }
-check('Luna refuses an in-place Codex replacement before workspace-write exec', inPlaceLunaCode === 69 && !existsSync(replacementMarker), JSON.stringify({ inPlaceLunaCode, invoked: existsSync(replacementMarker) }))
+  execFileSync(review, ['-t', '5', '-s', '2', '-f', prompt, '-d', work, '-N'], { cwd: work, env: { ...wrapperEnv, REPLACE_IN_PLACE: '1', FAKE_TARGET: fakeReal, FAKE_REPLACEMENT: replacement, REPLACEMENT_MARKER: replacementMarker }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+} catch (error) { inPlaceReviewCode = error.status ?? 1 }
+check('the review wrapper refuses an in-place Codex replacement before exec', inPlaceReviewCode === 3 && !existsSync(replacementMarker), JSON.stringify({ inPlaceReviewCode, invoked: existsSync(replacementMarker) }))
 writeFileSync(fakeReal, originalFake)
 chmodSync(fakeReal, 0o755)
 rmSync(replacementMarker, { force: true })
@@ -325,7 +313,7 @@ check('installer does not suggest an exact-version Codex install', !install.stdo
 const settings = JSON.parse(readFileSync(join(repo, 'settings.json'), 'utf8'))
 check('Codex plugin route is explicitly disabled', settings.enabledPlugins['codex@openai-codex'] === false && !('openai-codex' in settings.extraKnownMarketplaces))
 check('direct Codex exec permission is absent', !settings.permissions.allow.some((permission) => permission.startsWith('Bash(codex exec ')), JSON.stringify(settings.permissions.allow.filter((permission) => permission.includes('codex'))))
-check('Codex preflight is shared by installer and both wrappers', readFileSync(join(repo, 'install.sh'), 'utf8').includes('codex_preflight all') && readFileSync(luna, 'utf8').includes('codex_preflight writer') && readFileSync(review, 'utf8').includes('codex_preflight review'))
+check('Codex preflight is shared by the installer and the review wrapper', readFileSync(join(repo, 'install.sh'), 'utf8').includes('codex_preflight all') && readFileSync(review, 'utf8').includes('codex_preflight review'))
 
 const helperSource = readFileSync(helper, 'utf8')
 const refusalHelpers = ['codex_preflight_refusal_path', 'codex_preflight_refusal_fresh', 'codex_preflight_record_refusal', 'codex_preflight_clear_refusal']

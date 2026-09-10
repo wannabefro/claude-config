@@ -87,7 +87,7 @@ for (const testCase of semanticCases) {
   })
   // Execute the same pre-route guard used by the workflow: malformed serial
   // plans must return before even the ownership gate, which is the first
-  // possible side effect before worktree/Luna dispatch or canonical mutation.
+  // possible side effect before worktree dispatch or canonical mutation.
   const blocked = Boolean(result && result.error && result.error.toLowerCase().includes(testCase.expected.toLowerCase())) && pathGateCalls === 0 && canonicalMutations === 0
   check(`malformed serial ${testCase.name} blocks dispatch and mutation`, blocked, JSON.stringify(result))
 }
@@ -126,7 +126,7 @@ const runSerial = async (snapshot = { fingerprint: frozenTree, current_head: fro
 const serial = await runSerial()
   const serialPrompt = serial.calls.find((c) => c.label === 'build:serial')?.prompt || ''
   const serialOk = serial.out?.route === 'serial' && serial.out?.built === true && serial.out?.units_green === 2 && serial.out?.cleanup?.status === 'cleaned' && serial.calls.filter((c) => c.label === 'build:serial').length === 1 && serial.calls.find((c) => c.label === 'build:serial')?.agentType === 'implementer' && serialPrompt.includes("set -e\n(cd '/tmp/claude-build-worktrees.test/serial' && test -f one.done)\n(cd '/tmp/claude-build-worktrees.test/serial' && test -f two.done)")
-console.log(`  ${serialOk ? 'ok  ' : 'FAIL'} serial build uses one isolated Luna implementer and integrates only after cleanup${serialOk ? '' : `\n         ${JSON.stringify(serial)}`}`)
+console.log(`  ${serialOk ? 'ok  ' : 'FAIL'} serial build uses one isolated implementer and integrates only after cleanup${serialOk ? '' : `\n         ${JSON.stringify(serial)}`}`)
 if (serialOk) passed++; else f++
 const failedSerial = await runSerial(undefined, 'failed')
 const failedSerialOk = failedSerial.out?.units_green === 0 && failedSerial.out?.integration === undefined && failedSerial.out?.cleanup?.status === 'cleaned'
@@ -134,7 +134,7 @@ console.log(`  ${failedSerialOk ? 'ok  ' : 'FAIL'} serial aggregate gate failure
 if (failedSerialOk) passed++; else f++
 const drifted = await runSerial({ fingerprint: 'changed-tree', current_head: frozenHead })
 const driftOk = drifted.out?.units_green === 0 && !drifted.calls.some((c) => c.label === 'build:serial') && drifted.out?.needs_attention?.[0]?.status === 'blocked'
-console.log(`  ${driftOk ? 'ok  ' : 'FAIL'} serial final snapshot drift blocks the Luna dispatch${driftOk ? '' : `\n         ${JSON.stringify(drifted)}`}`)
+console.log(`  ${driftOk ? 'ok  ' : 'FAIL'} serial final snapshot drift blocks the implementer dispatch${driftOk ? '' : `\n         ${JSON.stringify(drifted)}`}`)
 if (driftOk) passed++; else f++
 
 const serialRoot = '/tmp/claude-build-worktrees.test/serial'

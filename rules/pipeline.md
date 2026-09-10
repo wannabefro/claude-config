@@ -1,5 +1,5 @@
 ---
-description: The main loop for planning, frozen Luna implementation, review, and serialized integration.
+description: The main loop for planning, frozen Sonnet implementation, review, and serialized integration.
 ---
 
 # The main loop
@@ -18,18 +18,16 @@ pass when the stakes require it.
 `/implement` is the direct path for one coherent, clearly scoped unit. Opus
 xhigh freezes the working directory, owned files, acceptance criteria, and one
 exact verify command, then dispatches exactly one existing `implementer`. The
-implementer calls the fixed Luna wrapper exactly once.
+implementer writes with Sonnet at xhigh effort.
 
 `/build` is the structured implementation entry point. Its Opus xhigh
 decomposer returns `parallel` or `serial`:
 
 - `serial` prepares one deterministic private worktree, rechecks the frozen
   fingerprint and HEAD, then dispatches one `implementer`, which writes with
-  Sonnet by default or, only when asked for by name, calls Codex
-  `gpt-5.6-luna` medium through `scripts/luna-run.sh`; only a scope-checked
-  patch integrates into the canonical checkout.
+  Sonnet; only a scope-checked patch integrates into the canonical checkout.
 - `parallel` reports the frozen split first. After approval, it dispatches
-  disjoint Luna units with a hard maximum of three active workers.
+  disjoint units with a hard maximum of three active implementers.
 
 No main-thread implementation occurs. No CE scheduler, inline writer, model
 override, or silent fallback is allowed. Integration and final verification
@@ -90,11 +88,11 @@ shared checkout: parallel execution is blocked unless exact private worktrees
 have been established and can be integrated serially. Preserve the file
 ownership, contract, invalidated-work, and verify-command checks by hand.
 
-If the Luna CLI, model, or runtime is unavailable, report the limitation. Do
-not use Opus, Sonnet, Terra, Haiku, or a direct Claude write as a substitute.
+If the Codex review CLI is unavailable, report the limitation. Do not present
+a Claude-only review as a cross-family pass.
 
 ## Design handoff
 
 UI work follows `docs/design-workflow.md`. Freeze `DESIGN.md`,
-`design-contract.md`, and `implementation-handoff.md` before Luna writes.
+`design-contract.md`, and `implementation-handoff.md` before the implementer writes.
 Review checks those artifacts and the worker must follow them.

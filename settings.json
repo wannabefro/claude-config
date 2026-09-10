@@ -154,7 +154,6 @@
       "Bash(rtk grep *)",
       "Bash(unset NODE_OPTIONS)",
       "Bash(unset NODE_OPTIONS *)",
-      "Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)",
       "Bash(bash __CLAUDE_HOME__/scripts/codex-run.sh *)",
       "Bash(pbcopy)",
       "Bash(pbpaste)",

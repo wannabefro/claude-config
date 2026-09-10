@@ -49,7 +49,7 @@ result = checkAdd('settings.json')
 check('required clean filter rejects a broken executable', result.status !== 0, `status=${result.status}`)
 
 git(['config', 'filter.claudehome.clean', shellQuote(join(root, 'missing-path-filter'))])
-writeFileSync(join(repo, 'agents', 'implementer.md'), 'Run bash ' + home + '/scripts/luna-run.sh\n')
+writeFileSync(join(repo, 'agents', 'implementer.md'), 'Run bash ' + home + '/scripts/codex-run.sh\n')
 result = checkAdd('agents/implementer.md')
 check('required path filter rejects a missing executable', result.status !== 0, `status=${result.status}`)
 
@@ -75,7 +75,7 @@ const actualOid = runFile('git', ['-C', repo, 'hash-object', '--path=settings.js
 const expectedOid = runFile('git', ['-C', repo, 'hash-object', '--no-filters', '--stdin'], { input: directCleaned, encoding: 'utf8', stdio: 'pipe' }).trim()
 check('Git clean output matches direct validated settings output', actualOid === expectedOid, JSON.stringify({ actualOid, expectedOid }))
 
-writeFileSync(join(repo, 'agents', 'implementer.md'), `Run bash ${home}/scripts/luna-run.sh\n`)
+writeFileSync(join(repo, 'agents', 'implementer.md'), `Run bash ${home}/scripts/codex-run.sh\n`)
 result = checkAdd('agents/implementer.md')
 let cleanedBrief = ''
 try { cleanedBrief = git(['show', ':agents/implementer.md']) } catch {}

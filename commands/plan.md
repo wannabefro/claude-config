@@ -18,10 +18,10 @@ an empty array is the explicit proof that no ignored baseline is required.
 Use `ce-brainstorm` or `ce-plan` only when the user explicitly requests that toolbox or when a
 separate, named CE artifact is required. CE remains useful for optional brainstorm, plan, debug,
 simplify, review, and compound-learning passes. A CE pass does not authorize implementation; route
-implementation through `/implement` or `/build`, which delegate writes to Luna.
+implementation through `/implement` or `/build`, which delegate writes to the implementer.
 
 For UI work, freeze `DESIGN.md`, `design-contract.md`, and `implementation-handoff.md` before
-dispatch. The plan must route application writes to Codex `gpt-5.6-luna` at medium. Opus performs
+dispatch. The plan must route application writes to the Sonnet `implementer`. Opus performs
 integration, review, and final verification. There is no silent model fallback.
 
 ## One cross-family review when warranted

@@ -14,7 +14,6 @@ const council = read('workflows/council-review.js')
 const direct = read('commands/implement.md')
 const review = read('commands/review.md')
 const reviewWorkflow = read('workflows/review.js')
-const wrapper = read('scripts/luna-run.sh')
 const codexRun = read('scripts/codex-run.sh')
 const preflight = read('scripts/codex-preflight.sh')
 const secretScanner = read('scripts/review-secret-scan.sh')
@@ -52,16 +51,17 @@ check('direct Codex exec permission is removed', !settings.permissions.allow.som
 check('standalone Impeccable is not desired', !Object.keys(settings.enabledPlugins).some((k) => k.startsWith('impeccable@')))
 check('tier-router marketplace is absent', !('claude-tier-router' in settings.extraKnownMarketplaces) && !('tier-router@claude-tier-router' in settings.enabledPlugins))
 check('old Claude design permissions are absent', !settings.permissions.allow.some((x) => x.includes('claude-design')))
-const placeholderWrapperPermission = 'Bash(bash __CLAUDE_HOME__/scripts/luna-run.sh *)'
-const materializedWrapperPermission = `Bash(bash ${configRoot}/scripts/luna-run.sh *)`
+const placeholderWrapperPermission = 'Bash(bash __CLAUDE_HOME__/scripts/codex-run.sh *)'
+const materializedWrapperPermission = `Bash(bash ${configRoot}/scripts/codex-run.sh *)`
 const fixedWrapperPermissions = new Set([placeholderWrapperPermission, materializedWrapperPermission])
 const isFixedWrapperPermission = (permission) => fixedWrapperPermissions.has(permission)
-const onlyFixedLunaPermissions = (permissions) => {
-  const lunaRunPermissions = permissions.filter((permission) => permission.includes('luna-run.sh'))
-  return lunaRunPermissions.length > 0 && lunaRunPermissions.every(isFixedWrapperPermission)
+const onlyFixedWrapperPermissions = (permissions) => {
+  const wrapperPermissions = permissions.filter((permission) => permission.includes('codex-run.sh'))
+  return wrapperPermissions.length > 0 && wrapperPermissions.every(isFixedWrapperPermission)
 }
-check('settings allow only the fixed wrapper command', onlyFixedLunaPermissions(settings.permissions.allow))
-check('wrapper permission predicate rejects an arbitrary Luna-run path', onlyFixedLunaPermissions([placeholderWrapperPermission]) && !onlyFixedLunaPermissions([placeholderWrapperPermission, 'Bash(bash /tmp/other/luna-run.sh *)']))
+check('settings allow only the fixed wrapper command', onlyFixedWrapperPermissions(settings.permissions.allow))
+check('wrapper permission predicate rejects an arbitrary codex-run path', onlyFixedWrapperPermissions([placeholderWrapperPermission]) && !onlyFixedWrapperPermissions([placeholderWrapperPermission, 'Bash(bash /tmp/other/codex-run.sh *)']))
+check('the Codex writer wrapper is gone', !existsSync(new URL('../scripts/luna-run.sh', import.meta.url)) && !settings.permissions.allow.some((x) => x.includes('luna-run.sh')))
 check('CodeRabbit marketplace uses strict validation', marketplace.plugins.find((p) => p.name === 'coderabbit')?.strict === true)
 check('tier-router file is removed', !existsSync(new URL('../tier-router.json', import.meta.url)))
 // settings.local.json env is not delivered to hooks; the override must ride in settings.json.
@@ -70,8 +70,9 @@ check('Haiku is a documented default, not a prohibition', orchestration.includes
 
 const frontmatter = implementationAgent.split('---')[1] || ''
 check('implementer is pinned to Sonnet xhigh', /model:\s*sonnet/.test(frontmatter) && /effort:\s*xhigh/.test(frontmatter))
-check('implementer has no native writer capabilities', !/(^|\n)\s*-\s*(Write|Edit|NotebookEdit|Skill|Agent)\s*$/m.test(frontmatter), frontmatter)
-check('implementer calls the fixed Luna wrapper', implementationAgent.includes('scripts/luna-run.sh') && implementationAgent.includes('exactly once'))
+check('implementer writes natively with Sonnet', /(^|\n)\s*-\s*Write\s*$/m.test(frontmatter) && /(^|\n)\s*-\s*Edit\s*$/m.test(frontmatter), frontmatter)
+check('implementer cannot re-delegate', !/(^|\n)\s*-\s*(Skill|Agent|Task)\s*$/m.test(frontmatter) && implementationAgent.includes('Do not call another agent or skill'), frontmatter)
+check('implementer runs the exact verification command and stays in frozen ownership', implementationAgent.includes('Run the exact provided verification command') && implementationAgent.includes('Do not write outside the frozen file ownership'))
 check('settings and implementer use explicit content-bound filters', attributes.includes('settings.json filter=claudesettings') && attributes.includes('agents/implementer.md filter=claudehome') && pathFilter.includes('content-agnostic') && installer.includes('filter.claudesettings.required true') && installer.includes('filter.claudehome.required true'))
 check('implementer home path is materialized at install time', attributes.includes('agents/implementer.md filter=claudehome') && installer.includes('checkout -- settings.json agents/implementer.md') && installer.includes('path-clean.py'))
 check('deep reasoner is Opus xhigh', /model:\s*opus/.test(read('agents/deep-reasoner.md')) && /effort:\s*xhigh/.test(read('agents/deep-reasoner.md')))
@@ -80,7 +81,7 @@ check('four-role roster is documented', ['explorer', 'planner', 'reviewer', 'wor
 
 check('build schema has only parallel and serial routes', /enum: \['parallel', 'serial'\]/.test(build) && !/enum: \['parallel', 'ce-work', 'inline'\]/.test(build))
 check('build is reserved for structured work', !/Use `\/build` for every implementation request/.test(read('commands/build.md')) && /structured work/.test(read('commands/build.md')))
-check('CE preserves the Luna writer boundary and returns by scope', /never replaces the Luna writer\s+boundary/.test(read('commands/build.md')) && /returns through\s+`\/implement` or `\/build`, according to scope/.test(read('commands/build.md')) && !read('commands/build.md').includes('never replaces `/build` for code'))
+check('CE preserves the implementer writer boundary and returns by scope', /never replaces the implementer\s+writer boundary/.test(read('commands/build.md')) && /returns through\s+`\/implement` or `\/build`, according to scope/.test(read('commands/build.md')) && !read('commands/build.md').includes('never replaces `/build` for code'))
 check('build has a hard three-worker ceiling', /MAX_ACTIVE_IMPLEMENTERS = 3/.test(build) && /acquireImplementer/.test(build))
 check('build freezes and rechecks the full index and working-tree fingerprint before queue release', /working_tree_fingerprint/.test(build) && /build:freeze-fingerprint/.test(build) && /build:approval-snapshot/.test(build) && /build:final-release-check/.test(build) && /hash-object --no-filters/.test(build) && /relevant untracked state changed/.test(build))
 check('build freezes ignored dependency baselines and routes by maximum DAG frontier', build.includes('ignored_dependencies') && build.includes('frontier_width') && build.includes('maximum DAG frontier width >= 2'))
@@ -91,8 +92,8 @@ check('parallel build creates a cryptographic invocation nonce before any agent 
 check('worktree cleanup is journaled and resumable', worktree.includes('cleanup recovery required') && worktree.includes('.cleanup.journal') && worktree.includes('unit.$unit.state=') && worktree.includes('worktree_unregistered_path'))
 check('Git registry validation uses NUL framing and validates bare, locked, and prunable records', worktree.includes('worktree list --porcelain -z') && worktree.includes('parse-worktrees-z') && worktree.includes('locked\\ *') && worktree.includes('prunable\\ *') && worktree.includes('"$block_kind" = bare'))
 check('build delegates through the implementer', build.includes("agentType: 'implementer'") && !/model: u\.mechanical/.test(build))
-check('direct path freezes scope and dispatches exactly one implementer', /exact working directory/.test(direct) && /exact repo-relative files/.test(direct) && /Dispatch exactly one existing `implementer`/.test(direct) && /luna-run\.sh` exactly once/.test(direct))
-check('direct path forbids native Claude writes and fallback', /Do not write in the main thread/.test(direct) && direct.includes('native Claude write') && /when Luna is unavailable/.test(direct))
+check('direct path freezes scope and dispatches exactly one implementer', /exact working directory/.test(direct) && /exact repo-relative files/.test(direct) && /Dispatch exactly one existing `implementer`/.test(direct) && /writes with Sonnet at xhigh effort/.test(direct))
+check('direct path forbids main-thread writes and a second worker', /Do not write in the main thread/.test(direct) && direct.includes('native main-thread write') && /Do not dispatch a second worker/.test(direct))
 check('council avoids automatic Sonnet and Haiku routes', !/model:\s*'(sonnet|haiku)'/.test(council))
 check('council uses Opus xhigh for every phase', (council.match(/effort: 'xhigh'/g) || []).length >= 4)
 check('council always seats all six lenses', council.includes('const SEATED = COUNCIL') && council.includes('all six lenses') && !council.includes('const TRIAGE'))
@@ -119,12 +120,12 @@ check('dependent units refresh after predecessor integration while independent w
 check('CodeRabbit never replaces the required Codex review seat', routing.includes('optional additional lens') && routing.includes('never satisfies or replaces') && routing.includes('blocks the required Codex seat') && !routing.includes('either satisfies the cross-family requirement'))
 check('guardrail hook leaves classification to review and enforces council', guardrailHook.includes('/review owns classification') && guardrailHook.includes('both tiers still require /council') && !guardrailHook.includes('It already classifies risk itself'))
 
-check('Luna wrapper pins model and effort', wrapper.includes('--model gpt-5.6-luna') && wrapper.includes('model_reasoning_effort=medium'))
-check('Luna wrapper pins safe approval and sandbox', wrapper.includes('--approve-for-me') && !wrapper.includes('--sandbox workspace-write'))
-check('Luna wrapper disables inherited MCP config', wrapper.includes('--ignore-user-config') && !wrapper.includes("mcp_servers={}"))
-check('Luna wrapper rejects dangerous bypass flags', !wrapper.includes('dangerously-bypass'))
-check('Luna wrapper rejects arbitrary binary overrides', !wrapper.includes('CODEX_BIN=${') && !wrapper.includes('PERL_BIN=${'))
-check('all Codex routes share the one fail-closed preflight', existsSync(new URL('../scripts/codex-preflight.sh', import.meta.url)) && installer.includes('codex_preflight all') && wrapper.includes('codex_preflight writer') && wrapper.includes('--output-last-message') && codexRun.includes('codex_preflight review') && preflight.includes('codex-cli') && preflight.includes('exec --help') && preflight.includes('writer surface') && preflight.includes('--output-last-message'))
+check('review wrapper pins model and effort', codexRun.includes('REVIEW_MODEL="gpt-6-astra"') && codexRun.includes('REVIEW_EFFORT="low"'))
+check('review wrapper pins a read-only sandbox', codexRun.includes('--sandbox read-only') && !codexRun.includes('--sandbox workspace-write'))
+check('review wrapper disables inherited MCP config', codexRun.includes('--ignore-user-config'))
+check('review wrapper rejects dangerous bypass flags', !codexRun.includes('dangerously-bypass'))
+check('review wrapper rejects arbitrary binary overrides', !codexRun.includes('CODEX_BIN=${') && !codexRun.includes('PERL_BIN=${'))
+check('all Codex routes share the one fail-closed preflight', existsSync(new URL('../scripts/codex-preflight.sh', import.meta.url)) && installer.includes('codex_preflight all') && codexRun.includes('codex_preflight review') && codexRun.includes('--output-last-message') && preflight.includes('codex-cli') && preflight.includes('exec --help') && preflight.includes('writer surface') && preflight.includes('--output-last-message'))
 check('Codex wrappers use fixed absolute control utilities', [
   'CODEX_PREFLIGHT_MKTEMP=/usr/bin/mktemp',
   'CODEX_PREFLIGHT_STAT=/usr/bin/stat',
@@ -138,7 +139,7 @@ check('Codex wrappers use fixed absolute control utilities', [
   'CODEX_PREFLIGHT_PGREP=/usr/bin/pgrep',
   'CODEX_PREFLIGHT_FIND=/usr/bin/find',
   'CODEX_PREFLIGHT_SLEEP=/bin/sleep',
-].every((path) => preflight.includes(path)) && wrapper.includes('CODEX_PREFLIGHT_MKTEMP') && codexRun.includes('CODEX_PREFLIGHT_PS'))
+].every((path) => preflight.includes(path)) && codexRun.includes('CODEX_PREFLIGHT_MKTEMP') && codexRun.includes('CODEX_PREFLIGHT_PS'))
 check('secret scanner uses fixed Homebrew ripgrep and find', secretScanner.includes('for candidate in /opt/homebrew/bin/rg /usr/local/bin/rg') && secretScanner.includes('FIND_BIN=/usr/bin/find') && secretScanner.includes('case "$rg_status"'))
 check('installer separates required, recommended, and optional prerequisites', installer.includes('REQUIRED_PREREQS="git gh node perl rg jq codex"') && installer.includes('RECOMMENDED_PREREQS="rtk cmux wt"') && installer.includes('OPTIONAL_PREREQS="bd"') && readme.includes('| `rtk`, `cmux`, `wt` | Recommended |') && readme.includes('| `bd` | Optional |'))
 
@@ -154,7 +155,7 @@ check('private build worktree utility is present', existsSync(new URL('../script
 const routingSection = claude.indexOf('\n# Model routing')
 const afterRouting = claude.indexOf('\n# ', routingSection + 1)
 const contractAt = claude.indexOf('Authoritative routing contract')
-check('authoritative routing contract sits inside Model routing', contractAt > routingSection && contractAt < afterRouting && claude.includes('Sonnet is the default writer') && claude.includes('serial integration'))
+check('authoritative routing contract sits inside Model routing', contractAt > routingSection && contractAt < afterRouting && claude.includes('Sonnet is the only implementation writer') && claude.includes('serial integration'))
 check('authoritative contract names direct and tiered review paths', claude.includes('Use `/implement`') && claude.includes('Use `/build` for structured') && claude.includes('use `/review`') && claude.includes('full `/council`'))
 check('planning is native Opus with explicit CE only', plan.includes('native planner') && plan.includes('only when the user explicitly requests') && !/Run `ce-(brainstorm|plan)`/.test(plan))
 check('recovery docs match fixed Sol xhigh behavior', recovery.includes('gpt-5.6-sol') && recovery.includes('xhigh') && recovery.includes('runtime failure') && recovery.includes('secret scan refused') && recovery.includes('scripts/codex-run.sh') && !recovery.includes('timeout 600 codex exec') && !recovery.includes('model_reasoning_effort=medium') && !recovery.includes('retry once at'))

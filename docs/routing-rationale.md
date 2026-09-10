@@ -2,7 +2,7 @@
 
 The default route separates judgment from implementation. Opus xhigh owns
 planning, architecture, design, diagnosis, review, integration, and final
-verification. Codex Luna medium owns all implementation writes through one
+verification. The Sonnet implementer owns all implementation writes through one
 fixed wrapper.
 
 Compound Engineering remains installed because its planning, debug,

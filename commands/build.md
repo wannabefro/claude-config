@@ -1,5 +1,5 @@
 ---
-description: Execute structured multi-unit work through the Opus decomposer and Codex Luna implementation route.
+description: Execute structured multi-unit work through the Opus decomposer and the Sonnet implementation route.
 argument-hint: "[feature description or plan path]"
 ---
 
@@ -44,8 +44,8 @@ Pass `args` as an object. The result must use `route: "parallel"` or
 `route: "serial"`.
 
 `serial` means one `implementer` starts immediately in one deterministic private
-worktree. The implementer is an Opus dispatcher and verifier; Codex
-`gpt-5.6-luna` medium performs the writes. A final fingerprint/HEAD check runs
+worktree. The implementer writes with Sonnet at xhigh effort and verifies its
+own unit. A final fingerprint/HEAD check runs
 before that dispatch, and the helper rejects any post-write path outside the
 declared ownership before integration. The serial brief contains one frozen
 aggregate `set -e` verification command; every exact unit gate runs in its own
@@ -71,7 +71,7 @@ payload and integrity fields:
 
 Do not call the decomposer again, edit the payload, or reconstruct it from the
 display. The workflow rejects missing, stale, or tampered payloads before any
-unit starts. The scheduler allows no more than three active Luna units, starts
+unit starts. The scheduler allows no more than three active implementers, starts
 every currently-ready independent unit concurrently, creates one exact private
 git worktree per unit, and integrates completed patches in worker completion
 order behind a canonical read/write lock. Refresh snapshots may overlap each
@@ -90,7 +90,7 @@ symlink aliases, create exact private worktrees, and reject any patch that
 escapes its unit's owned paths.
 Preserve the approved absolute working directory and start every currently
 ready independent unit concurrently, up to three. Do not write in the main
-thread. Report missing verify commands and unavailable Luna runtime.
+thread. Report missing verify commands and any unavailable runtime.
 
 ## After implementation
 
@@ -101,6 +101,6 @@ assembled diff. If it classifies the diff as guardrail, run the full `/council`
 before final verification under Opus.
 
 Compound Engineering remains available for explicit brainstorm, plan, debug,
-simplify, review, and compound learning. It never replaces the Luna writer
-boundary. Any CE execution that reaches code changes returns through
+simplify, review, and compound learning. It never replaces the implementer
+writer boundary. Any CE execution that reaches code changes returns through
 `/implement` or `/build`, according to scope.

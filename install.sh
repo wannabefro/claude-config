@@ -47,9 +47,7 @@ for candidate in /opt/homebrew/bin/jq /usr/local/bin/jq /usr/bin/jq; do
   fi
 done
 
-# The path filter writes this exact absolute path into the installed agent
-# brief. Resolve relative targets before configuring the filter so the Luna
-# runner command remains valid after Claude changes its working directory.
+# Resolve relative targets first, so the brief's home path stays valid.
 TARGET_PARENT=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$TARGET")" 2>/dev/null && pwd -P) || {
   log "ERROR: cannot resolve the target parent directory: $TARGET"
   exit 1
@@ -414,15 +412,13 @@ if ! git -C "$TARGET" checkout -- settings.json agents/implementer.md; then
   exit 1
 fi
 
-# A successful checkout is not enough: a missing smudge expansion leaves the
-# dispatcher with a literal placeholder and it cannot invoke Luna. Fail during
-# installation while the target and its backup are still obvious to the user.
+# A missing smudge expansion leaves a literal placeholder in the brief.
 if grep -Fq '__CLAUDE_HOME__' "$TARGET/agents/implementer.md" "$TARGET/settings.json"; then
   log "ERROR: the Claude home path did not materialize in the installed routing files."
   exit 1
 fi
-[ -x "$TARGET/scripts/luna-run.sh" ] || {
-  log "ERROR: the installed Luna runner is missing or not executable."
+[ -x "$TARGET/scripts/codex-run.sh" ] || {
+  log "ERROR: the installed Codex review runner is missing or not executable."
   exit 1
 }
 if ! routing_status="$(git -C "$TARGET" status --porcelain -- settings.json agents/implementer.md)"; then
@@ -438,8 +434,8 @@ log "Done. Next steps:"
 cat <<'EOF'
   1. Install any prerequisites reported missing above. This config never installs tools.
   2. Start a NEW Claude Code session. Model, plugin, permission, and MCP discovery are session-scoped.
-  3. Confirm the policy: Opus xhigh plans, reviews, integrates, and verifies; Codex gpt-5.6-luna medium writes.
-     `/implement` handles one coherent unit. `/build` handles structured work and allows at most three Luna implementers.
+  3. Confirm the policy: Opus xhigh plans, reviews, integrates, and verifies; the Sonnet implementer writes.
+     `/implement` handles one coherent unit. `/build` handles structured work and allows at most three implementers.
      `/review` selects mechanical, normal, or guardrail review; explicit `/council` always uses full seating.
   4. Re-authenticate only the MCP servers required on this Mac. Credentials and OAuth state are not synced.
      GitHub connector authentication is separate from terminal Git and gh authentication.
