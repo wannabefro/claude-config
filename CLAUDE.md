@@ -88,6 +88,16 @@ reviewers, or a fix larger than the finding.
 
 Report what you fixed and what you left, and say why you left it.
 
+**Confirm each finding against the code before you dispatch it.** Deciding whether a finding is real
+is diagnosis, and diagnosis is yours. A writer handed an unconfirmed claim re-derives context you
+already had, and a wrong claim costs it a whole investigation that ends in no change.
+
+**Then split the confirmed findings by file pair and dispatch them in parallel** — one writer per
+production file plus its own test file, up to the writer cap in `rules/orchestration.md`. A review
+arrives as one list, which is not a reason to give one writer six unrelated investigations. Measured
+2026-09-10: 6 findings over 4 disjoint file pairs, bundled into one writer, took 24 minutes, and two
+thirds of that was reading and reasoning rather than the verify loop.
+
 Incoming feedback on an open PR is a different path. `rules/shipping.md` governs that one.
 
 # Gotchas
