@@ -28,12 +28,19 @@ const run = async () => {
   let active=0, maxActive=0, integrationActive=0, maxIntegrationActive=0
   let refreshActive=0, maxRefreshActive=0, writerActive=0, canonicalVersion=0, refreshObservedWriter=false
   const refreshSnapshots=[]
+  // The slow unit ends only once c has started, so head-of-line blocking is an
+  // ordering fact rather than a wall-clock race. The timeout keeps a regression failing, not hanging.
+  let releaseSlow
+  const slowGate = new Promise(r => { releaseSlow = r })
   const agent=async(p,o)=>{
     if (o.label.startsWith('build:')) {
       const id=o.label.slice('build:'.length)
       workerStarts.set(id, Date.now())
       active++; maxActive=Math.max(maxActive,active)
-      await new Promise(r=>setTimeout(r,id==='a'?120:12))
+      if (id==='c') releaseSlow()
+      await (id==='a'
+        ? Promise.race([slowGate, new Promise(r=>setTimeout(r,2000))]).then(()=>new Promise(r=>setTimeout(r,12)))
+        : new Promise(r=>setTimeout(r,12)))
       workerFinishes.set(id, Date.now())
       active--; dispatched.push({label:o.label,prompt:p}); return {status:'green',summary:'ok'}
     }

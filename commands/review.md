@@ -16,7 +16,7 @@ This is the default review entry point. Classify the diff before dispatch:
    version bump with no behavior change. Run the exact relevant gates and one
    Opus xhigh diff inspection. Do not convene `/council`.
 2. **Normal** — any behavior or structure change without a guardrail surface.
-   Run one independent Opus xhigh reviewer and one Codex `gpt-5.6-sol` xhigh
+   Run one independent Opus xhigh reviewer and one Codex `gpt-6-astra` low
    outsider through `scripts/codex-run.sh`. The Codex pass is review-only,
    MCP-disabled by default, and must receive the diff inline. If it is
    unavailable, stalled, empty, or refused, report the gap. Do not substitute.
@@ -30,6 +30,19 @@ State the selected tier and the evidence for it. The normal tier is not a
 15–25-agent council. It is exactly one Opus reviewer plus one Codex outsider.
 The mechanical tier is not a council. An explicit `/council` request always
 means the full existing council, even for a mechanical diff.
+
+Apply the repository's smallest-thing rule to the production diff, in every
+tier. Reject, and name the replacement rather than the smell:
+
+- a hand-rolled helper that the standard library, an existing dependency, or
+  this codebase already provides;
+- a second copy of a list, a table, or a decoder, because the copies drift;
+- a parameter, a flag, or a config key that no caller reads yet;
+- a guard that approximates another component's rule instead of asking it;
+- a step that leaves the product broken until a later step lands.
+
+`rules/principles.md` holds the measured cases. Less code is the finding, not a
+style preference: each of these is one more thing to keep correct.
 
 When reviewing tests, apply the repository's valuable-tests rule: each changed
 test must prove an observable invariant or plausible regression, fail if that
