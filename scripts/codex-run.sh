@@ -254,18 +254,18 @@ if [ "$rc" -eq 99 ]; then
   exit 4
 fi
 
-if [ "$rc" -ne 0 ]; then
-  echo "codex-run: RUNTIME FAILURE — Codex exited with status $rc before returning a review." >&2
-  "$CODEX_PREFLIGHT_CAT" "$out" >&2
-  exit 7
-fi
-
 if refused; then
   codex_preflight_record_refusal review 'workspace spend cap'
   echo "codex-run: REFUSED — the provider returned no capacity, not a review." >&2
   echo "codex-run: this does NOT satisfy a cross-model pass. Report the gap." >&2
   "$CODEX_PREFLIGHT_CAT" "$out" >&2
   exit 6
+fi
+
+if [ "$rc" -ne 0 ]; then
+  echo "codex-run: RUNTIME FAILURE — Codex exited with status $rc before returning a review." >&2
+  "$CODEX_PREFLIGHT_CAT" "$out" >&2
+  exit 7
 fi
 
 if ! answered; then
