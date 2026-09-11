@@ -10,6 +10,13 @@ EVALS_DIR="$REPO_ROOT/evals"
 TIMEOUT_SECONDS=300
 DEFAULT_CONCURRENCY=8
 
+# A BSD host without coreutils has no timeout, so fail closed rather than run unbounded.
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+if [ -z "$TIMEOUT_BIN" ]; then
+  echo "run-evals: needs timeout from coreutils (brew install coreutils)" >&2
+  exit 69
+fi
+
 usage() {
   echo "usage: $(basename "$0") [concurrency]" >&2
   echo "concurrency is an integer from 1 to 32" >&2
@@ -20,33 +27,16 @@ if [ "${1:-}" = "--run-one" ]; then
   suite="$2"
   name="$(basename "$suite")"
   out="$(mktemp)"
-  marker="$(mktemp)"
-  rm -f "$marker"
 
-  node "$suite" >"$out" 2>&1 &
-  pid=$!
-  (
-    sleep "$TIMEOUT_SECONDS"
-    if kill -0 "$pid" 2>/dev/null; then
-      : > "$marker"
-      kill -TERM "$pid" 2>/dev/null
-      sleep 1
-      kill -KILL "$pid" 2>/dev/null
-    fi
-  ) &
-  watcher=$!
-
-  wait "$pid"
+  "$TIMEOUT_BIN" -k 1 "$TIMEOUT_SECONDS" node "$suite" >"$out" 2>&1
   status=$?
-  kill "$watcher" 2>/dev/null
-  wait "$watcher" 2>/dev/null
 
   last_line="$(tail -n 1 "$out" 2>/dev/null)"
-  if [ -f "$marker" ]; then
+  if [ "$status" -eq 124 ]; then
     status=1
     last_line="timed out after ${TIMEOUT_SECONDS}s"
   fi
-  rm -f "$out" "$marker"
+  rm -f "$out"
   printf '%s\t%s\t%s\n' "$name" "$status" "$last_line"
   exit 0
 fi
@@ -91,10 +81,10 @@ results_file="$(mktemp)"
 trap 'rm -f "$results_file"' EXIT
 start_ts=$(date +%s)
 
-for suite in "${serial[@]}"; do
+for suite in ${serial[@]+"${serial[@]}"}; do
   "$SELF" --run-one "$suite" >> "$results_file"
 done
-printf '%s\n' "${suites[@]}" | xargs -P "$concurrency" -I{} "$SELF" --run-one {} >> "$results_file"
+printf '%s\n' ${suites[@]+"${suites[@]}"} | xargs -P "$concurrency" -I{} "$SELF" --run-one {} >> "$results_file"
 
 end_ts=$(date +%s)
 elapsed=$((end_ts - start_ts))
