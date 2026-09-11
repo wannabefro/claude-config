@@ -39,6 +39,34 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 Never route implementation to the main thread. Never add a permanent designer
 agent. UI reviewers read the frozen design contract and handoff.
 
+## External services: route by coverage, not by habit
+
+Runlayer is an MCP gateway. It proxies about 33 connector servers behind four
+tools: `search_tools`, `execute_tool`, `search_skills`, and `get_skill_file`.
+Ten more MCP servers connect directly.
+
+**Check the gateway's workspace skills before organisation-specific work.** The
+gateway holds skills that carry the organisation's own runbooks, policies, and
+verification steps. The gateway's own instructions ask for that lookup first,
+and it is the step that gets skipped. Measured over the 30 days to 2026-09-10
+on this machine: 508 gateway calls, and 2 of them were skill calls.
+
+**The two routes cost the same, so choose on coverage.** Every direct connector
+tool here is deferred, so its first use costs one `ToolSearch` and then the
+call. A gateway tool costs one `search_tools` and then `execute_tool`. Measured
+449 `execute_tool` against 57 `search_tools`, so one discovery serves about 8
+calls on either route.
+
+| the service has | route |
+|---|---|
+| a live direct server | the direct tool, for one less indirection at equal cost |
+| no direct server | the gateway |
+| a direct server that failed to connect | the gateway, and name the route that answered |
+
+**Never call a `Runlayer_-_<service>__authenticate` connector.** Those are
+unauthenticated stubs for services the gateway already reaches. They return an
+authentication prompt, not data.
+
 The Codex route is one active CLI, selected as the first `codex` on `PATH` and
 resolved once to an absolute realpath. `scripts/codex-run.sh` runs a
 fail-closed preflight: stable `0.149.1+`, a bounded version probe, and the
