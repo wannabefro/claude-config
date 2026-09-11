@@ -19,7 +19,7 @@ One-stop check (and optional background loop) for the current task's PR. Handles
 Run once per invocation:
 
 ```
-gh pr view <pr> --json number,url,state,statusCheckRollup,reviewThreads,comments,reviews
+gh pr view <pr> --json number,url,state,isDraft,mergeStateStatus,reviewDecision,statusCheckRollup,reviewThreads,comments,reviews
 ```
 
 - `state` — OPEN / CLOSED / MERGED.
@@ -67,9 +67,40 @@ Evaluate in order. The first match wins — report, delete the state file, and e
 
 1. `state` is `CLOSED` or `MERGED` → "PR <state>, stopping watch."
 2. Any CI check failed → surface the failure, then stop. Do NOT keep polling a broken PR.
-3. All CI checks are terminal with `SUCCESS`/`NEUTRAL`/`SKIPPED` AND no unresolved review threads/reviews → "all clear."
+3. All CI checks are terminal AND no unresolved review threads/reviews → "all clear." Then run the
+   merge-ready check below.
+
+   **A `NEUTRAL` or `SKIPPED` review bot did not review.** Cursor Bugbot reports `NEUTRAL` when it
+   skips, and that is no review, not a pass. Name every such check in the report. Verified on a live
+   pull request, where Bugbot and a SAST scanner both sat at `NEUTRAL` beside 14 green checks.
 4. `now - started_at > 2h` → "watch ceiling hit after 2h. Last state: <summary>."
 5. User explicitly asked to stop in the current turn → exit.
+
+## Merge-ready notification
+
+The repository uses the Trunk merge queue, so "ready" means GitHub will accept the merge, not that
+you should merge it. **Never merge.** Send one desktop notification and stop.
+
+Report the pull request as ready only when all five hold:
+
+1. `state` is `OPEN` and `isDraft` is false.
+2. `reviewDecision` is `APPROVED`.
+3. `mergeStateStatus` is `CLEAN` or `HAS_HOOKS`. `BLOCKED`, `BEHIND`, `DIRTY`, and `UNSTABLE` are not ready.
+4. No check has `conclusion` `FAILURE`, `TIMED_OUT`, or `CANCELLED`, and no check is still `QUEUED` or `IN_PROGRESS`.
+5. No unresolved review thread remains.
+
+`mergeStateStatus` is often `UNKNOWN` on the first read, because GitHub computes it lazily. Treat
+`UNKNOWN` as "not ready yet" and let the next tick settle it; do not report it as a failure.
+
+Then send exactly one notification for each pull request, and record that you sent it in the state
+file so a later tick cannot repeat it:
+
+```
+bash ~/.claude/scripts/notify.sh "PR ready to merge" "<repo>#<pr> — <title>" "<url>"
+```
+
+Name any `NEUTRAL` review bot in the message, because a skipped bot is the one thing a green wall of
+checks hides.
 
 ## Continue (only if no stop condition matched AND CI is pending)
 
