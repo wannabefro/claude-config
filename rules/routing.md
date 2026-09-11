@@ -67,6 +67,14 @@ calls on either route.
 unauthenticated stubs for services the gateway already reaches. They return an
 authentication prompt, not data.
 
+**A gateway connector can be present and still unauthorized, and it fails in a
+way that reads like absence.** `execute_tool` then answers with an authorize
+link, or the gateway lists an `AUTH_REQUIRED_<service>` tool in place of the
+real ones. That is the supported way to start authorization, so call it and
+give the user the link. Only the user can complete the OAuth step. Never
+report such a connector as unavailable, and never present it as a working
+fallback before it answers with data.
+
 The Codex route is one active CLI, selected as the first `codex` on `PATH` and
 resolved once to an absolute realpath. `scripts/codex-run.sh` runs a
 fail-closed preflight: stable `0.149.1+`, a bounded version probe, and the
