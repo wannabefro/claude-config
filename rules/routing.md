@@ -31,7 +31,9 @@ that reaches code changes returns through `/implement` or `/build`, by scope.
 | One approved implementation unit | `/implement` with the Sonnet `implementer` |
 | Independent approved units | `/build` parallel route, maximum three active implementers |
 | Integration and final verification | Opus in serialized order |
+| Any outstanding PR review feedback | `/pr-feedback` — it triages CodeRabbit, Cursor Bugbot, and human threads, then routes the confirmed ones |
 | CodeRabbit review threads | Existing unresolved PR threads use `coderabbit:autofix` before the selected review path; this must not force a full `/council` for a normal PR |
+| Watching a PR without fixing it | `/pr-watch`, which reports CI and unresolved threads and changes nothing |
 
 Never route implementation to the main thread. Never add a permanent designer
 agent. UI reviewers read the frozen design contract and handoff.

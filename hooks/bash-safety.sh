@@ -39,14 +39,18 @@ case "$cmd" in
   *" mkfs."*|\
   "mkfs."*|\
   *" dd if="*|\
-  "dd if="*|\
-  *"curl "*'|'*" sh"*|\
-  *"curl "*'|'*" bash"*|\
-  *"wget "*'|'*" sh"*|\
-  *"wget "*'|'*" bash"*)
+  "dd if="*)
     deny "Blocked high-risk shell command"
     ;;
 esac
+
+# A fetch piped into a shell. The pipe target must be the shell, not a later word.
+fetch='(^|[[:space:]`(;&|])(curl|wget)[[:space:]]'
+wrapper='((sudo|env|command|exec|nohup|time|builtin)([[:space:]][^|]*)?[[:space:]])?'
+into_shell="\\|[[:space:]]*${wrapper}(ba|z|k|da)?sh([[:space:]]|\$|[;&|)\`])"
+if [[ "$cmd" =~ $fetch ]] && [[ "$cmd" =~ $into_shell ]]; then
+  deny "Blocked high-risk shell command"
+fi
 
 # ripgrep's -r is --replace, NOT grep's --recursive (rg recurses by default). So the muscle-memory
 # `rg -rn 'Foo' src` clusters as `-r n` and prints every match REPLACED BY THE LITERAL "n".
