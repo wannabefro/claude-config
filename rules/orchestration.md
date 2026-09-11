@@ -63,6 +63,9 @@ Two rules follow:
    Dispatch every unit in one message, up to 8. Give each unit to Haiku when it
    fits a shape in the table above.
 
+The `parallelise-work` skill carries the decision procedure and the slicing
+patterns. Invoke it before you dispatch anything.
+
 **Dispatch independent work in one message.** Measured over 28 days on this
 machine, 416 of 421 dispatch bursts held exactly one agent. Two independent
 questions are two dispatches in one message, not two turns. The extra turn is a

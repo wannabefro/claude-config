@@ -13,6 +13,7 @@ Skill descriptions decide routing. Use the narrowest matching skill.
 | Requirements, architecture, or a plan | `/plan` with native Opus xhigh; CE only when explicitly requested |
 | One coherent implementation unit | `/implement`, exactly one Sonnet implementer |
 | Structured implementation | `/build`, then `parallel` or `serial` implementer dispatch |
+| Whether to split a task across workers, and how to slice it | `parallelise-work`. It owns the cost bound and the ceilings; `superpowers:dispatching-parallel-agents` covers independence and interference |
 | Diagnosis | `compound-engineering:ce-debug`, then `/implement` or `/build` by scope |
 | Simplification or durable learning | `compound-engineering:ce-simplify-code` or `ce-compound` |
 | Review | `/review` once on the assembled diff; guardrail tier routes to full `/council` |
