@@ -18,8 +18,11 @@ Never rewrite these into STE, because changing them makes them wrong:
 
 - Code, identifiers, file paths, commands, flags, and error text
 - Anything you quote from a tool, a log, a test run, or another person
-- Commit messages and PR bodies, which follow the repository's own conventions
+- Commit messages, which follow the repository's own conventions
 - Structured data an agent returns to a caller — schema fields are not prose
+
+**A PR body is no longer exempt.** It is read by a person deciding whether to review, so it needs
+plainer English than a report, not looser. `rules/shipping.md` holds the rule and the linter.
 
 Technical names (`build-parallel.js`, `depends_on`, `worktree`) and technical verbs (`commit`,
 `merge`, `compile`) are permitted. STE allows them, and a paraphrase would be less clear.

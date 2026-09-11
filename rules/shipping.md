@@ -57,8 +57,20 @@ invocation is a bug.
        reviewer scanning the log will stop on it. **Fix the history, do not annotate it**; that is
        what `/make-pr-easy-to-review` is for. Reach for a note in the body only when the history has
        to stand (already reviewed, or someone else's commits).
-  `scripts/pr-body-lint.py` checks a body for this narration. Run it with
-  `python3 scripts/pr-body-lint.py --pr <N>` before you open or update a PR.
+- **Write the body in English, not in type names.** The reader is deciding whether to review, and
+  has never seen these symbols. Lead with what changes for a user and what can break. Name a symbol
+  when the reader must go and look at it, never to identify the change itself. A sentence carrying
+  three identifiers has stopped being a sentence. Keep the identifiers for the "read this first"
+  table, where they are the point.
+- **A diagram must earn its place, and most do not.** Label a node with what happens there, not
+  with the type that holds it: write `the guide outranks the inferred brief`, not
+  `PostEditContext`. If the diagram only traces which function calls which, delete it. The prose
+  said that already, and faster. Draw one only for what sentences cannot carry: a fan-out, a cycle,
+  an ordering constraint, or a state machine.
+
+  `scripts/pr-body-lint.py` checks a body for all three faults, and reports narration separately
+  from readability. Run `python3 scripts/pr-body-lint.py --pr <N>` from inside that repository
+  before you open or update a PR, or pass it a file holding the body.
 - **Review the assembled diff before review-ready.** Use `/review` for the default mechanical or
   normal tier. Normal review uses one Opus xhigh reviewer and one Codex `gpt-6-astra` low outsider.
   **Guardrail-critical diffs** (auth, authz, payments, migrations/schema, data mutations, public API,
