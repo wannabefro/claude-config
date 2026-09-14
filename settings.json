@@ -502,7 +502,8 @@
     "coderabbit@sam": true,
     "find-skills@sam": false,
     "gh-stack@sam": true,
-    "open-knowledge@sam": false
+    "open-knowledge@sam": false,
+    "retro@retro": true
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {
