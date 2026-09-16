@@ -95,14 +95,6 @@
       "Bash(top *)",
       "Bash(htop *)",
       "Bash(direnv *)",
-      "mcp__codegraph__codegraph_search",
-      "mcp__codegraph__codegraph_callers",
-      "mcp__codegraph__codegraph_callees",
-      "mcp__codegraph__codegraph_impact",
-      "mcp__codegraph__codegraph_node",
-      "mcp__codegraph__codegraph_status",
-      "mcp__codegraph__codegraph_explore",
-      "mcp__codegraph__codegraph_files",
       "Bash(rtk *)",
       "Bash(bd *)",
       "Bash(mv *)",
@@ -243,8 +235,7 @@
       "Read(**/.netrc)",
       "Read(**/.npmrc)",
       "Read(**/.pypirc)",
-      "Read(**/.terraformrc)",
-      "mcp__serena__open_dashboard"
+      "Read(**/.terraformrc)"
     ],
     "ask": [
       "Bash(killall *)",
