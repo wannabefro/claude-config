@@ -14,6 +14,7 @@
 !/statusline.sh
 
 # --- curated directories (subtree rides along once the dir is un-ignored) ---
+!/agents/
 !/rules/
 !/hooks/
 !/commands/
