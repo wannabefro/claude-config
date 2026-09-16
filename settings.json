@@ -481,5 +481,6 @@
   },
   "feedbackSurveyState": {
     "lastShownTime": 0
-  }
+  },
+  "model": "opus[1m]"
 }
