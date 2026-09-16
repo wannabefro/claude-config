@@ -183,7 +183,25 @@
       "mcp__chrome-real__list_console_messages",
       "mcp__chrome-real__list_network_requests",
       "mcp__chrome-real__new_page",
-      "mcp__chrome-real__navigate_page"
+      "mcp__chrome-real__navigate_page",
+      "Bash(shasum *)",
+      "Bash(coderabbit review *)",
+      "mcp__chronosphere__query_logs_range",
+      "mcp__chronosphere__get_log_histogram",
+      "mcp__chronosphere__query_prometheus_instant",
+      "mcp__chronosphere__query_prometheus_range",
+      "mcp__chronosphere__list_prometheus_label_values",
+      "mcp__chronosphere__list_log_field_names",
+      "mcp__chronosphere__list_log_field_values",
+      "mcp__buildkite__get_build_failure_summary",
+      "mcp__buildkite__search_logs",
+      "mcp__buildkite__list_jobs",
+      "mcp__bond__sentry_search_issues",
+      "mcp__bond__sentry_get_issue",
+      "mcp__bond__sentry_search_projects",
+      "mcp__bond__slack_search",
+      "mcp__runlayer-plugin__search_tools",
+      "mcp__claude-in-chrome__find"
     ],
     "deny": [
       "Bash(wget *)",
@@ -451,10 +469,6 @@
   "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
-  "feedbackSurveyState": {
-    "lastShownTime": 0
-  },
-  "model": "opus[1m]",
   "autoMode": {
     "environment": [
       "$defaults",
@@ -464,5 +478,8 @@
       "Key internal services: Buildkite for CI, Chronosphere for metrics, logs and traces, Sentry for error monitoring.",
       "Additional context: `-cp` and `-sp` dev-server flags point the local Conductor or Staffside build at the PRODUCTION klaviyo-graph. Reads against it are routine; treat a mutation through that path as a production write, not local dev."
     ]
+  },
+  "feedbackSurveyState": {
+    "lastShownTime": 0
   }
 }
