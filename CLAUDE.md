@@ -4,7 +4,7 @@ Optimize for correct results delivered quickly. Proceed with authorized work; as
 
 # Orchestration
 
-Claude Opus owns requirements, architecture, diagnosis, task decomposition, integration, and final judgment. Delegate substantial, well-scoped execution to Sonnet agents. Handle trivial edits and tightly coupled iterations directly when delegation adds overhead. Use cheap read-only agents for bounded gathering when it saves time.
+Claude Opus owns requirements, architecture, diagnosis, task decomposition, integration, and final judgment. Delegate substantial, well-scoped execution to Sonnet agents. Delegate when the work spans three or more files you have not read, when two or more units touch disjoint paths, or when answering means sweeping many files for a conclusion you can state in a paragraph. Handle trivial edits and tightly coupled iterations directly when delegation adds overhead. Use cheap read-only agents for bounded gathering when it saves time.
 
 Plan only enough to expose important decisions, interfaces, dependencies, and verification. Small changes need no planning document. Skills are an on-demand toolbox; do not run a mandatory chain of skills for ordinary work.
 
