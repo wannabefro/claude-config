@@ -1,6 +1,9 @@
 # `scripts/ste-lint.py` — what it over-reports, measured
 
-The rule is in `rules/simplified-technical-english.md`. This file holds the evidence for it.
+> **Superseded historical record.** The former prose rule and its quota no
+> longer apply. Do not use this document as current policy.
+
+This file holds evidence about a former lint rule.
 
 `ste-lint.py` is a regex pass, not a grammar parser. It finds no passive voice and it makes no
 part-of-speech check. A clean run is evidence, never a compliance verdict.

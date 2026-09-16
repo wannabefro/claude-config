@@ -64,27 +64,11 @@ if [ ! -e "${all_suites[0]}" ]; then
   exit 1
 fi
 
-# build-layer-test measures real scheduler overlap, so pool contention fails it.
-SERIAL_SUITES=(build-layer-test.mjs)
-suites=()
-serial=()
-for suite in "${all_suites[@]}"; do
-  name="$(basename "$suite")"
-  is_serial=0
-  for reserved in "${SERIAL_SUITES[@]}"; do
-    [ "$name" = "$reserved" ] && is_serial=1
-  done
-  if [ "$is_serial" -eq 1 ]; then serial+=("$suite"); else suites+=("$suite"); fi
-done
-
 results_file="$(mktemp)"
 trap 'rm -f "$results_file"' EXIT
 start_ts=$(date +%s)
 
-for suite in ${serial[@]+"${serial[@]}"}; do
-  "$SELF" --run-one "$suite" >> "$results_file"
-done
-printf '%s\n' ${suites[@]+"${suites[@]}"} | xargs -P "$concurrency" -I{} "$SELF" --run-one {} >> "$results_file"
+printf '%s\n' "${all_suites[@]}" | xargs -P "$concurrency" -I{} "$SELF" --run-one {} >> "$results_file"
 
 end_ts=$(date +%s)
 elapsed=$((end_ts - start_ts))

@@ -1,6 +1,7 @@
 # Worktree Workflow — Config & Mechanics (reference)
 
-On-demand reference for the worktrunk + cmux setup. Pulled out of `rules/worktree-workflow.md` (which keeps the per-session decision rules) to keep always-on context lean — read this only when setting up or debugging the worktree tooling.
+On-demand reference for the worktrunk + cmux setup. Read this when setting up
+or debugging the worktree tooling.
 
 ## Config / mechanics
 

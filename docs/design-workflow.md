@@ -4,6 +4,9 @@ Open Design is an optional, host-local design bridge. It does not block core
 coding readiness. The reviewed app release and official distribution facts are
 in `manifests/design.json`.
 
+Use the phase list as design guidance when it fits the task. It is an on-demand
+reference, not a mandatory workflow for ordinary work.
+
 ## Phase routing
 
 1. Write a short brief and collect references.

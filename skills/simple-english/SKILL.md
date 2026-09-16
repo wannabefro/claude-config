@@ -6,13 +6,13 @@ description: |
   English — the full 53-rule catalog, plus a check mode that cites rule numbers.
   Use for documentation, READMEs, runbooks, error messages, release notes, and
   incident reports, or when the user says "STE", "ASD-STE100", or "de-slop".
-  Reports to the user follow `rules/simplified-technical-english.md` instead.
+  Use this style only when requested; ordinary reports follow the core instructions.
 license: MIT
 compatibility: claude-code cursor codex gemini-cli opencode
 metadata:
   standard: ASD-STE100 Issue 9 (2025-01-15)
   upstream: https://github.com/AminBlg/SimpleEnglish @ 379728b (2026-07-21)
-  local-override: commit messages and PR bodies stay exempt per rules/simplified-technical-english.md, overriding references/use-cases.md
+  local-override: commit messages and PR bodies use ordinary concise English unless the user requests this style, overriding references/use-cases.md
 ---
 
 # Simple English: Write Like an Aerospace Manual

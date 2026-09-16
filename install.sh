@@ -176,10 +176,10 @@ else
 fi
 for t in $RECOMMENDED_PREREQS; do
   if ! command -v "$t" >/dev/null 2>&1; then
-    printf '  ○ %s  (recommended workflow support missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
+    printf '  ○ %s  (optional terminal support missing) — install: %s\n' "$t" "$(prereq_hint "$t")"
     missing_recommended="$missing_recommended $t"
   else
-    printf '  ✓ %s (recommended workflow support)\n' "$t"
+    printf '  ✓ %s (optional terminal support)\n' "$t"
   fi
 done
 for t in $OPTIONAL_PREREQS; do
@@ -434,9 +434,9 @@ log "Done. Next steps:"
 cat <<'EOF'
   1. Install any prerequisites reported missing above. This config never installs tools.
   2. Start a NEW Claude Code session. Model, plugin, permission, and MCP discovery are session-scoped.
-  3. Confirm the policy: Opus xhigh plans, reviews, integrates, and verifies; the Sonnet implementer writes.
-     `/implement` handles one coherent unit. `/build` handles structured work and allows at most three implementers.
-     `/review` selects mechanical, normal, or guardrail review; explicit `/council` always uses full seating.
+  3. Opus orchestrates; Sonnet implementers handle substantial execution.
+     `/implement` handles one unit; `/build` uses up to three native isolated writers.
+     `/review` runs one independent Codex pass for behavior changes.
   4. Re-authenticate only the MCP servers required on this Mac. Credentials and OAuth state are not synced.
      GitHub connector authentication is separate from terminal Git and gh authentication.
   5. Check Remote Control and required macOS permissions on this Mac.

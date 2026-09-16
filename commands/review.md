@@ -1,72 +1,46 @@
 ---
-description: Review an assembled diff with the smallest risk-appropriate review tier
+description: Review the assembled diff with Opus and one independent Codex pass when behavior changes.
 argument-hint: "[what to review, or blank for the current assembled diff]"
 ---
 
 Review the assembled diff: **$ARGUMENTS**
 
-The target must resolve to the exact checkout head and comparison base. Use
-`base..head` (or `base...head`), `pr:<number>`, or the checked-out branch with
-an upstream. Detached or mismatched checkouts fail closed; the workflow never
-guesses `main`, `origin/main`, or `HEAD` as a missing comparison.
+Resolve and record the actual target. An explicit `base..head`, `base...head`,
+`pr:<number>`, or detached comparison is valid when every named ref resolves to
+the requested checkout. With no target, review the current staged, unstaged,
+and new-file changes; an upstream is not required. Refuse only an unresolved or
+mismatched explicit target. Never guess a base branch.
 
-This is the default review entry point. Classify the diff before dispatch:
+Opus inspects the diff and classifies it as mechanical or behavior-changing.
+For a mechanical change, run the relevant gates and complete the Opus
+inspection. For a behavior change, read every changed file in full, inspect the
+diff, and run one independent Codex review. Do not create a council or add a
+second review tier automatically.
 
-1. **Mechanical** — formatting, comments, generated output, a rename, or a
-   version bump with no behavior change. Run the exact relevant gates and one
-   Opus xhigh diff inspection. Do not convene `/council`.
-2. **Normal** — any behavior or structure change without a guardrail surface.
-   Run one independent Opus xhigh reviewer and one Codex `gpt-6-astra` low
-   outsider through `scripts/codex-run.sh`. The Codex pass is review-only,
-   MCP-disabled by default, and must receive the diff inline. If it is
-   unavailable, stalled, empty, or refused, report the gap. Do not substitute.
-3. **Guardrail** — authentication or authorization, payments or money movement,
-   migrations, schema or data mutation, permissions, secrets or cryptography,
-   public API contracts, destructive actions, or high-impact concurrency. Run
-   the full `/council` on the assembled diff. Do not reduce the council to a
-   normal pass.
+Create a private brief that contains the exact diff, relevant file context, the
+recorded target, and a review-only request. Include a full changed-file snapshot
+when the diff does not provide enough context. Use separate tool calls:
 
-State the selected tier and the evidence for it. The normal tier is not a
-15–25-agent council. It is exactly one Opus reviewer plus one Codex outsider.
-The mechanical tier is not a council. An explicit `/council` request always
-means the full existing council, even for a mechanical diff.
+1. Run `umask 077; mktemp -d "${TMPDIR:-/tmp}/claude-review.XXXXXXXX"` and
+   retain the absolute path printed by Bash.
+2. Use the `Write` tool on that observed path plus `/review.txt`. Write the
+   diff, context, target, and review request to the file.
+3. Run the wrapper with the same observed absolute path. Substitute the path
+   literally; do not execute the placeholder in this document.
+4. Remove that exact private directory after the wrapper returns.
 
-Apply the repository's smallest-thing rule to the production diff, in every
-tier. Reject, and name the replacement rather than the smell:
-
-- a hand-rolled helper that the standard library, an existing dependency, or
-  this codebase already provides;
-- a second copy of a list, a table, or a decoder, because the copies drift;
-- a parameter, a flag, or a config key that no caller reads yet;
-- a guard that approximates another component's rule instead of asking it;
-- a step that leaves the product broken until a later step lands.
-
-`rules/principles.md` holds the measured cases. Less code is the finding, not a
-style preference: each of these is one more thing to keep correct.
-
-When reviewing tests, apply the repository's valuable-tests rule: each changed
-test must prove an observable invariant or plausible regression, fail if that
-behaviour is removed, use a realistic narrow boundary, and stay deterministic.
-Reject tautologies, implementation mirrors, excessive mocks, empty snapshots,
-source-regex or call-count claims, and serialized-only concurrency checks.
-
-For an open PR with unresolved CodeRabbit threads, use the narrow CodeRabbit
-autofix path first. Do not duplicate those threads as a universal pre-review.
-
-Run the selected path through the Workflow tool when available:
-
-```json
-{
-  "scriptPath": "~/.claude/workflows/review.js",
-  "args": { "target": "$ARGUMENTS", "repoPath": "<absolute path, only if outside this session>" }
-}
+```bash
+umask 077
+# After the Write tool call, replace the path below with its observed absolute path.
+test -s /tmp/claude-review.XXXXXXXX/review.txt
+~/.claude/scripts/codex-run.sh -f /tmp/claude-review.XXXXXXXX/review.txt -N
 ```
 
-If the result has `tier: "guardrail"`, invoke `/council` on the same
-`bundle_path` returned by the workflow so classification and council inspect
-identical bytes. That is an explicit ownership transfer; `/council` cleans the
-bundle after its lenses and judge, including failure paths. The bundle is
-secret-scanned before any cross-provider Codex transfer and blocks on a match.
-If Workflow is disabled, perform the same classification and report
-which review passes ran. Never change the model, effort, or writer family.
-Reviewers do not write code.
+The wrapper performs its existing secret scan and failure detection. Exit 0
+with an assistant result is a review. Empty, stalled, refused, unavailable,
+failed, or secret-scan-blocked runs are gaps; report the exact status and do not
+substitute another model.
+
+Apply clear, in-scope defects in the current authorized task. Keep review
+feedback separate from implementation ownership, and report what ran and what
+remains uncertain.

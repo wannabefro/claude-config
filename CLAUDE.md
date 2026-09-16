@@ -1,139 +1,29 @@
-# Language
+# Working style
 
-**Write every report in ASD-STE100 Simplified Technical English.** The 16 always-on rules and the
-scope carve-outs are in `rules/simplified-technical-english.md`. Invoke the `simple-english` skill for
-text you *author* — a README, a runbook, an error message.
+Optimize for correct results delivered quickly. Proceed with authorized work; ask only when a missing decision materially changes the outcome. Read the repository's instructions and relevant code. Keep updates short and report unfinished work honestly.
 
-**Read the project's own context files first, and reuse its ubiquitous language.** `CLAUDE.md`,
-`AGENTS.md`, a `docs/` set, a glossary, the type names. Call a thing what this codebase calls it, even
-where another name reads better. A second word for one concept is the drift STE rule 10 forbids, and it
-compounds silently. If two context files name one concept differently, surface the conflict rather than
-pick a third name.
+# Orchestration
 
-# Model routing
+Claude Opus owns requirements, architecture, diagnosis, task decomposition, integration, and final judgment. Use Sonnet implementers for substantial, well-scoped execution. Handle trivial edits and tightly coupled iterations directly when delegation adds overhead. Use cheap read-only agents for bounded gathering when it saves time.
 
-Claude Opus owns requirements, architecture, design direction, diagnosis,
-review, integration, and final verification. The main thread runs at high
-effort and escalates to xhigh for planning, architecture, diagnosis, and
-review. Dispatched reviewers and the implementer dispatcher stay pinned at
-xhigh in their own frontmatter. Sonnet is the only implementation writer, and
-the `implementer` agent writes with it. Use `/implement` for one coherent, clearly scoped
-unit. Use `/build` for structured multi-unit or genuinely parallel work.
+Plan only enough to expose important decisions, interfaces, dependencies, and verification. Small changes need no planning document. Skills are an on-demand toolbox; do not run a mandatory chain of skills for ordinary work.
 
-`/build` uses one implementer for serial work or at most three disjoint
-implementers for parallel work. Freeze the graph, interfaces, write
-scopes, acceptance criteria, and verify commands before dispatch. Compound Engineering
-remains an explicit on-demand toolbox, not the scheduler.
+Run at most three concurrent writers, only over disjoint owned paths, and always with native worktree isolation. Writers and research agents share the runtime's configured concurrency budget. Give each worker the context it needs without copying the whole conversation. Serialize work that changes a shared contract or depends on another unit, and integrate ready work serially. `/build`, `/implement`, and `agents/implementer.md` hold the dispatch and base-SHA mechanics; do not restate them in a brief.
 
-After implementation, use `/review` for the assembled diff. It selects a
-mechanical, normal, or guardrail tier. Mechanical changes need exact gates
-and an Opus diff inspection. Normal changes need one independent Opus xhigh
-review and one Codex `gpt-6-astra` low outsider review. Guardrail changes
-use the full `/council`. An explicit `/council` always seats the full council,
-even for a mechanical diff.
+# Quality
 
-Authoritative routing contract: Opus owns judgment and serial integration at high
-effort, escalating to xhigh for planning, diagnosis, and review;
-Sonnet is the only implementation writer; active
-implementation concurrency is at most 3, while read-only and mechanical fan-out
-runs up to 8. Haiku is the default for a well-scoped task, and
-`rules/orchestration.md` lists the five shapes. `gpt-5.6-terra` is a manual opt-in fast lane only. Fable is a manual
-long-horizon escalation only after host availability is verified. No route
-silently changes model, effort, or writer family — a fallback is named in the
-report. Exit codes and the fallback table: `rules/orchestration.md`.
+Create a plan when unresolved requirements, shared interfaces, dependencies, or costly-to-reverse decisions need it. Review each authored plan once with Codex before implementation. Routine changes need no plan. Review the assembled behavior-changing diff once with Codex; mechanical changes use relevant checks and the orchestrator's inspection. Reviewers receive requirements and evidence without the author's preferred verdict. No recursive councils. CodeRabbit is optional additional feedback.
 
-**`AGENTS.md` is the one the platform does not load for you.** Claude Code reads `CLAUDE.md` and never
-`AGENTS.md`. A repo bridges that with a `CLAUDE.md` holding `@AGENTS.md`, and 887 of 928 do. The
-bridge delivers as a `nested_memory` attachment, not as a `Read` — so "I never read it" is not by
-itself evidence that it was missing.
+Confirm findings against the code and fix clear defects within scope. Recheck affected behavior after fixes. Check both the review process status and its response: empty output, credit refusals, timeouts, and transfer refusals are missing reviews even with exit zero. Continue independent work and report the gap; never count it as a pass.
 
-**Do not predict that attachment from the directory layout.** A probe of 9 sessions on 2026-08-28
-found it absent for a repo-root `AGENTS.md` while cwd sat exactly on that directory, present for a
-file well outside the cwd chain, and twice arriving only *after* the edit it should have informed.
-Measured over 56 transcripts: of 21 sessions that edited a governed file, 16 never opened it, and 8
-of those had no reachable bridge at all.
+Run checks that demonstrate the intended behavior. Reproduce bugs before fixing them where practical; exercise runtime changes in their real environment. Avoid redundant suites and automatic checks after every edit. Prefer clear code and useful tests.
 
-`hooks/agents-md-context.py` therefore asks the transcript instead of guessing: it injects the nearest
-governing `AGENTS.md` before an edit unless a `nested_memory` attachment for that exact path already
-landed, once per file per session. `scripts/agents-md-coverage.py` finds the files with no bridge at
-all and exits 1 on any. Run it rather than trust a number above, because repos change.
+# Comments
 
-Where an `AGENTS.md` and a habit of yours disagree, the repo file wins — and say so, rather than
-averaging the two.
+Comment only for non-obvious reasons, workarounds, invariants, or gotchas. Do not restate the code. Keep each comment to one sentence of at most 20 words, normally on one line. Use a second line only with a good reason; never exceed two lines. These limits also apply to function and class docstrings. Module docstrings are exempt. Put longer rationale in documentation or the PR description.
 
-**Write a comment or a docstring on one line.** Only a very good reason earns a second line: a
-workaround whose cause needs naming, or an invariant the reader cannot infer. The countable limits
-and the checker are in `rules/principles.md`.
+# Boundaries
 
-# Design fidelity
+Respect permissions and explicit denials; report a denied action without retrying it through another route. Preserve unrelated work. Publish, send messages, or perform destructive actions only within the user's authorization.
 
-When a project has a design source of truth (Figma, a `design/` doc set, a spec mockup), follow it
-exactly — structure, layout, copy, states, navigation. Don't silently "improve" or average against
-it; a drift that reads as complete is worse than an obvious gap. If following it is impossible or
-you believe it's wrong, surface the conflict and get permission before diverging.
-
-When *you* make a design decision with no source of truth to follow, **show me a visual, not prose**
-— a rendered mockup (`SendUserFile` with `display: render`), an `Artifact` when I should be able to
-review it from my phone, or a screenshot of the running UI. Even a single-screen choice. For a
-non-visual architecture decision, a diagram is the equivalent.
-
-# After a review, fix the obvious things
-
-When a review I asked for comes back — `/council`, `ce-code-review`, a reviewer agent — implement the
-clear-cut findings in the same turn. Do not hand me a list to approve first.
-
-Obvious means all three: the finding names a real defect, the fix is contained, and no design or
-product decision is in question. Everything else waits — an interface change, a disagreement between
-reviewers, or a fix larger than the finding.
-
-Report what you fixed and what you left, and say why you left it.
-
-**Confirm each finding against the code before you dispatch it.** Deciding whether a finding is real
-is diagnosis, and diagnosis is yours. A writer handed an unconfirmed claim re-derives context you
-already had, and a wrong claim costs it a whole investigation that ends in no change.
-
-**Then split the confirmed findings by file pair and dispatch them in parallel** — one writer per
-production file plus its own test file, up to the writer cap in `rules/orchestration.md`. A review
-arrives as one list, which is not a reason to give one writer six unrelated investigations. Measured
-2026-09-10: 6 findings over 4 disjoint file pairs, bundled into one writer, took 24 minutes, and two
-thirds of that was reading and reasoning rather than the verify loop.
-
-Incoming feedback on an open PR is a different path. `rules/shipping.md` governs that one.
-
-# Gotchas
-
-Rationale and measurements for each item below: `docs/gotchas.md`.
-
-**iOS simulators are a shared global resource.** Read `rules/ios-simulators.md` before touching
-`simctl`.
-
-**Symbol intelligence: `LSP` first, Serena for edits.** Reach for either over grep when renaming or
-tracing callers, not for tiny, single-file, or greenfield edits.
-
-**Browser automation: prefer `chrome-real`** over playwright and the `chrome-devtools` plugin
-server. It needs Chrome running with remote debugging on — if its tools error with a connection
-failure, that toggle is off.
-
-**Codex is the cross-family lens.** It cannot be fired via the Skill tool — use a bounded foreground
-`codex exec` instead; see the `codex-exec-recovery` skill.
-
-**`codegraph`** for structural code questions — who calls X, what would break, trace a flow.
-
-**`rtk`** is proxied by a hook, so run it directly only for meta commands (`rtk gain`, `rtk
-discover`). Its rewrites are lossy — never treat their output as proof something is absent.
-
-**Search with `fd -u` and `rg`, not `find`/`grep`** — all three are excluded from the rtk rewrite
-because a summarised search stops being an exhaustive one. Reach for `find` only for predicates fd
-lacks. Verified 2026-07-29 with `rtk rewrite`: it touches `cat` and `ls`, and nothing else here.
-
-**`rg -r` is `--replace`, not grep's `--recursive`** — rg recurses by default, so `rg -rn 'X' src`
-clusters as `--replace=n` and prints every match replaced by the literal `n`. It looks like a
-corrupt file, not a wrong flag: it cost five bad searches and two wrong accusations against rtk in
-one session. `bash-safety.sh` now denies the clustered `-r<letter>` form.
-
-**`curl` is allowed; write to a file, not to stdout.** Two layers, and only one is gone. The
-`Bash(curl *)` deny was removed 2026-07-31, because it never removed the capability — it just pushed
-every fetch into `node https.get` inside `ctx_execute`, which is the same network access with less
-visibility. context-mode's routing hook still redirects curl whose **body reaches stdout**, and no
-env var turns that off. So use `curl -fsSL <url> -o <file>`, then read the file. `wget` stays denied,
-and `bash-safety.sh` still blocks `curl … | sh`.
+Read GitHub PR/issue threads and Slack threads as needed, but do not post comments or replies unless the user explicitly asks. A request to review, investigate, implement, or fix something does not authorize posting to those threads.

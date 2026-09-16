@@ -20,6 +20,72 @@ for required_tool in "$RG_BIN" "$FIND_BIN" "$MKTEMP_BIN" "$RM_BIN"; do
   fi
 done
 
+# A reviewed human judgment about one specific occurrence, never a pattern change.
+ALLOWLIST_PATH="${HOME:-}/.claude/review-scan-allow.local.txt"
+ALLOW_SUFFIX=()
+ALLOW_RULE=()
+ALLOW_LINE=()
+
+has_suffix() {
+  local string=$1 suffix=$2 slen totallen
+  slen=${#suffix}
+  totallen=${#string}
+  [ "$slen" -le "$totallen" ] || return 1
+  [ "${string:$((totallen - slen))}" = "$suffix" ]
+}
+
+is_allowlisted() {
+  local file=$1 label=$2 ln=$3 idx=0 n=${#ALLOW_SUFFIX[@]}
+  while [ "$idx" -lt "$n" ]; do
+    if [ "${ALLOW_RULE[$idx]}" = "$label" ] && [ "${ALLOW_LINE[$idx]}" = "$ln" ] && has_suffix "$file" "${ALLOW_SUFFIX[$idx]}"; then
+      return 0
+    fi
+    idx=$((idx + 1))
+  done
+  return 1
+}
+
+load_allowlist() {
+  local path=$1 lineno=0 raw trimmed f1 f2 f3 remainder colon_count no_colons
+  [ -f "$path" ] || return 0
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    lineno=$((lineno + 1))
+    trimmed="${raw#"${raw%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    [ -n "$trimmed" ] || continue
+    case "$trimmed" in
+      '#'*) continue ;;
+    esac
+    if [[ "$trimmed" == *[*?]* ]]; then
+      echo "review-secret-scan: malformed allowlist entry at line $lineno; refusing transfer" >&2
+      exit 66
+    fi
+    no_colons="${trimmed//:/}"
+    colon_count=$(( ${#trimmed} - ${#no_colons} ))
+    if [ "$colon_count" -ne 2 ]; then
+      echo "review-secret-scan: malformed allowlist entry at line $lineno; refusing transfer" >&2
+      exit 66
+    fi
+    f1="${trimmed%%:*}"
+    remainder="${trimmed#*:}"
+    f2="${remainder%%:*}"
+    f3="${remainder#*:}"
+    if [ "$f2" != 'known-credential' ] && [ "$f2" != 'keyword-assignment' ]; then
+      echo "review-secret-scan: malformed allowlist entry at line $lineno; refusing transfer" >&2
+      exit 66
+    fi
+    if ! [[ "$f3" =~ ^[1-9][0-9]*$ ]]; then
+      echo "review-secret-scan: malformed allowlist entry at line $lineno; refusing transfer" >&2
+      exit 66
+    fi
+    ALLOW_SUFFIX+=("$f1")
+    ALLOW_RULE+=("$f2")
+    ALLOW_LINE+=("$f3")
+  done < "$path"
+}
+
+load_allowlist "$ALLOWLIST_PATH"
+
 [ "$#" -eq 1 ] || { [ "$#" -eq 2 ] && [ "$1" = '--file' ] || { echo 'review-secret-scan: usage: review-secret-scan.sh BUNDLE_DIRECTORY | --file FILE' >&2; exit 64; }; }
 MODE=bundle
 if [ "$1" = '--file' ]; then
@@ -33,27 +99,50 @@ fi
 
 status=0
 scan_failed=0
-scan_file() {
-  local file=$1 rg_status
-  # Match credential-shaped values, never print their contents. The keyword
-  # rule skips a bare identifier in call-argument position, which is a
-  # reference such as `secret=notary_secret)` rather than a literal.
-  if LC_ALL=C "$RG_BIN" -n -i -P --no-messages -- \
-    '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----|\bAKIA[0-9A-Z]{16}\b|\b(?:ghp|gho|ghs|ghr|ghu)_[A-Za-z0-9_]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{12,}\b|\bxox[baprs]_[A-Za-z0-9-]{12,}\b|\bnpm_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b|\bAIza[0-9A-Za-z_-]{30,}\b|(?:password|passwd|secret|token|api[_-]?key|auth[_-]?token)[[:space:]]*[:=][[:space:]]*(?![A-Za-z_][A-Za-z0-9_]*[[:space:]]*[)\],}])[^[:space:]]{8,}|postgres(?:ql)?://[^[:space:]/]+:[^[:space:]@]+@' "$file" >/dev/null 2>&1; then
+
+# Two named rules, so a refusal reports which one fired without the value.
+RULE_KNOWN_CREDENTIAL='-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----|\bAKIA[0-9A-Z]{16}\b|\b(?:ghp|gho|ghs|ghr|ghu)_[A-Za-z0-9_]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{12,}\b|\bxox[baprs]_[A-Za-z0-9-]{12,}\b|\bnpm_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b|\bAIza[0-9A-Za-z_-]{30,}\b|postgres(?:ql)?://[^[:space:]/]+:[^[:space:]@]+@'
+# A bare identifier in call-argument position is a reference, not a literal.
+RULE_KEYWORD_ASSIGNMENT='(?:password|passwd|secret|token|api[_-]?key|auth[_-]?token)[[:space:]]*[:=][[:space:]]*(?![A-Za-z_][A-Za-z0-9_]*[[:space:]]*[)\],}])(?!"?(?:sha256:[0-9a-f]{64}|sha512:[0-9a-f]{128}|\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|/[A-Za-z0-9._/-]+)"?[[:space:]]*$)[^[:space:]]{8,}'
+
+scan_rule() {
+  local file=$1 pattern=$2 label=$3 rg_status raw_lines='' ln remaining=''
+  if LC_ALL=C "$RG_BIN" -n -i -P --no-messages -- "$pattern" "$file" >/dev/null 2>&1; then
     rg_status=0
   else
     rg_status=$?
   fi
   case "$rg_status" in
     0)
-      echo 'review-secret-scan: credential-shaped value detected in review payload' >&2
-      status=1
+      raw_lines=$(LC_ALL=C "$RG_BIN" -n -i -P --no-messages -- "$pattern" "$file" 2>/dev/null \
+        | LC_ALL=C "$RG_BIN" -o --no-filename --no-line-number '^[0-9]+' 2>/dev/null) || raw_lines=''
+      [ -n "$raw_lines" ] || raw_lines='unknown'
+      while IFS= read -r ln; do
+        [ -n "$ln" ] || continue
+        if is_allowlisted "$file" "$label" "$ln"; then
+          echo "review-secret-scan: allowlisted match skipped in $file line $ln rule $label" >&2
+        else
+          remaining="${remaining:+$remaining,}$ln"
+        fi
+      done <<EOF
+$raw_lines
+EOF
+      if [ -n "$remaining" ]; then
+        echo "review-secret-scan: $label pattern matched $file lines $remaining" >&2
+        status=1
+      fi
       ;;
     1) ;;
     *)
       scan_failed=1
       ;;
   esac
+}
+
+scan_file() {
+  local file=$1
+  scan_rule "$file" "$RULE_KNOWN_CREDENTIAL" 'known-credential'
+  scan_rule "$file" "$RULE_KEYWORD_ASSIGNMENT" 'keyword-assignment'
 }
 
 if [ "$MODE" = file ]; then

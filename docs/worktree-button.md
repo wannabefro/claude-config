@@ -123,6 +123,6 @@ Three findings from building it are worth keeping, because they will bite again:
 - **Killing a listener's parent orphans its `cmux events` child.** `pkill` by script name leaves the
   subscription alive, and two subscribers then race on the cursor file.
 
-`scripts/clean-build-worktrees.sh` is untouched and still handles the other half of the problem: `wf_*`
-and `agent-*` worktrees left behind by `/build`, removed only when their content matches the main tree.
-It still refuses to touch a human worktree. This button is how a human worktree goes.
+The old `/build` worktree cleanup script was retired with the custom Workflow
+scheduler. Native agent worktrees now follow the runtime's lifecycle; inspect
+retained worktrees and use `/cleanup` for explicitly requested cleanup.

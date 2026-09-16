@@ -1,6 +1,6 @@
 import { execFileSync as runFile, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir, tmpdir } from 'node:os'
 
@@ -14,7 +14,7 @@ const malformedTarget = join(root, "claude home's malformed")
 const testHome = join(root, 'test home')
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
 const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
-let fixtureParent = dirname(repo)
+let fixtureParent = process.env.INSTALL_SAFE_FIXTURE_PARENT || dirname(repo)
 while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temporaryRoots.some((rootPath) => isUnder(fixtureParent, rootPath)))) fixtureParent = dirname(fixtureParent)
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const cliFixtureRoot = mkdtempSync(join(fixtureParent, 'claude-install-cli-safe-'))
@@ -39,14 +39,47 @@ const cloneMain = (source, destination) => {
   runFile('git', ['clone', '-q', '-b', 'main', source, destination], { encoding: 'utf8', stdio: 'pipe' })
 }
 const FILTERED = new Map([['settings.json', 'settings-clean.py'], ['agents/implementer.md', 'path-clean.py']])
-const cleanForCommit = (relative, working) => runFile(process.env.PYTHON3_RUNTIME || '/usr/bin/python3', [join(repo, 'scripts', FILTERED.get(relative)), repo], { input: working, maxBuffer: 32 * 1024 * 1024 })
+const snapshotFiles = [
+  'README.md',
+  'install.sh',
+  '.gitattributes',
+  'settings.json',
+  'CLAUDE.md',
+  'rules/project-context.md',
+  'agents/implementer.md',
+  'scripts/path-clean.py',
+  'scripts/settings-clean.py',
+  'scripts/codex-preflight.sh',
+  'scripts/review-secret-scan.sh',
+  'scripts/codex-run.sh',
+  'evals/config-load-test.mjs',
+  'hooks/bash-safety.sh',
+  'hooks/rm-guard.py',
+  'hooks/rtk-rewrite.sh',
+  'hooks/agents-md-context.py',
+  'hooks/context-mode-cache-heal.mjs',
+]
+const cleanForCommit = (relative, working) => {
+  const workingText = working.toString('utf8')
+  const configuredHome = relative === 'settings.json'
+    ? workingText.match(/(\/[^"'\\\n]*?)\/hooks\/[A-Za-z0-9._-]+/)?.[1] || repo
+    : repo
+  return runFile(process.env.PYTHON3_RUNTIME || '/usr/bin/python3', [join(repo, 'scripts', FILTERED.get(relative)), configuredHome], { input: working, maxBuffer: 32 * 1024 * 1024 })
+}
+const reconcileCandidateDeletions = (source) => {
+  const tracked = runFile('git', ['-C', source, 'ls-files', '-z'], { encoding: 'buffer' }).toString('utf8').split('\0').filter(Boolean)
+  for (const relative of tracked) {
+    try { lstatSync(join(repo, relative)) } catch { rmSync(join(source, relative), { recursive: true, force: true }) }
+  }
+}
 const snapshotWorkingInstaller = (source) => {
-  for (const relative of ['README.md', 'install.sh', '.gitattributes', 'settings.json', 'CLAUDE.md', 'rules/routing.md', 'rules/orchestration.md', 'agents/implementer.md', 'commands/implement.md', 'commands/build.md', 'commands/review.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs']) {
+  reconcileCandidateDeletions(source)
+  for (const relative of snapshotFiles) {
     // The clone has no clean filter, so a smudged working file would commit a host path.
     const working = readFileSync(join(repo, relative))
     writeFileSync(join(source, relative), FILTERED.has(relative) ? cleanForCommit(relative, working) : working)
   }
-  git(source, ['add', 'README.md', 'install.sh', '.gitattributes', 'settings.json', 'CLAUDE.md', 'rules/routing.md', 'rules/orchestration.md', 'agents/implementer.md', 'commands/implement.md', 'commands/build.md', 'commands/review.md', 'scripts/path-clean.py', 'scripts/settings-clean.py', 'scripts/codex-preflight.sh', 'scripts/review-secret-scan.sh', 'scripts/codex-run.sh', 'evals/claude-policy-test.mjs'])
+  git(source, ['add', '-A'])
   const staged = spawnSync('git', ['-C', source, 'diff', '--cached', '--quiet'], { encoding: 'utf8' })
   if (staged.status === 1) git(source, ['commit', '-qm', 'snapshot installer under test'])
   else if (staged.status !== 0) throw new Error(`could not inspect installer snapshot index: ${staged.status}`)
@@ -80,14 +113,15 @@ git(cleanSource, ['config', 'remote.origin.url', cleanSource])
 let result = runInstall(cleanSource, successfulTarget)
 const successfulSettings = readFileSync(join(successfulTarget, 'settings.json'), 'utf8')
 const successfulBrief = readFileSync(join(successfulTarget, 'agents', 'implementer.md'), 'utf8')
+const expectedBrief = readFileSync(join(repo, 'agents', 'implementer.md'), 'utf8')
 const successfulStatus = git(successfulTarget, ['status', '--porcelain'])
 const settingsClean = git(successfulTarget, ['config', '--get', 'filter.claudesettings.clean'])
 const pathClean = git(successfulTarget, ['config', '--get', 'filter.claudehome.clean'])
 check('installer succeeds for a target containing spaces and an apostrophe', result.status === 0, `${result.status}: ${result.stderr}`)
-check('quoted Git filters materialize both files and leave the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && successfulBrief.includes(successfulTarget) && !successfulSettings.includes('__CLAUDE_HOME__') && !successfulBrief.includes('__CLAUDE_HOME__') && successfulStatus === '' && settingsClean.includes('settings-clean.py') && pathClean.includes('path-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean, pathClean }))
+check('quoted Git filters materialize both files and leave the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && successfulBrief === expectedBrief && !successfulSettings.includes('__CLAUDE_HOME__') && !successfulBrief.includes('__CLAUDE_HOME__') && successfulStatus === '' && settingsClean.includes('settings-clean.py') && pathClean.includes('path-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean, pathClean }))
 check('both installed filters remain required', git(successfulTarget, ['config', '--get', 'filter.claudesettings.required']) === 'true\n' && git(successfulTarget, ['config', '--get', 'filter.claudehome.required']) === 'true\n')
-const installedPolicy = spawnSync(process.execPath, [join(successfulTarget, 'evals', 'claude-policy-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
-check('installed materialized policy accepts only the exact current-root wrapper permission', installedPolicy.status === 0 && /---- \d+ passed, 0 failed/.test(installedPolicy.stdout), `${installedPolicy.status}: ${installedPolicy.stderr}\n${installedPolicy.stdout}`)
+const installedConfig = spawnSync(process.execPath, [join(successfulTarget, 'evals', 'config-load-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
+check('installed materialized config loads and validates local hooks', installedConfig.status === 0 && /---- \d+ passed, 0 failed/.test(installedConfig.stdout), `${installedConfig.status}: ${installedConfig.stderr}\n${installedConfig.stdout}`)
 
 cloneMain(cleanSource, rollbackSource)
 git(rollbackSource, ['config', 'user.email', 'test@example.com'])

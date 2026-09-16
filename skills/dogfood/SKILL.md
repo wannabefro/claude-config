@@ -113,7 +113,7 @@ The good versions are falsifiable — a reviewer can repeat them. The bad versio
 
 ## Measuring whether tests are worth anything
 
-`rules/principles.md` says a test that still passes after the rule it guards changes is the wrong
+A test that still passes after the rule it guards changes is the wrong
 test. That is a mutation test. Do not try to judge it by reading the tests — measured 2026-07-28, a
 regex classifier called 22% of one suite low-value and **3 of 3** hand-checked flags were wrong. A
 `.toBe(true)` on `accessibilityState.disabled` is precise; a `.toBe(true)` on a render result is

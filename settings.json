@@ -7,7 +7,6 @@
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
     "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "8",
-    "TIER_ROUTER_OVERRIDE": "__CLAUDE_HOME__/tier-router.local.json",
     "NODE_OPTIONS": ""
   },
   "permissions": {
@@ -18,7 +17,6 @@
       "Write",
       "Agent",
       "Task",
-      "Workflow",
       "Skill(build)",
       "Skill(build:*)",
       "Skill(compound-engineering:ce-work)",
@@ -98,7 +96,6 @@
       "Bash(htop *)",
       "Bash(direnv *)",
       "mcp__codegraph__codegraph_search",
-      "mcp__codegraph__codegraph_context",
       "mcp__codegraph__codegraph_callers",
       "mcp__codegraph__codegraph_callees",
       "mcp__codegraph__codegraph_impact",
@@ -124,13 +121,6 @@
       "Bash(xcrun simctl openurl *)",
       "Bash(xcrun simctl io *)",
       "Bash(xcrun simctl spawn *)",
-      "mcp__Claude_Preview__preview_start",
-      "mcp__Claude_Preview__preview_stop",
-      "mcp__Claude_Preview__preview_screenshot",
-      "mcp__Claude_Preview__preview_resize",
-      "mcp__Claude_Preview__preview_inspect",
-      "mcp__Claude_Preview__preview_click",
-      "mcp__Claude_Preview__preview_eval",
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
       "mcp__plugin_context7_context7__resolve-library-id",
@@ -150,7 +140,6 @@
       "mcp__plugin_playwright_playwright__browser_navigate",
       "mcp__plugin_playwright_playwright__browser_snapshot",
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
-      "mcp__Claude_Browser__get_page_text",
       "Bash(rtk grep *)",
       "Bash(unset NODE_OPTIONS)",
       "Bash(unset NODE_OPTIONS *)",
@@ -289,49 +278,8 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "opus[1m]",
   "hooks": {
     "PostToolUse": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/offer-build-after-plan.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/verify-on-edit-async.sh",
-            "timeout": 45,
-            "async": true
-          }
-        ]
-      },
-      {
-        "matcher": "EnterWorktree",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/worktree-rebase.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/worktree-codegraph.sh",
-            "timeout": 180,
-            "async": true
-          }
-        ]
-      },
-      {
-        "matcher": "*",
-        "hooks": []
-      },
       {
         "matcher": "*",
         "hooks": [
@@ -352,39 +300,7 @@
           },
           {
             "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/commit-precheck.sh"
-          },
-          {
-            "type": "command",
             "command": "__CLAUDE_HOME__/hooks/rtk-rewrite.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/pr-guardrail-review.sh",
-            "if": "Bash(gh pr *)",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/pr-explain-nudge.sh\""
-          }
-        ]
-      },
-      {
-        "matcher": "EnterWorktree",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __CLAUDE_HOME__/hooks/worktree-fetch.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|Read|NotebookEdit|MultiEdit|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "__CLAUDE_HOME__/hooks/worktree-boundary.py"
           }
         ]
       },
@@ -498,11 +414,8 @@
     "slack@claude-plugins-official": false,
     "superpowers@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
-    "looper@sam": false,
     "coderabbit@sam": true,
-    "find-skills@sam": false,
     "gh-stack@sam": true,
-    "open-knowledge@sam": false,
     "retro@retro": true
   },
   "extraKnownMarketplaces": {
@@ -516,18 +429,6 @@
       "source": {
         "source": "github",
         "repo": "mksglu/context-mode"
-      }
-    },
-    "learning-opportunities": {
-      "source": {
-        "source": "git",
-        "url": "https://github.com/DrCatHicks/learning-opportunities.git"
-      }
-    },
-    "thedotmack": {
-      "source": {
-        "source": "github",
-        "repo": "thedotmack/claude-mem"
       }
     },
     "sam": {
@@ -544,7 +445,6 @@
   "tui": "fullscreen",
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
-  "skipWorkflowUsageWarning": true,
   "theme": "auto",
   "wheelScrollAccelerationEnabled": true,
   "remoteControlAtStartup": true,
@@ -552,5 +452,6 @@
   "agentPushNotifEnabled": true,
   "feedbackSurveyState": {
     "lastShownTime": 0
-  }
+  },
+  "model": "opus[1m]"
 }
