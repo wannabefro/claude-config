@@ -23,12 +23,6 @@ esac; shift; done
 SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BRANCH="main"
 log() { printf '\033[1m[install]\033[0m %s\n' "$1"; }
-# The shared preflight performs the bounded `codex --version` probe and the
-# exact `codex exec` capability check used by both wrappers.
-source "$SCRIPT_DIR/scripts/codex-preflight.sh" || {
-  log "ERROR: shared Codex preflight is unavailable."
-  exit 1
-}
 
 # Resolve one absolute, working Python 3 executable before any install
 # mutation. The clean filter calls this exact path from Git.
@@ -68,13 +62,7 @@ prereq_hint() {
     perl)  echo "xcode-select --install   # or: brew install perl" ;;
     rg)    echo "brew install ripgrep" ;;
     jq)    echo "brew install jq" ;;
-    codex)
-      if [ -n "${CODEX_BIN:-}" ]; then
-        echo "update the selected Codex CLI at $CODEX_BIN using the installation channel that owns that path; do not install a second copy"
-      else
-        echo "install one official stable Codex CLI at \$HOME/.local/bin/codex (preferred) or on PATH using your existing installation channel"
-      fi
-      ;;
+    codex) echo "install one official Codex CLI at \$HOME/.local/bin/codex (preferred) or on PATH using your existing installation channel" ;;
     rtk)   echo "brew install rtk   # homebrew-core; not 'cargo install rtk' (name clash)" ;;
     cmux)  echo "download the cmux desktop app (not in a package manager)" ;;
     wt)    echo "brew install worktrunk   # provides the wt shell function" ;;
@@ -89,35 +77,8 @@ missing_required=""
 missing_recommended=""
 missing_optional=""
 required_failure=0
-control_runtime_ok=1
-if ! codex_preflight_require_control_tools; then
-  printf '  ✗ wrapper control utilities  (one or more trusted absolute tools are unavailable)\n'
-  missing_required="$missing_required wrapper-controls"
-  required_failure=1
-  control_runtime_ok=0
-else
-  printf '  ✓ wrapper control utilities  (trusted absolute paths)\n'
-fi
 for t in $REQUIRED_PREREQS; do
   case "$t" in
-    perl)
-      if [ -z "${CODEX_PREFLIGHT_PERL:-}" ]; then
-        printf '  ✗ perl  (trusted runtime is missing) — install: %s\n' "$(prereq_hint perl)"
-        missing_required="$missing_required perl"
-        required_failure=1
-      else
-        printf '  ✓ perl (%s)\n' "$CODEX_PREFLIGHT_PERL"
-      fi
-      ;;
-    rg)
-      if [ -z "${CODEX_PREFLIGHT_RG:-}" ]; then
-        printf '  ✗ rg  (trusted Homebrew ripgrep is missing) — install: %s\n' "$(prereq_hint rg)"
-        missing_required="$missing_required rg"
-        required_failure=1
-      else
-        printf '  ✓ rg (%s)\n' "$CODEX_PREFLIGHT_RG"
-      fi
-      ;;
     jq)
       if [ -z "$JQ_RUNTIME" ]; then
         printf '  ✗ jq  (trusted executable is missing) — install: %s\n' "$(prereq_hint jq)"
@@ -148,12 +109,13 @@ for t in $REQUIRED_PREREQS; do
       fi
       ;;
     codex)
-      if [ "$control_runtime_ok" -eq 0 ] || ! codex_preflight all; then
-        printf '  ✗ codex  (selected CLI is missing, below the stable floor, or lacks a required exec capability) — update the one active CLI using: %s\n' "$(prereq_hint codex)"
+      codex_version="$(perl -e 'alarm 10; exec @ARGV' codex --version 2>/dev/null || true)"
+      if [ -z "$codex_version" ]; then
+        printf '  ✗ codex (missing or not responding) — install: %s\n' "$(prereq_hint codex)"
         missing_required="$missing_required codex-runtime"
         required_failure=1
       else
-        printf '  ✓ codex %s (%s; all required exec capabilities present)\n' "$CODEX_VERSION" "$CODEX_BIN"
+        printf '  ✓ codex %s\n' "$codex_version"
       fi
       ;;
     *)
@@ -310,12 +272,11 @@ else
 fi
 
 # --- materialize home paths via the templating filter -----------------------
-# settings.json and implementer instructions are committed with a
-# __CLAUDE_HOME__ placeholder. Configure separate per-machine clean/smudge
-# filters (definitions live in local .git/config, never committed): strict JSON
-# validation and private-marketplace removal for settings, and path-only
-# substitution for Markdown instructions. Clean also drops any marketplace
-# that settings.local.json already defines, because the CLI can re-add private
+# settings.json is committed with a __CLAUDE_HOME__ placeholder. Configure a
+# per-machine clean/smudge filter (defined in local .git/config, never
+# committed): strict JSON validation and private-marketplace removal on
+# clean, path substitution on smudge. Clean also drops any marketplace that
+# settings.local.json already defines, because the CLI can re-add private
 # ones to settings.json and this repo is public.
 log "Configuring path filter and materializing home paths for $TARGET"
 shell_quote() {
@@ -324,14 +285,10 @@ shell_quote() {
   printf '%q' "$1"
 }
 settings_clean_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/settings-clean.py") $(shell_quote "$TARGET")"
-path_clean_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/path-clean.py") $(shell_quote "$TARGET")"
 path_smudge_filter="$(shell_quote "$PYTHON3_RUNTIME") $(shell_quote "$TARGET/scripts/path-clean.py") --smudge $(shell_quote "$TARGET")"
 git -C "$TARGET" config filter.claudesettings.clean "$settings_clean_filter"
 git -C "$TARGET" config filter.claudesettings.smudge "$path_smudge_filter"
 git -C "$TARGET" config filter.claudesettings.required true
-git -C "$TARGET" config filter.claudehome.clean "$path_clean_filter"
-git -C "$TARGET" config filter.claudehome.smudge "$path_smudge_filter"
-git -C "$TARGET" config filter.claudehome.required true
 
 # Exercise the configured clean filter through Git before touching tracked
 # files. This catches missing executables, bad quoting, malformed tracked
@@ -373,59 +330,50 @@ if grep -Fq "$TARGET" "$filter_probe_expected" || ! grep -Fq '__CLAUDE_HOME__' "
   exit 1
 fi
 
-# Back up the exact pair before checkout. A failed filter, checkout, or
-# materialization must restore both files as a pair, including their prior
-# absence; no partially materialized routing files may survive an install.
+# Back up settings.json before checkout. A failed filter or checkout must
+# restore it, including its prior absence; no partial materialization may survive.
 materialization_tx="$(mktemp -d "${TMPDIR:-/tmp}/claude-materialize.XXXXXXXX")"
 materialization_restore() {
-  local relative target_file state_file backup_file state
-  for relative in settings.json agents/implementer.md; do
-    target_file="$TARGET/$relative"
-    state_file="$materialization_tx/${relative//\//_}.state"
-    backup_file="$materialization_tx/${relative//\//_}.backup"
-    [ -f "$state_file" ] || continue
-    state="$(cat "$state_file")"
-    rm -f "$target_file"
-    if [ "$state" = present ]; then
-      cp -p "$backup_file" "$target_file"
-    fi
-  done
-}
-for relative in settings.json agents/implementer.md; do
-  target_file="$TARGET/$relative"
-  state_file="$materialization_tx/${relative//\//_}.state"
-  backup_file="$materialization_tx/${relative//\//_}.backup"
-  if [ -f "$target_file" ]; then
-    printf 'present\n' > "$state_file"
-    cp -p "$target_file" "$backup_file"
-  elif [ -e "$target_file" ] || [ -L "$target_file" ]; then
-    log "ERROR: expected installed routing path is not a regular file: $relative"
-    exit 1
-  else
-    printf 'absent\n' > "$state_file"
+  local target_file="$TARGET/settings.json"
+  local state_file="$materialization_tx/settings.json.state"
+  local backup_file="$materialization_tx/settings.json.backup"
+  [ -f "$state_file" ] || return 0
+  local state
+  state="$(cat "$state_file")"
+  rm -f "$target_file"
+  if [ "$state" = present ]; then
+    cp -p "$backup_file" "$target_file"
   fi
-done
-
-rm -f "$TARGET/settings.json" "$TARGET/agents/implementer.md"
-if ! git -C "$TARGET" checkout -- settings.json agents/implementer.md; then
-  log "ERROR: the Claude routing files could not be materialized; prior files were restored."
-  exit 1
-fi
-
-# A missing smudge expansion leaves a literal placeholder in the brief.
-if grep -Fq '__CLAUDE_HOME__' "$TARGET/agents/implementer.md" "$TARGET/settings.json"; then
-  log "ERROR: the Claude home path did not materialize in the installed routing files."
-  exit 1
-fi
-[ -x "$TARGET/scripts/codex-run.sh" ] || {
-  log "ERROR: the installed Codex review runner is missing or not executable."
-  exit 1
 }
-if ! routing_status="$(git -C "$TARGET" status --porcelain -- settings.json agents/implementer.md)"; then
-  log "ERROR: could not verify that materialized routing files are clean."
+target_file="$TARGET/settings.json"
+state_file="$materialization_tx/settings.json.state"
+backup_file="$materialization_tx/settings.json.backup"
+if [ -f "$target_file" ]; then
+  printf 'present\n' > "$state_file"
+  cp -p "$target_file" "$backup_file"
+elif [ -e "$target_file" ] || [ -L "$target_file" ]; then
+  log "ERROR: expected installed routing path is not a regular file: settings.json"
+  exit 1
+else
+  printf 'absent\n' > "$state_file"
+fi
+
+rm -f "$TARGET/settings.json"
+if ! git -C "$TARGET" checkout -- settings.json; then
+  log "ERROR: settings.json could not be materialized; the prior file was restored."
+  exit 1
+fi
+
+# A missing smudge expansion leaves a literal placeholder in settings.json.
+if grep -Fq '__CLAUDE_HOME__' "$TARGET/settings.json"; then
+  log "ERROR: the Claude home path did not materialize in settings.json."
+  exit 1
+fi
+if ! routing_status="$(git -C "$TARGET" status --porcelain -- settings.json)"; then
+  log "ERROR: could not verify that materialized settings.json is clean."
   exit 1
 elif [ -n "$routing_status" ]; then
-  log "ERROR: materialized routing files left the target repository dirty."
+  log "ERROR: materialized settings.json left the target repository dirty."
   exit 1
 fi
 materialization_committed=1
@@ -434,13 +382,11 @@ log "Done. Next steps:"
 cat <<'EOF'
   1. Install any prerequisites reported missing above. This config never installs tools.
   2. Start a NEW Claude Code session. Model, plugin, permission, and MCP discovery are session-scoped.
-  3. Opus orchestrates; Sonnet implementers handle substantial execution.
-     `/implement` handles one unit; `/build` uses up to three native isolated writers.
-     `/review` runs one independent Codex pass for behavior changes.
+  3. `/review` runs one independent Codex pass for behavior changes.
   4. Re-authenticate only the MCP servers required on this Mac. Credentials and OAuth state are not synced.
      GitHub connector authentication is separate from terminal Git and gh authentication.
   5. Check Remote Control and required macOS permissions on this Mac.
   6. Open Design is optional. Install its signed 0.21.0 app manually, then run `od mcp install claude` from
      the Open Design CLI. Do not assume bare `od` is Open Design; /usr/bin/od is Apple octal dump.
-  7. Verify `/plugins`, the MCP list, `/implement`, `/build`, and `/review` after the new session starts. See docs/design-workflow.md.
+  7. Verify `/plugins`, the MCP list, and `/review` after the new session starts. See docs/design-workflow.md.
 EOF

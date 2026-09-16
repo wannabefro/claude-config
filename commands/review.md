@@ -1,46 +1,38 @@
 ---
-description: Review the assembled diff with Opus and one independent Codex pass when behavior changes.
-argument-hint: "[what to review, or blank for the current assembled diff]"
+description: Review the change with Opus plus one independent native Codex pass.
+argument-hint: "[base branch, commit SHA, or blank for uncommitted changes]"
 ---
 
-Review the assembled diff: **$ARGUMENTS**
+Review: **$ARGUMENTS**
 
-Resolve and record the actual target. An explicit `base..head`, `base...head`,
-`pr:<number>`, or detached comparison is valid when every named ref resolves to
-the requested checkout. With no target, review the current staged, unstaged,
-and new-file changes; an upstream is not required. Refuse only an unresolved or
-mismatched explicit target. Never guess a base branch.
+Opus reads the changed files and the diff, then classifies the change as
+mechanical or behavior-changing. A mechanical change needs the relevant gates
+and that inspection only. A behavior change also gets one independent Codex
+pass.
 
-Opus inspects the diff and classifies it as mechanical or behavior-changing.
-For a mechanical change, run the relevant gates and complete the Opus
-inspection. For a behavior change, read every changed file in full, inspect the
-diff, and run one independent Codex review. Do not create a council or add a
-second review tier automatically.
-
-Create a private brief that contains the exact diff, relevant file context, the
-recorded target, and a review-only request. Include a full changed-file snapshot
-when the diff does not provide enough context. Use separate tool calls:
-
-1. Run `umask 077; mktemp -d "${TMPDIR:-/tmp}/claude-review.XXXXXXXX"` and
-   retain the absolute path printed by Bash.
-2. Use the `Write` tool on that observed path plus `/review.txt`. Write the
-   diff, context, target, and review request to the file.
-3. Run the wrapper with the same observed absolute path. Substitute the path
-   literally; do not execute the placeholder in this document.
-4. Remove that exact private directory after the wrapper returns.
+Codex reviews the repository itself. Do not assemble a diff bundle or write a
+brief file. Resolve the target from the argument, then run one bounded
+foreground pass with the Bash tool's own `timeout` set to `600000`:
 
 ```bash
-umask 077
-# After the Write tool call, replace the path below with its observed absolute path.
-test -s /tmp/claude-review.XXXXXXXX/review.txt
-~/.claude/scripts/codex-run.sh -f /tmp/claude-review.XXXXXXXX/review.txt -N
+codex exec review --uncommitted -s read-only --ephemeral \
+  -c model_reasoning_effort=xhigh < /dev/null
 ```
 
-The wrapper performs its existing secret scan and failure detection. Exit 0
-with an assistant result is a review. Empty, stalled, refused, unavailable,
-failed, or secret-scan-blocked runs are gaps; report the exact status and do not
+Swap `--uncommitted` for `--base <branch>` or `--commit <sha>` when the
+argument names one. With no argument, review the uncommitted changes. Never
+guess a base branch.
+
+Always redirect stdin; `codex exec` blocks on a TTY waiting for more input. The
+model comes from `~/.codex/config.toml`; add `--model gpt-5.6-sol` for the
+deeper lens.
+
+Codex reads the working tree directly and nothing scans it first. Do not run
+this in a checkout that holds real credentials or customer data.
+
+Exit 0 with a review body is a review. An empty body, a capacity refusal, a
+missing CLI, or a timeout is a gap: report the exact outcome and do not
 substitute another model.
 
-Apply clear, in-scope defects in the current authorized task. Keep review
-feedback separate from implementation ownership, and report what ran and what
-remains uncertain.
+Apply clear, in-scope defects in the current authorized task. Report what ran
+and what remains uncertain.

@@ -13,10 +13,17 @@ its onboarding is one-time per project (`mcp__serena__onboarding`, then later se
 
 ## Codex as the cross-family lens
 
-Codex runs on the `codex-companion` runtime and bills separately, so it's not for trivia. The
-async rescue agent stalls in background mode, which is why a bounded foreground `codex exec` is
-the right invocation. Its two no-output failure modes and the exact invocation live in the
-`codex-exec-recovery` skill.
+Codex runs on the `codex-companion` runtime and bills separately, so it is not for trivia. Its
+async rescue agent stalls in background mode; a bounded foreground `codex exec` is the right
+invocation, and the Bash tool's own `timeout` bounds it without a wrapper.
+
+`codex exec review --uncommitted | --base <branch> | --commit <sha>` reads the repository itself,
+so a review needs no assembled diff bundle. Always redirect stdin — `codex exec` blocks on a TTY
+waiting for more input. For a plan, carry the text on stdin with a trailing `-`; naming a file
+path in the prompt makes Codex explore instead of review.
+
+Two failure modes produce no output and neither is a review: an empty assistant pass, and a
+provider capacity refusal. Report either as a gap rather than substituting another model.
 
 ## rtk lossiness
 

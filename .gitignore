@@ -7,7 +7,6 @@
 # --- curated top-level files ---
 !/.gitignore
 !/.gitattributes
-!/.gitleaksignore
 !/README.md
 !/install.sh
 !/CLAUDE.md
@@ -18,12 +17,10 @@
 !/rules/
 !/hooks/
 !/commands/
-!/agents/
 !/output-styles/
 !/docs/
 !/skills/
 !/marketplace/
-!/workflows/
 !/evals/
 !/scripts/
 !/manifests/
@@ -44,8 +41,5 @@
 # eval run outputs are regenerated; never publish them
 evals/out/
 
-# python bytecode from the audit scripts
+# python bytecode from the local scripts
 scripts/__pycache__/
-
-# a reviewed secret-scan exemption; carries a real file path, never tracked
-/review-scan-allow.local.txt

@@ -52,12 +52,18 @@ When code behavior should stay untouched, prefer PR description and review notes
 - Call out risky behavior changes, migration order, rollout plan, and test coverage.
 - Link issue trackers, dashboards, or design docs when they explain intent.
 
+Check the finished body for path narration — comparisons to a revision the reader never saw:
+
+```bash
+python3 ~/.claude/scripts/pr-body-lint.py body.md   # or --pr <number>, or - for stdin
+```
+
+It is a regex pass, so a clean run is evidence rather than proof.
+
 ## Explain a big or technical PR with a diagram, in the body
 
-**`hooks/pr-explain-nudge.sh` enforces this, not this skill.** This skill does not always run, so a
-trigger living only here would be dead guidance. The hook fires on `gh pr create` and on `gh pr edit
---body`, and pauses with a confirmable "ask". It stays silent once the body carries a mermaid block, so
-it never asks twice. This section is the reference the hook points at.
+Check this before every `gh pr create` and every `gh pr edit --body`. A body that already carries a
+mermaid block has passed.
 
 Add a "How this works" section when the diff is **both** big and structural. Two gates, and both must
 pass, or a third of all PRs would qualify:

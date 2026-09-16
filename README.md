@@ -19,17 +19,15 @@ Claude Code session after installation so the configuration and plugins reload.
 ## Work routes
 
 Claude owns requirements, architecture, diagnosis, task decomposition,
-integration, and final judgment. Use direct execution for trivial edits and
-tightly coupled work. Use Sonnet implementers for substantial, well-scoped
-units. Use bounded research workers when read-only delegation saves time.
+integration, and final judgment. Trivial edits and tightly coupled work run
+directly. Substantial, well-scoped units go to Sonnet agents through the
+runtime's native `Agent` tool with `isolation: "worktree"`; there is no custom
+dispatch command, and the runtime owns the concurrency budget.
 
-`/implement` sends one coherent unit to one implementer. `/build` uses native
-isolated worktrees for independent units, with at most three concurrent
-writers, then integrates the results serially. Shared contracts and dependent
-units run in order. `/review` performs one independent Codex check for the
-assembled behavior-changing diff. An authored plan also gets one Codex check;
-routine work needs no plan. Compound Engineering remains an on-demand toolbox
-for planning, debugging, review, simplification, and durable learning.
+`/review` runs one independent native Codex pass over the repository for a
+behavior-changing diff. An authored plan gets the same single check; routine
+work needs no plan. Compound Engineering, CodeRabbit, and the PR review toolkit
+remain on-demand plugins, not a required chain.
 
 Run the relevant repository tests, lint, type checks, and direct runtime checks
 for the change. Do not add a mandatory skill chain or repeat checks that add no

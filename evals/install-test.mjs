@@ -11,6 +11,8 @@ const successfulTarget = join(root, "claude home's config")
 const rollbackSource = join(root, 'rollback source')
 const rollbackTarget = join(root, "claude home's rollback")
 const malformedTarget = join(root, "claude home's malformed")
+const cleanFilterFailSource = join(root, 'clean filter fail source')
+const cleanFilterFailTarget = join(root, "claude home's clean filter fail")
 const testHome = join(root, 'test home')
 const temporaryRoots = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', realpathSync(tmpdir())]
 const isUnder = (candidate, rootPath) => candidate === rootPath || candidate.startsWith(`${rootPath}/`)
@@ -19,8 +21,8 @@ while (fixtureParent !== '/' && (existsSync(join(fixtureParent, '.git')) || temp
 if (fixtureParent === '/') throw new Error('could not find a safe sibling outside Git and macOS temporary roots')
 const cliFixtureRoot = mkdtempSync(join(fixtureParent, 'claude-install-cli-safe-'))
 const cliFixture = join(cliFixtureRoot, 'codex')
-// A cmux shim under TMPDIR often wins PATH; the preflight rejects it.
-// Pin a durable Codex on the fixture PATH.
+// A cmux shim under TMPDIR often wins PATH; pin a durable Codex on the
+// fixture PATH so the bounded `codex --version` probe finds a real binary.
 const durableCliRoot = mkdtempSync(join(fixtureParent, 'claude-install-durable-'))
 const durableCodex = [join(homedir(), '.local', 'bin', 'codex'), ...(process.env.PATH || '').split(':').filter((entry) => entry.startsWith('/')).map((entry) => join(entry, 'codex'))]
   .find((candidate) => {
@@ -30,7 +32,6 @@ if (!durableCodex) throw new Error('the host has no Codex CLI outside a temporar
 symlinkSync(durableCodex, join(durableCliRoot, 'codex'))
 const node25FixtureRoot = join(cliFixtureRoot, 'node25-bin')
 const node25Fixture = join(node25FixtureRoot, 'node')
-const incompatibleTarget = join(root, "claude home's incompatible")
 const missingTarget = join(root, "claude home's missing")
 const checkTarget = join(testHome, '.claude')
 const env = { ...process.env, HOME: testHome, PATH: `/opt/homebrew/opt/node@24/bin:${durableCliRoot}:${process.env.PATH || ''}` }
@@ -38,7 +39,7 @@ const git = (cwd, args) => runFile('git', ['-C', cwd, ...args], { encoding: 'utf
 const cloneMain = (source, destination) => {
   runFile('git', ['clone', '-q', '-b', 'main', source, destination], { encoding: 'utf8', stdio: 'pipe' })
 }
-const FILTERED = new Map([['settings.json', 'settings-clean.py'], ['agents/implementer.md', 'path-clean.py']])
+const FILTERED = new Map([['settings.json', 'settings-clean.py']])
 const snapshotFiles = [
   'README.md',
   'install.sh',
@@ -46,12 +47,8 @@ const snapshotFiles = [
   'settings.json',
   'CLAUDE.md',
   'rules/project-context.md',
-  'agents/implementer.md',
   'scripts/path-clean.py',
   'scripts/settings-clean.py',
-  'scripts/codex-preflight.sh',
-  'scripts/review-secret-scan.sh',
-  'scripts/codex-run.sh',
   'evals/config-load-test.mjs',
   'hooks/bash-safety.sh',
   'hooks/rm-guard.py',
@@ -112,14 +109,11 @@ git(cleanSource, ['config', 'remote.origin.url', cleanSource])
 
 let result = runInstall(cleanSource, successfulTarget)
 const successfulSettings = readFileSync(join(successfulTarget, 'settings.json'), 'utf8')
-const successfulBrief = readFileSync(join(successfulTarget, 'agents', 'implementer.md'), 'utf8')
-const expectedBrief = readFileSync(join(repo, 'agents', 'implementer.md'), 'utf8')
 const successfulStatus = git(successfulTarget, ['status', '--porcelain'])
 const settingsClean = git(successfulTarget, ['config', '--get', 'filter.claudesettings.clean'])
-const pathClean = git(successfulTarget, ['config', '--get', 'filter.claudehome.clean'])
 check('installer succeeds for a target containing spaces and an apostrophe', result.status === 0, `${result.status}: ${result.stderr}`)
-check('quoted Git filters materialize both files and leave the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && successfulBrief === expectedBrief && !successfulSettings.includes('__CLAUDE_HOME__') && !successfulBrief.includes('__CLAUDE_HOME__') && successfulStatus === '' && settingsClean.includes('settings-clean.py') && pathClean.includes('path-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean, pathClean }))
-check('both installed filters remain required', git(successfulTarget, ['config', '--get', 'filter.claudesettings.required']) === 'true\n' && git(successfulTarget, ['config', '--get', 'filter.claudehome.required']) === 'true\n')
+check('quoted Git filter materializes settings.json and leaves the target clean', result.status === 0 && successfulSettings.includes(successfulTarget) && !successfulSettings.includes('__CLAUDE_HOME__') && JSON.parse(successfulSettings) && typeof JSON.parse(successfulSettings) === 'object' && successfulStatus === '' && settingsClean.includes('settings-clean.py'), JSON.stringify({ status: result.status, successfulStatus, settingsClean }))
+check('installed filter remains required', git(successfulTarget, ['config', '--get', 'filter.claudesettings.required']) === 'true\n')
 const installedConfig = spawnSync(process.execPath, [join(successfulTarget, 'evals', 'config-load-test.mjs')], { cwd: successfulTarget, env, encoding: 'utf8' })
 check('installed materialized config loads and validates local hooks', installedConfig.status === 0 && /---- \d+ passed, 0 failed/.test(installedConfig.stdout), `${installedConfig.status}: ${installedConfig.stderr}\n${installedConfig.stdout}`)
 
@@ -132,36 +126,37 @@ git(rollbackSource, ['commit', '-qm', 'inject materialization failure'])
 git(rollbackSource, ['config', 'remote.origin.url', rollbackSource])
 cloneMain(rollbackSource, rollbackTarget)
 const priorSettings = JSON.stringify({ sentinel: 'settings-before-materialization', hooks: { probe: `${rollbackTarget}/keep` } }, null, 2) + '\n'
-const priorBrief = `sentinel implementer-before-materialization ${rollbackTarget}/keep\n`
 writeFileSync(join(rollbackTarget, 'settings.json'), priorSettings)
-writeFileSync(join(rollbackTarget, 'agents', 'implementer.md'), priorBrief)
 chmodSync(join(rollbackTarget, 'settings.json'), 0o640)
-chmodSync(join(rollbackTarget, 'agents', 'implementer.md'), 0o600)
 const priorSettingsMode = statSync(join(rollbackTarget, 'settings.json')).mode & 0o777
-const priorBriefMode = statSync(join(rollbackTarget, 'agents', 'implementer.md')).mode & 0o777
 result = runInstall(rollbackSource, rollbackTarget)
 check('injected checkout filter failure returns nonzero', result.status !== 0, `${result.status}: ${result.stderr}`)
-check('transactional materialization restores both prior files byte-for-byte with modes', readFileSync(join(rollbackTarget, 'settings.json'), 'utf8') === priorSettings && readFileSync(join(rollbackTarget, 'agents', 'implementer.md'), 'utf8') === priorBrief && (statSync(join(rollbackTarget, 'settings.json')).mode & 0o777) === priorSettingsMode && (statSync(join(rollbackTarget, 'agents', 'implementer.md')).mode & 0o777) === priorBriefMode, JSON.stringify({ status: result.status, priorSettingsMode, priorBriefMode }))
+check('transactional materialization restores prior settings.json byte-for-byte with its mode', readFileSync(join(rollbackTarget, 'settings.json'), 'utf8') === priorSettings && (statSync(join(rollbackTarget, 'settings.json')).mode & 0o777) === priorSettingsMode, JSON.stringify({ status: result.status, priorSettingsMode }))
 
 cloneMain(cleanSource, malformedTarget)
-const malformedSettings = JSON.stringify({ sentinel: 'settings-before-preflight', hooks: { probe: `${malformedTarget}/keep` } }, null, 2) + '\n'
-const malformedBrief = `sentinel implementer-before-preflight ${malformedTarget}/keep\n`
+const malformedSettings = JSON.stringify({ sentinel: 'settings-before-malformed-check', hooks: { probe: `${malformedTarget}/keep` } }, null, 2) + '\n'
 writeFileSync(join(malformedTarget, 'settings.json'), malformedSettings)
-writeFileSync(join(malformedTarget, 'agents', 'implementer.md'), malformedBrief)
 writeFileSync(join(malformedTarget, 'settings.local.json'), '{not-json\n')
 result = runInstall(cleanSource, malformedTarget)
 check('malformed local settings fail before materialization', result.status !== 0, `${result.status}: ${result.stderr}`)
-check('preflight failure leaves both prior files byte-for-byte intact', readFileSync(join(malformedTarget, 'settings.json'), 'utf8') === malformedSettings && readFileSync(join(malformedTarget, 'agents', 'implementer.md'), 'utf8') === malformedBrief, JSON.stringify({ status: result.status }))
+check('malformed local settings failure leaves prior settings.json byte-for-byte intact', readFileSync(join(malformedTarget, 'settings.json'), 'utf8') === malformedSettings, JSON.stringify({ status: result.status }))
+
+cloneMain(cleanSource, cleanFilterFailSource)
+git(cleanFilterFailSource, ['config', 'user.email', 'test@example.com'])
+git(cleanFilterFailSource, ['config', 'user.name', 'Installer Regression Test'])
+writeFileSync(join(cleanFilterFailSource, 'scripts', 'settings-clean.py'), '#!/usr/bin/env python3\nimport sys\nsys.exit(97)\n')
+git(cleanFilterFailSource, ['add', 'scripts/settings-clean.py'])
+git(cleanFilterFailSource, ['commit', '-qm', 'inject clean filter failure'])
+git(cleanFilterFailSource, ['config', 'remote.origin.url', cleanFilterFailSource])
+cloneMain(cleanFilterFailSource, cleanFilterFailTarget)
+const priorCleanFailSettings = JSON.stringify({ sentinel: 'settings-before-clean-filter', hooks: { probe: `${cleanFilterFailTarget}/keep` } }, null, 2) + '\n'
+writeFileSync(join(cleanFilterFailTarget, 'settings.json'), priorCleanFailSettings)
+result = runInstall(cleanFilterFailSource, cleanFilterFailTarget)
+check('corrupted settings clean filter blocks install', result.status !== 0, `${result.status}: ${result.stderr}`)
+check('clean filter failure leaves prior settings.json byte-for-byte intact', readFileSync(join(cleanFilterFailTarget, 'settings.json'), 'utf8') === priorCleanFailSettings, JSON.stringify({ status: result.status }))
 
 writeFileSync(cliFixture, `#!/bin/sh
 if [ "\$1" = "--version" ]; then printf '%s\\n' "\$FAKE_CODEX_VERSION"; exit 0; fi
-if [ "\$1" = "exec" ] && [ "\$2" = "--help" ]; then
-  printf '%s\\n' 'Usage: codex exec [OPTIONS] [PROMPT]'
-  printf '%s\\n' '  -c, --config <key=value>  -m, --model <MODEL>  -s, --sandbox <SANDBOX_MODE>'
-  printf '%s\\n' '  [possible values: read-only, workspace-write]'
-  printf '%s\\n' '  --skip-git-repo-check  --output-last-message <FILE>  --approve-for-me  --ephemeral  -C, --cd <DIR>'
-  exit 0
-fi
 exit 64
 `)
 chmodSync(cliFixture, 0o755)
@@ -171,22 +166,9 @@ if [ "\$1" = "--version" ]; then printf '%s\\n' 'v25.0.0'; exit 0; fi
 exit 0
 `)
 chmodSync(node25Fixture, 0o755)
-mkdirSync(incompatibleTarget)
-const incompatibleSentinel = 'installer must not backup or mutate this target\n'
-writeFileSync(join(incompatibleTarget, 'sentinel.txt'), incompatibleSentinel)
-const incompatiblePath = join(incompatibleTarget, 'sentinel.txt')
+const checkTargetSentinel = 'required prerequisite must preserve the default --check target\n'
 mkdirSync(checkTarget)
-writeFileSync(join(checkTarget, 'sentinel.txt'), incompatibleSentinel)
-const incompatibleResult = runInstall(cleanSource, incompatibleTarget, {
-  PATH: `${cliFixtureRoot}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`,
-  FAKE_CODEX_VERSION: 'codex-cli 0.149.0',
-})
-check('incompatible Codex blocks install before backup or adoption', incompatibleResult.status !== 0 && readFileSync(incompatiblePath, 'utf8') === incompatibleSentinel && !readdirSync(root).some((name) => name.startsWith("claude home's incompatible.bak-")), `${incompatibleResult.status}: ${incompatibleResult.stdout}${incompatibleResult.stderr}`)
-const incompatibleCheck = runCheck(cleanSource, {
-  PATH: `${cliFixtureRoot}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`,
-  FAKE_CODEX_VERSION: 'codex-cli 0.149.0',
-})
-check('incompatible Codex also makes --check fail closed before touching its target', incompatibleCheck.status !== 0 && readFileSync(join(checkTarget, 'sentinel.txt'), 'utf8') === incompatibleSentinel, `${incompatibleCheck.status}: ${incompatibleCheck.stdout}${incompatibleCheck.stderr}`)
+writeFileSync(join(checkTarget, 'sentinel.txt'), checkTargetSentinel)
 const missingResult = runInstall(cleanSource, missingTarget, {
   PATH: '/opt/homebrew/opt/node@24/bin:/usr/bin:/bin',
 })
@@ -207,31 +189,10 @@ const blockedCase = (name, source, extraEnv = {}, evidence = '') => {
   const checkResult = runCheck(source, extraEnv)
   const installOutput = `${installResult.stdout}${installResult.stderr}`
   check(`${name} blocks install before backup or target mutation`, installResult.status !== 0 && readFileSync(targetFile, 'utf8') === blockedSentinel && !readdirSync(root).some((entry) => entry.startsWith(`claude home's blocked-${name}.bak-`)) && (!evidence || installOutput.includes(evidence)), `${installResult.status}: ${installOutput}`)
-  check(`${name} blocks --check before touching its existing target`, checkResult.status !== 0 && readFileSync(checkSentinel, 'utf8') === incompatibleSentinel, `${checkResult.status}: ${checkResult.stdout}${checkResult.stderr}`)
+  check(`${name} blocks --check before touching its existing target`, checkResult.status !== 0 && readFileSync(checkSentinel, 'utf8') === checkTargetSentinel, `${checkResult.status}: ${checkResult.stdout}${checkResult.stderr}`)
 }
 const fakeCliPath = `${cliFixtureRoot}:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin`
 blockedCase('Node 25', cleanSource, { PATH: `${node25FixtureRoot}:${fakeCliPath}`, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' }, 'unsupported or failed runtime')
-
-const variantSource = (name, replacements) => {
-  const source = join(root, `${name} source`)
-  cloneMain(cleanSource, source)
-  let helperSource = readFileSync(join(source, 'scripts', 'codex-preflight.sh'), 'utf8')
-  for (const [from, to] of replacements) helperSource = helperSource.replaceAll(from, to)
-  writeFileSync(join(source, 'scripts', 'codex-preflight.sh'), helperSource)
-  return source
-}
-blockedCase('missing Perl', variantSource('missing Perl', [
-  ['/usr/bin/perl', '/definitely/missing/perl'],
-  ['/opt/homebrew/bin/perl', '/definitely/missing/perl'],
-  ['/usr/local/bin/perl', '/definitely/missing/perl'],
-]), { PATH: fakeCliPath, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' })
-blockedCase('missing trusted rg', variantSource('missing rg', [
-  ['/opt/homebrew/bin/rg', '/definitely/missing/rg'],
-  ['/usr/local/bin/rg', '/definitely/missing/rg'],
-]), { PATH: fakeCliPath, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' })
-blockedCase('missing trusted mktemp', variantSource('missing mktemp', [
-  ['CODEX_PREFLIGHT_MKTEMP=/usr/bin/mktemp', 'CODEX_PREFLIGHT_MKTEMP=/definitely/missing/mktemp'],
-]), { PATH: fakeCliPath, FAKE_CODEX_VERSION: 'codex-cli 0.149.1' })
 
 rmSync(root, { recursive: true, force: true })
 rmSync(cliFixtureRoot, { recursive: true, force: true })

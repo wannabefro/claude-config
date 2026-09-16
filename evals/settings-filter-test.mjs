@@ -28,17 +28,15 @@ mkdirSync(home, { recursive: true })
 git(['init', '-q'])
 git(['config', 'user.email', 'test@example.com'])
 git(['config', 'user.name', 'Settings Filter Test'])
-writeFileSync(join(repo, '.gitattributes'), 'settings.json filter=claudesettings\nagents/implementer.md filter=claudehome\n')
+writeFileSync(join(repo, '.gitattributes'), 'settings.json filter=claudesettings\n')
 writeFileSync(join(repo, 'settings.json'), '{"baseline":true}\n')
 git(['add', '.gitattributes', 'settings.json'])
 git(['commit', '-qm', 'baseline'])
-mkdirSync(join(repo, 'agents'), { recursive: true })
 writeFileSync(settingsScript, settingsSource)
 writeFileSync(pathScript, pathSource)
 writeFileSync(brokenScript, '#!/usr/bin/env python3\nimport sys\nsys.exit(91)\n')
 chmodSync(brokenScript, 0o755)
 git(['config', 'filter.claudesettings.required', 'true'])
-git(['config', 'filter.claudehome.required', 'true'])
 
 git(['config', 'filter.claudesettings.clean', shellQuote(join(root, 'missing-filter'))])
 let result = checkAdd('settings.json')
@@ -47,11 +45,6 @@ check('required clean filter rejects a missing executable', result.status !== 0,
 git(['config', 'filter.claudesettings.clean', shellQuote(brokenScript)])
 result = checkAdd('settings.json')
 check('required clean filter rejects a broken executable', result.status !== 0, `status=${result.status}`)
-
-git(['config', 'filter.claudehome.clean', shellQuote(join(root, 'missing-path-filter'))])
-writeFileSync(join(repo, 'agents', 'implementer.md'), 'Run bash ' + home + '/scripts/codex-run.sh\n')
-result = checkAdd('agents/implementer.md')
-check('required path filter rejects a missing executable', result.status !== 0, `status=${result.status}`)
 
 writeFileSync(join(home, 'settings.local.json'), JSON.stringify({ extraKnownMarketplaces: { 'private-market': { source: 'directory', path: '/private/market' } } }))
 const validSettings = JSON.stringify({
@@ -64,8 +57,6 @@ const validSettings = JSON.stringify({
 writeFileSync(join(repo, 'settings.json'), validSettings)
 git(['config', 'filter.claudesettings.clean', `${shellQuote(python)} ${shellQuote(settingsScript)} ${shellQuote(home)}`])
 git(['config', 'filter.claudesettings.smudge', `${shellQuote(python)} ${shellQuote(pathScript)} --smudge ${shellQuote(home)}`])
-git(['config', 'filter.claudehome.clean', `${shellQuote(python)} ${shellQuote(pathScript)} ${shellQuote(home)}`])
-git(['config', 'filter.claudehome.smudge', `${shellQuote(python)} ${shellQuote(pathScript)} --smudge ${shellQuote(home)}`])
 result = checkAdd('settings.json')
 let cleaned = ''
 try { cleaned = git(['show', ':settings.json']) } catch {}
@@ -75,16 +66,11 @@ const actualOid = runFile('git', ['-C', repo, 'hash-object', '--path=settings.js
 const expectedOid = runFile('git', ['-C', repo, 'hash-object', '--no-filters', '--stdin'], { input: directCleaned, encoding: 'utf8', stdio: 'pipe' }).trim()
 check('Git clean output matches direct validated settings output', actualOid === expectedOid, JSON.stringify({ actualOid, expectedOid }))
 
-writeFileSync(join(repo, 'agents', 'implementer.md'), `Run bash ${home}/scripts/codex-run.sh\n`)
-result = checkAdd('agents/implementer.md')
-let cleanedBrief = ''
-try { cleanedBrief = git(['show', ':agents/implementer.md']) } catch {}
-check('path-only filter stages and materializes implementer instructions', result.status === 0 && cleanedBrief.includes('__CLAUDE_HOME__') && !cleanedBrief.includes(home), JSON.stringify({ status: result.status, cleanedBrief }))
 git(['commit', '-qm', 'filtered files'])
-rmSync(join(repo, 'agents', 'implementer.md'))
-git(['checkout', '--', 'agents/implementer.md'])
-const materializedBrief = readFileSync(join(repo, 'agents', 'implementer.md'), 'utf8')
-check('path-only smudge restores the machine path for implementer instructions', materializedBrief.includes(home) && !materializedBrief.includes('__CLAUDE_HOME__'), materializedBrief)
+rmSync(join(repo, 'settings.json'))
+git(['checkout', '--', 'settings.json'])
+const materialized = readFileSync(join(repo, 'settings.json'), 'utf8')
+check('smudge restores the machine path in settings', materialized.includes(home) && !materialized.includes('__CLAUDE_HOME__'), materialized)
 
 writeFileSync(join(home, 'settings.local.json'), '{not-json\n')
 writeFileSync(join(repo, 'settings.json'), validSettings + '\n')

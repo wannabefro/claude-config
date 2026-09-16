@@ -14,10 +14,9 @@ reference, not a mandatory workflow for ordinary work.
    use Codex `gpt-5.6-sol` xhigh for direction and critique.
 3. Freeze `DESIGN.md`, `design-contract.md`, and
    `implementation-handoff.md` before any implementation dispatch.
-4. Use the Sonnet `implementer` for an optional prototype and for every
-   artifact or code write.
-5. Use at most three disjoint implementers for independent production units.
-6. Use Opus xhigh for serialized integration, visual critique, accessibility
+4. Dispatch Sonnet agents for an optional prototype and for every artifact or
+   code write, one per disjoint production unit.
+5. Use Opus xhigh for serialized integration, visual critique, accessibility
    review, and final sign-off.
 
 The reviewer reads the frozen design files. The worker follows them and does

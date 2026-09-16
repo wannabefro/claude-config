@@ -295,6 +295,17 @@ This step is not optional. Run these four checks on your draft:
 3. Search for every `if` and `when`. Each one stands at the START of its sentence, before the command. "Increase the timeout if the network is slow" → "If the network is slow, increase the timeout."
 4. Search for the verbs you did NOT pick in Your Task step 3 (the check/verify/confirm set). Replace every hit with your chosen verb.
 
+`scripts/ste-lint.py` automates checks 1 and 2. Strip tables first; it flags every
+row as a long sentence:
+
+```bash
+sed '/^|/d' FILE.md | python3 ~/.claude/scripts/ste-lint.py --type descriptive -
+```
+
+It is a regex pass with no grammar model, so read its per-100-word rate against
+the same file over time rather than the absolute count. `docs/ste-lint-caveats.md`
+records what it over-reports.
+
 Fix what you find, then deliver. For a full audit, run `references/checklist.md`.
 
 ## Full Example

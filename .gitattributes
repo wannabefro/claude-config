@@ -1,6 +1,5 @@
-# Keep committed paths generic. settings-clean.py strictly validates JSON and
-# strips private marketplaces; path-clean.py handles the Markdown brief only.
-# install.sh configures both required filters per machine (definitions live in
+# Keep committed paths generic. settings-clean.py validates JSON and strips
+# private marketplaces on clean; path-clean.py restores the machine path on
+# smudge. install.sh configures the filter per machine (the definition lives in
 # local .git/config, never committed).
 settings.json filter=claudesettings
-agents/implementer.md filter=claudehome

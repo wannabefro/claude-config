@@ -4,11 +4,11 @@ Optimize for correct results delivered quickly. Proceed with authorized work; as
 
 # Orchestration
 
-Claude Opus owns requirements, architecture, diagnosis, task decomposition, integration, and final judgment. Use Sonnet implementers for substantial, well-scoped execution. Handle trivial edits and tightly coupled iterations directly when delegation adds overhead. Use cheap read-only agents for bounded gathering when it saves time.
+Claude Opus owns requirements, architecture, diagnosis, task decomposition, integration, and final judgment. Delegate substantial, well-scoped execution to Sonnet agents. Handle trivial edits and tightly coupled iterations directly when delegation adds overhead. Use cheap read-only agents for bounded gathering when it saves time.
 
 Plan only enough to expose important decisions, interfaces, dependencies, and verification. Small changes need no planning document. Skills are an on-demand toolbox; do not run a mandatory chain of skills for ordinary work.
 
-Run at most three concurrent writers, only over disjoint owned paths, and always with native worktree isolation. Writers and research agents share the runtime's configured concurrency budget. Give each worker the context it needs without copying the whole conversation. Serialize work that changes a shared contract or depends on another unit, and integrate ready work serially. `/build`, `/implement`, and `agents/implementer.md` hold the dispatch and base-SHA mechanics; do not restate them in a brief.
+Dispatch parallel writers with the native `Agent` tool and `isolation: "worktree"`, and only over disjoint owned paths. Writers and research agents share the runtime's concurrency budget; let the runtime throttle rather than imposing a count. Give each worker the outcome, its owned files, the intended base, and one verification command, without copying the whole conversation. Serialize work that changes a shared contract or depends on another unit, and integrate serially.
 
 # Quality
 
