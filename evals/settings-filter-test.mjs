@@ -53,6 +53,11 @@ const validSettings = JSON.stringify({
     'private-market': { source: 'directory', path: '/private/market' },
     'public-market': { source: 'github', repo: 'example/public' },
   },
+  enabledPlugins: {
+    'secret-tool@private-market': true,
+    'shared-tool@public-market': true,
+    'unkeyed-entry': true,
+  },
 }, null, 2) + '\n'
 writeFileSync(join(repo, 'settings.json'), validSettings)
 git(['config', 'filter.claudesettings.clean', `${shellQuote(python)} ${shellQuote(settingsScript)} ${shellQuote(home)}`])
@@ -61,6 +66,8 @@ result = checkAdd('settings.json')
 let cleaned = ''
 try { cleaned = git(['show', ':settings.json']) } catch {}
 check('valid filter stages settings with path and private marketplace removed', result.status === 0 && cleaned.includes('__CLAUDE_HOME__') && !cleaned.includes(home) && !cleaned.includes('private-market') && cleaned.includes('public-market'), JSON.stringify({ status: result.status, cleaned }))
+// Plugin enablement must live in settings.json to take effect, so only the tracked copy loses the private ones.
+check('private enabledPlugins are stripped and public ones kept', !cleaned.includes('secret-tool') && cleaned.includes('shared-tool@public-market') && cleaned.includes('unkeyed-entry'), cleaned)
 const directCleaned = runFile(python, [settingsScript, home], { input: validSettings, encoding: 'utf8', stdio: 'pipe' })
 const actualOid = runFile('git', ['-C', repo, 'hash-object', '--path=settings.json', '--stdin'], { input: validSettings, encoding: 'utf8', stdio: 'pipe' }).trim()
 const expectedOid = runFile('git', ['-C', repo, 'hash-object', '--no-filters', '--stdin'], { input: directCleaned, encoding: 'utf8', stdio: 'pipe' }).trim()

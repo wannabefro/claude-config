@@ -3,11 +3,15 @@
 
 Usage: settings-clean.py [CLAUDE_HOME]   (stdin -> stdout; default ~/.claude)
 
-Two rewrites. The absolute ~/.claude prefix becomes __CLAUDE_HOME__, which the
+Three rewrites. The absolute ~/.claude prefix becomes __CLAUDE_HOME__, which the
 smudge filter reverses. Any extraKnownMarketplaces entry that settings.local.json
 also defines is dropped, because the local file already supplies it at runtime and
 the tracked copy is duplication — the CLI keeps re-adding private marketplaces to
 settings.json, and this repo is public.
+
+enabledPlugins entries are dropped the same way, keyed on the marketplace after
+the `@`. Plugin enablement has to live in settings.json to take effect at all,
+so the working copy keeps it and only the tracked copy loses it.
 
 Output is canonical json.dumps(indent=2), which matches the CLI's own formatting
 byte-for-byte, so a cleaned working file compares equal to HEAD.
@@ -56,6 +60,15 @@ def main():
     if isinstance(markets, dict) and private:
         for name in private & set(markets):
             del markets[name]
+
+    plugins = obj.get("enabledPlugins", {})
+    if not isinstance(plugins, dict):
+        print("settings-clean: tracked enabledPlugins must be an object", file=sys.stderr)
+        return 2
+    if private:
+        # A key is "<plugin>@<marketplace>"; an unkeyed entry has no marketplace to judge.
+        for key in [k for k in plugins if k.rpartition("@")[2] in private]:
+            del plugins[key]
 
     sys.stdout.write(json.dumps(obj, indent=2).replace(home, "__CLAUDE_HOME__") + "\n")
     return 0

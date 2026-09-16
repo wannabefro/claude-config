@@ -297,6 +297,7 @@
     ],
     "defaultMode": "auto"
   },
+  "model": "opus[1m]",
   "hooks": {
     "PostToolUse": [
       {
@@ -434,8 +435,7 @@
     "superpowers@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
     "coderabbit@sam": true,
-    "gh-stack@sam": true,
-    "retro@retro": true
+    "gh-stack@sam": true
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {
@@ -481,6 +481,5 @@
   },
   "feedbackSurveyState": {
     "lastShownTime": 0
-  },
-  "model": "opus[1m]"
+  }
 }
