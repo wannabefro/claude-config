@@ -454,5 +454,15 @@
   "feedbackSurveyState": {
     "lastShownTime": 0
   },
-  "model": "opus[1m]"
+  "model": "opus[1m]",
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Organization: Klaviyo. Primary use: software development \u2014 frontend and backend application work, i18n/localization, and infrastructure deployment.",
+      "Source control: GitHub org github.com/klaviyo. Also github.com/omnigent-ai for the omnigent repo.",
+      "Trusted internal domains: local-klaviyo.com (local dev server), www.klaviyo.com (the app dashboard and staffside, reached for manual verification and browser automation).",
+      "Key internal services: Buildkite for CI, Chronosphere for metrics, logs and traces, Sentry for error monitoring.",
+      "Additional context: `-cp` and `-sp` dev-server flags point the local Conductor or Staffside build at the PRODUCTION klaviyo-graph. Reads against it are routine; treat a mutation through that path as a production write, not local dev."
+    ]
+  }
 }
