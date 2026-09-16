@@ -15,9 +15,14 @@ brief file. Resolve the target from the argument, then run one bounded
 foreground pass with the Bash tool's own `timeout` set to `600000`:
 
 ```bash
-codex exec review --uncommitted -s read-only --ephemeral \
-  -c model_reasoning_effort=xhigh < /dev/null
+"$(~/.claude/scripts/codex-bin.sh)" exec review --uncommitted \
+  -s read-only --ephemeral -c model_reasoning_effort=xhigh < /dev/null
 ```
+
+`codex-bin.sh` resolves the CLI to an absolute realpath and refuses a copy
+inside the checkout or a temp root; a planted `codex` on `PATH` would run with
+your credentials. Exit 3 from it means the CLI is unusable, not that the review
+found nothing.
 
 Swap `--uncommitted` for `--base <branch>` or `--commit <sha>` when the
 argument names one. With no argument, review the uncommitted changes. Never
@@ -30,9 +35,10 @@ deeper lens.
 Codex reads the working tree directly and nothing scans it first. Do not run
 this in a checkout that holds real credentials or customer data.
 
-Exit 0 with a review body is a review. An empty body, a capacity refusal, a
-missing CLI, or a timeout is a gap: report the exact outcome and do not
-substitute another model.
+Read the output, not just the exit code. Codex exits 0 with
+`Your workspace is out of credits` in the body, so exit 0 alone is not a
+review. An empty body, a capacity refusal, a missing CLI, or a timeout is a
+gap: report the exact outcome and do not substitute another model.
 
 Apply clear, in-scope defects in the current authorized task. Report what ran
 and what remains uncertain.

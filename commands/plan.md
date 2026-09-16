@@ -17,9 +17,13 @@ file, then run one bounded foreground pass with the Bash tool's `timeout` set
 to `600000`:
 
 ```bash
-codex exec -s read-only --ephemeral -c model_reasoning_effort=xhigh - < PLAN_FILE
+"$(~/.claude/scripts/codex-bin.sh)" exec -s read-only --ephemeral \
+  -c model_reasoning_effort=xhigh - < PLAN_FILE
 ```
 
-An empty, refused, unavailable, or timed-out run is a missing review. Do not
-call a second model or describe the plan as approved. Record the Codex result
-or the gap, then hand off the plan path.
+`codex-bin.sh` refuses a planted `codex`; its exit 3 means the CLI is unusable.
+Read the output, not just the exit code — Codex exits 0 with
+`Your workspace is out of credits` in the body. An empty, refused, unavailable,
+or timed-out run is a missing review. Do not call a second model or describe
+the plan as approved. Record the Codex result or the gap, then hand off the
+plan path.
