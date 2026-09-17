@@ -24,6 +24,16 @@ Run it in an isolated worktree, never the live checkout:
 
 The symlink matters: a fresh worktree checks out tracked files only, so without it
 every run fails for a reason unrelated to the mutant.
+
+Comparison operators require a space on BOTH sides, or they match JSX — `</p>`
+becomes `<=/p>`, a syntax error rather than a changed rule. Measured 2026-07-28:
+23 of 40 mutants in the first run were JSX bracket edits in files no test
+imported, so they "survived" while proving nothing.
+
+`--cwd` exists because the directory to mutate is often not the directory the
+runner must start from: jest and vitest resolve config from the package root
+while the code worth mutating lives in src/. Conflating the two either mutates
+the config or breaks the runner.
 """
 import argparse
 import os
@@ -32,12 +42,7 @@ import re
 import subprocess
 import sys
 
-# Each operator changes a decision the code makes, not merely a character. A
-# mutant that only reformats proves nothing when it survives.
-# Comparison operators require a space on BOTH sides. Without that guard they
-# match JSX — `</p>` becomes `<=/p>`, which is a syntax error, not a changed
-# rule. Measured 2026-07-28: 23 of 40 mutants in the first run were JSX bracket
-# edits in files no test imported, so they "survived" while proving nothing.
+# Each operator must change a decision, not a character; comparisons need spaces both sides.
 OPERATORS = [
     (r'(?<= )>=(?= )', '>',  'loosen  >= to >'),
     (r'(?<= )<=(?= )', '<',  'loosen  <= to <'),
@@ -93,10 +98,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('root')
     ap.add_argument('--test-cmd', required=True)
-    # The directory to mutate is often not the directory the runner must start
-    # from: jest and vitest resolve their config from the package root, while the
-    # code worth mutating lives in src/. Conflating the two either mutates the
-    # config or breaks the runner.
+    # See the module docstring for why --cwd is separate from root.
     ap.add_argument('--cwd', default=None, help='where to run --test-cmd (default: root)')
     ap.add_argument('--n', type=int, default=40, help='number of mutants')
     ap.add_argument('--tested-only', action='store_true',

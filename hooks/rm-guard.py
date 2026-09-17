@@ -9,6 +9,11 @@ fatal), because the dangerous forms never spell the protected path literally.
 This resolves each rm target to an absolute path and asks a different question:
 would deleting it remove something we cannot get back?
 
+Heredoc bodies are stripped before parsing because they are data, not shell. A
+commit message passed via `git commit -F - <<'EOF'` would otherwise tokenise as
+shell: prose containing `rm something` reads as a deletion and a later `$HOME`
+reads as its target. That false positive blocked the commit introducing this guard.
+
 Usage: rm-guard.py <command> [cwd]
 Exit 0 = allow. Exit 1 = block, reason on stdout. Exit 2 = could not decide.
 """
@@ -20,8 +25,7 @@ import sys
 
 HOME = os.path.expanduser("~")
 
-# Deleting the root itself is fatal; deleting a file inside it is routine and
-# recoverable (these are git-tracked config repos). Guard the root, not the tree.
+# Guard the root, not the tree: these are tracked, so one lost file is recoverable.
 ROOT_ONLY = [HOME, f"{HOME}/.claude", f"{HOME}/.codex", f"{HOME}/.config"]
 
 # No recovery story for anything in here — guard the whole subtree.
@@ -30,8 +34,7 @@ SUBTREE = ["/etc", "/usr", "/System", "/bin", "/sbin", "/var", "/Library",
 
 BREAKS = {"&&", "||", ";", "|", "&"}
 
-# Tokens that precede a real command without consuming it, so `rm` after one of
-# these is still in command position (`sudo rm ...`, `xargs rm ...`).
+# These precede a command without consuming it, so `rm` after one stays in command position.
 WRAPPERS = {"sudo", "env", "time", "nohup", "xargs", "command", "builtin", "exec"}
 
 
@@ -43,8 +46,7 @@ def expand(tok, cwd):
     tok = os.path.expanduser(tok)
     if not os.path.isabs(tok):
         tok = os.path.join(cwd, tok)
-    # normpath, not realpath: a target that doesn't exist yet still has a
-    # meaningful path, and realpath on a symlink would resolve past the guard.
+    # normpath, not realpath: realpath would resolve a symlink past the guard.
     return posixpath.normpath(tok)
 
 
@@ -52,13 +54,7 @@ HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
 def strip_heredocs(cmd):
-    """Remove heredoc bodies — they are data, not shell.
-
-    Without this, a commit message passed via `git commit -F - <<'EOF'` gets
-    tokenised as shell: prose containing `rm something` reads as a deletion and
-    any later `$HOME` in the text reads as its target. That false positive is
-    not hypothetical; it blocked the commit that introduced this guard.
-    """
+    """Remove heredoc bodies; see the module docstring for the false positive."""
     lines = cmd.split("\n")
     out, i = [], 0
     while i < len(lines):
@@ -78,8 +74,8 @@ def strip_heredocs(cmd):
 
 def rm_targets(cmd, cwd):
     """Yield (raw, resolved) for each path argument of each rm invocation."""
-    # A newline terminates a command just as ';' does. Without this, a real rm
-    # on the line after a heredoc is never in command position and slips past.
+
+    # A newline ends a command like ';', else an rm after a heredoc slips past.
     text = strip_heredocs(cmd).replace("\n", " ; ")
     try:
         tokens = shlex.split(text, posix=True)

@@ -46,6 +46,31 @@ searches vendored plugin locales and backups, then truncates; 212x slower for a 
 summary is the right trade for `ls`/`cat`; it is the wrong one for a search whose whole value is
 being exhaustive.
 
+## ripgrep's -r is --replace, not --recursive
+
+ripgrep recurses by default, so `-r` is `--replace`. The muscle-memory
+`rg -rn PATTERN src` clusters as `-r n` and prints every match replaced by the
+literal "n". `hooks/bash-safety.sh` denies the clustered form because the failure
+is silent and the output looks plausible.
+
+Measured 2026-07-29: five occurrences in one session. Searching for a symbol
+reported `export { n } from "./n"`, which read as a mangled file; an alternation
+containing "ready" turned "already provisioned" into "aln provisioned". Two led to
+wrong conclusions stated out loud — first that the file was corrupt, then that
+another tool's hook was rewriting output. Nothing was wrong except the flag.
+
+Only the clustered form is denied. A genuine replacement is written with a
+separate value or the long form, neither of which puts a bare letter straight
+after the flag. It is denied rather than auto-corrected, because silently
+dropping the flag would break a real replacement. The pattern's middle group is
+optional because the clustered form leaves no second space to match, and it is
+bounded by `| ; &` so another tool's `-r` (`sort -rn`, `xargs -r`) cannot trip it.
+
+Writing about this gotcha in a shell command trips the guard: the rg and
+`curl | sh` rules match the raw command text, so a heredoc or a quoted example
+containing the clustered form is denied as if it were a real invocation. Only
+`rm-guard.py` strips heredoc bodies first. Edit such text with the file tools.
+
 ## fd -u vs find
 
 `fd -u` is equivalent to `fd -H -I`, which restores the results `find` returns by default —
