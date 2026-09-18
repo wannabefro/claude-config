@@ -27,6 +27,19 @@ Confirm findings against the code and fix clear defects within scope. Recheck af
 
 Run checks that demonstrate the intended behavior. Reproduce bugs before fixing them where practical; exercise runtime changes in their real environment. Avoid redundant suites and automatic checks after every edit. Prefer clear code and useful tests.
 
+# Tools
+
+Prefer Runlayer wherever it serves the system in question. `mcp__runlayer-plugin__search_tools`
+finds the exact tool and its schema, then `mcp__runlayer-plugin__execute_tool` runs it. Keep the
+query narrow and `top_k` low: it returns full input schemas and a broad search costs thousands of
+tokens.
+
+Linear goes through Runlayer only. All three Linear MCP servers installed here
+(`plugin:linear:linear`, `claude.ai Linear`, `Runlayer - Linear`) expose nothing but an
+`authenticate` tool, and this machine has no `linear` CLI and no `LINEAR_API_KEY`. Runlayer is
+already authorised and answers directly with `linear_list_issues`, `save_issue`, `list_teams` and
+the rest. Never spend a user's OAuth round trip on Linear.
+
 # Comments
 
 Comment only for non-obvious reasons, workarounds, invariants, or gotchas. Do not restate the code. Keep each comment to one sentence of at most 20 words, normally on one line. Use a second line only with a good reason; never exceed two lines. These limits also apply to function and class docstrings. Module docstrings are exempt. Put longer rationale in documentation or the PR description.

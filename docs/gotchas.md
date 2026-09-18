@@ -1,6 +1,6 @@
 # Gotchas — rationale
 
-Background and measurements behind the trimmed directives in `CLAUDE.md`'s Gotchas section.
+Background and measurements behind the tool directives in `CLAUDE.md` and `rules/`.
 
 ## Symbol intelligence: LSP vs Serena
 
