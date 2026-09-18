@@ -10,6 +10,15 @@ Plan only enough to expose important decisions, interfaces, dependencies, and ve
 
 Dispatch parallel writers with the native `Agent` tool and `isolation: "worktree"`, and only over disjoint owned paths. Writers and research agents share the runtime's concurrency budget; let the runtime throttle rather than imposing a count. Give each worker the outcome, its owned files, the intended base, and one verification command, without copying the whole conversation. Serialize work that changes a shared contract or depends on another unit, and integrate serially.
 
+Land multi-part work as a stack of dependent PRs, one layer per reviewable unit, rather
+than one wide PR. `gh stack` is a gh extension, and `gh stack init` needs its branch names
+as arguments or it waits for input that never comes. Where a repository rejects
+`gh stack submit` because GitHub stacked PRs are not enabled on it, open each PR with
+`gh pr create --base <parent-branch>` instead; the local `view`, `switch` and `push` verbs
+still work. Never trust the output of `gh stack rebase` or `gh stack sync` — assert every
+layer with `git merge-base --is-ancestor <parent-tip> <child>` and reparent by hand when it
+fails. Push with `gh stack push`, because the security hook denies `git push --force-with-lease`.
+
 # Quality
 
 Create a plan when unresolved requirements, shared interfaces, dependencies, or costly-to-reverse decisions need it. Review each authored plan once with Codex before implementation. Routine changes need no plan. Review the assembled behavior-changing diff once with Codex; mechanical changes use relevant checks and the orchestrator's inspection. Reviewers receive requirements and evidence without the author's preferred verdict. No recursive councils. CodeRabbit is optional additional feedback.
