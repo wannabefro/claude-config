@@ -345,6 +345,14 @@
             "command": "__CLAUDE_HOME__/hooks/plugin-refresh-async.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nohup __CLAUDE_HOME__/scripts/pantsd-reap.py >/dev/null 2>&1 & exit 0"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
