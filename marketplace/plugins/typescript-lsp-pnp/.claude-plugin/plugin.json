@@ -1,0 +1,6 @@
+{
+  "name": "typescript-lsp-pnp",
+  "description": "TypeScript/JavaScript LSP that finds the workspace tsserver, including Yarn PnP SDKs",
+  "version": "1.0.0",
+  "lspServers": "./.lsp.json"
+}

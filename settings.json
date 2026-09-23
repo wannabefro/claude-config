@@ -427,9 +427,10 @@
     "skill-creator@claude-plugins-official": false,
     "slack@claude-plugins-official": false,
     "superpowers@claude-plugins-official": false,
-    "typescript-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": false,
     "coderabbit@sam": true,
-    "gh-stack@sam": true
+    "gh-stack@sam": true,
+    "typescript-lsp-pnp@sam": true
   },
   "extraKnownMarketplaces": {
     "compound-engineering-plugin": {

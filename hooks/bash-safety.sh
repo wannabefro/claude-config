@@ -28,7 +28,16 @@ if [ -z "$cmd" ]; then
   exit 0
 fi
 
-case "$cmd" in
+guard="$(dirname "${BASH_SOURCE[0]}")/rm-guard.py"
+
+# Pattern checks skip heredoc bodies a data sink reads; rm-guard.py owns that rule.
+scan="$cmd"
+if [[ "$cmd" == *"<<"* ]] && [ -f "$guard" ]; then
+  scan=$(python3 "$guard" --strip-heredocs "$cmd" 2>/dev/null) || scan="$cmd"
+  [ -n "$scan" ] || scan="$cmd"
+fi
+
+case "$scan" in
   *" rm -rf /"*|\
   "rm -rf /"*|\
   *"sudo rm -rf "*|\
@@ -48,18 +57,17 @@ esac
 fetch='(^|[[:space:]`(;&|])(curl|wget)[[:space:]]'
 wrapper='((sudo|env|command|exec|nohup|time|builtin)([[:space:]][^|]*)?[[:space:]])?'
 into_shell="\\|[[:space:]]*${wrapper}(ba|z|k|da)?sh([[:space:]]|\$|[;&|)\`])"
-if [[ "$cmd" =~ $fetch ]] && [[ "$cmd" =~ $into_shell ]]; then
+if [[ "$scan" =~ $fetch ]] && [[ "$scan" =~ $into_shell ]]; then
   deny "Blocked high-risk shell command"
 fi
 
 # Deny the clustered -r form; it replaces instead of recursing. See docs/gotchas.md.
 rg_replace_re='(^|[|;&[:space:]])rg[[:space:]]([^|;&]*[[:space:]])?-r[a-zA-Z]'
-if [[ $cmd =~ $rg_replace_re ]]; then
+if [[ $scan =~ $rg_replace_re ]]; then
   deny "rg -r means --replace, not --recursive. '-rn' is parsed as --replace=n and prints every match replaced by the literal 'n' — silently wrong output that looks real. rg already recurses; use 'rg -n' for line numbers. For a genuine replacement write '-r <value>' as a separate argument or --replace=<value>."
 fi
 
 # Judged by resolved path, not substring; rm-guard.py's module docstring says why.
-guard="$(dirname "${BASH_SOURCE[0]}")/rm-guard.py"
 if [ -f "$guard" ]; then
   cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')
   set +e

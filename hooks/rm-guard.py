@@ -9,10 +9,22 @@ fatal), because the dangerous forms never spell the protected path literally.
 This resolves each rm target to an absolute path and asks a different question:
 would deleting it remove something we cannot get back?
 
-Heredoc bodies are stripped before parsing because they are data, not shell. A
-commit message passed via `git commit -F - <<'EOF'` would otherwise tokenise as
-shell: prose containing `rm something` reads as a deletion and a later `$HOME`
-reads as its target. That false positive blocked the commit introducing this guard.
+A heredoc body is stripped before parsing only when it is provably inert text:
+the delimiter is quoted (so `$(...)` does not expand), the reader is a data sink
+(cat, tee, git, gh, jq, wc) that does not execute input, and nothing on the
+opening line pipes the text onward. A commit message passed
+via `git commit -F - <<'EOF'` would otherwise tokenise as shell: prose containing
+`rm something` reads as a deletion and a later `$HOME` reads as its target. That
+false positive blocked the commit introducing this guard.
+
+Any other heredoc keeps its body: one fed to a shell, ssh, python, node or an
+unknown command is code, as is `cat <<'EOF' | bash`. Stripping every body, as this once did, let a shell
+heredoc hide an rm; an unterminated heredoc also swallowed the rest of the
+command. bash-safety.sh calls `rm-guard.py --strip-heredocs CMD` so its own
+pattern checks share this one definition.
+
+This is a lexical guard for accidents, not a sandbox: `bash -c '...'` and eval
+still hide their contents.
 
 Usage: rm-guard.py <command> [cwd]
 Exit 0 = allow. Exit 1 = block, reason on stdout. Exit 2 = could not decide.
@@ -50,25 +62,43 @@ def expand(tok, cwd):
     return posixpath.normpath(tok)
 
 
-HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+DATA_SINKS = {"cat", "tee", "git", "gh", "jq", "wc"}
+PIPE = re.compile(r"(?<!\|)\|(?!\|)")
+ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+SEGMENT = re.compile(r"\|\||&&|\$\(|[|;&(`]")
+
+
+def heredoc_consumer(line, start):
+    """Name the command reading the heredoc that opens at `start`, or None."""
+    try:
+        toks = shlex.split(SEGMENT.split(line[:start])[-1], posix=True)
+    except ValueError:
+        return None
+    for t in toks:
+        if t not in WRAPPERS and not ASSIGN.fullmatch(t):
+            return os.path.basename(t)
+    return None
 
 
 def strip_heredocs(cmd):
-    """Remove heredoc bodies; see the module docstring for the false positive."""
+    """Drop inert heredoc bodies; see the module docstring for what counts as inert."""
     lines = cmd.split("\n")
     out, i = [], 0
     while i < len(lines):
         line = lines[i]
         out.append(line)
-        m = HEREDOC.search(line)
         i += 1
-        if not m:
+        m = HEREDOC.search(line)
+        if not m or not m.group(1) or PIPE.search(line[m.end():]):
             continue
-        term = m.group(2)
-        while i < len(lines) and lines[i].strip() != term:
-            i += 1
-        if i < len(lines):
-            i += 1  # drop the terminator itself
+        if heredoc_consumer(line, m.start()) not in DATA_SINKS:
+            continue
+        j = i
+        while j < len(lines) and lines[j].strip() != m.group(2):
+            j += 1
+        if j < len(lines):
+            i = j + 1
     return "\n".join(out)
 
 
@@ -133,6 +163,9 @@ def verdict(path, raw):
 def main():
     if len(sys.argv) < 2:
         sys.exit(2)
+    if sys.argv[1] == "--strip-heredocs":
+        print(strip_heredocs(sys.argv[2]) if len(sys.argv) > 2 else "", end="")
+        sys.exit(0)
     cmd = sys.argv[1]
     cwd = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else os.getcwd()
     try:

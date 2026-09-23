@@ -66,10 +66,11 @@ dropping the flag would break a real replacement. The pattern's middle group is
 optional because the clustered form leaves no second space to match, and it is
 bounded by `| ; &` so another tool's `-r` (`sort -rn`, `xargs -r`) cannot trip it.
 
-Writing about this gotcha in a shell command trips the guard: the rg and
-`curl | sh` rules match the raw command text, so a heredoc or a quoted example
-containing the clustered form is denied as if it were a real invocation. Only
-`rm-guard.py` strips heredoc bodies first. Edit such text with the file tools.
+The pattern checks skip a heredoc body only when it is inert: a quoted delimiter,
+read by `cat`, `tee`, `git`, `gh`, `jq` or `wc`, and not piped onward (see
+`rm-guard.py --strip-heredocs`). A body fed to a shell, `ssh`, `python3` or
+`node` is still scanned, and so is a quoted one-line example.
+Edit such text with the file tools.
 
 ## fd -u vs find
 
