@@ -306,6 +306,10 @@
           },
           {
             "type": "command",
+            "command": "__CLAUDE_HOME__/hooks/pr-stack-guard.py"
+          },
+          {
+            "type": "command",
             "command": "__CLAUDE_HOME__/hooks/rtk-rewrite.sh"
           }
         ]
