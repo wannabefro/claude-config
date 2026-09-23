@@ -99,7 +99,7 @@ def main():
 
     root = git_root(os.path.dirname(target) or ".")
     agents_md = nearest_agents_md(target, root)
-    if not agents_md or already_delivered(agents_md, data):
+    if not agents_md:
         sys.exit(0)
 
     sid = data.get("session_id", "nosession")
@@ -110,8 +110,12 @@ def main():
             sys.exit(0)
     except FileNotFoundError:
         pass
+    # Record delivery either way, so the transcript scan runs once per file per session.
+    delivered = already_delivered(agents_md, data)
     with open(seen, "a") as fh:
         fh.write(agents_md + "\n")
+    if delivered:
+        sys.exit(0)
 
     try:
         body = open(agents_md, errors="replace").read()

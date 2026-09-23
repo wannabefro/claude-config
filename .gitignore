@@ -34,6 +34,7 @@
 /docs/brainstorms/
 /hooks/state/
 /hooks/.rtk-hook.sha256
+/skills/synced/
 **/__pycache__/
 **/*.pyc
 **/.DS_Store

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure whether a test suite guards its business rules, by breaking them.
 
-`rules/principles.md` says: "A test that still passes after the business rule it
+The principle: "A test that still passes after the business rule it
 guards changes is the wrong test." That is a mutation test, and it is the only
 honest instrument for the question — regexes over assertion names cannot tell a
 precise `.toBe(true)` from a vacuous one. Measured 2026-07-28: a regex classifier

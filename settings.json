@@ -409,7 +409,7 @@
     "padding": 1
   },
   "enabledPlugins": {
-    "chrome-devtools-mcp@claude-plugins-official": true,
+    "chrome-devtools-mcp@claude-plugins-official": false,
     "codex@openai-codex": false,
     "compound-engineering@compound-engineering-plugin": true,
     "context-mode@context-mode": true,

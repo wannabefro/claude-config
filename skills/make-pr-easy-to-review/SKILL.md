@@ -139,8 +139,8 @@ author and for anyone who can open it.
 ### Do not
 
 - Commit an HTML file to the repo to explain a PR. The PR body is the place.
-- Duplicate `ce-demo-reel`. Visible behaviour gets a recording; architecture gets a diagram. A PR that
-  changes both gets both.
+- Pair a recording and a diagram by habit. Visible behaviour gets a recording; architecture gets a
+  diagram. A PR that changes both gets both.
 - Draw a diagram of the diff. Diagram the system the diff produces.
 
 ## Guardrails

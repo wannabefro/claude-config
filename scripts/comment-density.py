@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Structural comment checks: density, block length, comment word count.
 
-Only structural counts, deliberately. `rules/principles.md` says structure is
-measurable and quality is not, so this never judges whether a comment is good.
+Only structural counts, deliberately: structure is measurable and quality is
+not, so this never judges whether a comment is good.
 
   python3 comment-density.py hooks/ scripts/
   python3 comment-density.py --staged [REPO]
