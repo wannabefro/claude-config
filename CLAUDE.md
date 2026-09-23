@@ -8,7 +8,7 @@ Claude Opus owns requirements, architecture, diagnosis, task decomposition, inte
 
 Plan only enough to expose important decisions, interfaces, dependencies, and verification. Small changes need no planning document. Skills are an on-demand toolbox; do not run a mandatory chain of skills for ordinary work.
 
-Dispatch parallel writers with the native `Agent` tool and `isolation: "worktree"`, and only over disjoint owned paths. Writers and research agents share the runtime's concurrency budget; let the runtime throttle rather than imposing a count. Give each worker the outcome, its owned files, the intended base, and one verification command, without copying the whole conversation. Serialize work that changes a shared contract or depends on another unit, and integrate serially.
+Dispatch parallel writers with the native `Agent` tool and `isolation: "worktree"`, and only over disjoint owned paths. Writers and research agents share the runtime's concurrency budget; let the runtime throttle rather than imposing a count. The exception is heavy verification: run at most two writers at once whose checks are pants, a fender type-check, or app pytest. Each saturates several cores, and at load 30 on this 18-core machine every check ran 1.5–2x slower. Give each worker the outcome, its owned files, the intended base, and one verification command, without copying the whole conversation. Serialize work that changes a shared contract or depends on another unit, and integrate serially.
 
 Land multi-part work as a stack of dependent PRs, one layer per reviewable unit, rather
 than one wide PR. `gh stack` is a gh extension, and `gh stack init` needs its branch names
