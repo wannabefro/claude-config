@@ -5,7 +5,8 @@ Every k-repo worktree that ever ran pants keeps its own pantsd, 200MB-3GB each,
 alive until reboot. On 2026-09-23 eight ran at once on a machine at load 30+,
 three of them in worktrees no process had open. A daemon counts as idle when it
 is older than MIN_AGE and no other process has its working directory inside the
-daemon's build root. Pants starts a fresh daemon on the next call there, so the
+daemon's build root, the nearest ancestor holding pants.toml. Agent worktrees
+nest inside k-repo, so a shell in one holds that worktree's daemon, not k-repo's. Pants starts a fresh daemon on the next call there, so the
 only cost of a wrong guess is one cold start (about 20-40s).
 
 Run from SessionStart, detached. Usage: pantsd-reap.py [--dry-run]
@@ -51,15 +52,25 @@ def cwds():
             yield pid, cmd, line[1:]
 
 
+def build_root(path, _cache={}):
+    """The nearest ancestor holding pants.toml; a nested worktree has its own daemon, not its parent's."""
+    if path not in _cache:
+        d = path
+        while d != "/" and not os.path.isfile(os.path.join(d, "pants.toml")):
+            d = os.path.dirname(d)
+        _cache[path] = d
+    return _cache[path]
+
+
 def main():
     dry = "--dry-run" in sys.argv
     found = [d for d in daemons() if d[1] >= MIN_AGE]
     if not found:
         return
-    open_dirs = [(p, c, d) for p, c, d in cwds() if c not in PANTS_PROCS]
+    held = {build_root(d) for p, c, d in cwds() if c not in PANTS_PROCS}
     stopped = []
     for pid, age, root in found:
-        if any(d == root or d.startswith(root + "/") for p, c, d in open_dirs if p != pid):
+        if root in held:
             continue
         if not dry:
             try:
