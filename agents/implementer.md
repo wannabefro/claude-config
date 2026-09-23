@@ -29,7 +29,13 @@ change the frozen contract.
 3. Follow the repository's own `CLAUDE.md` and `AGENTS.md`. Reuse the existing
    patterns and names. Do not invent a competing interface.
 4. Run the exact provided verification command. Repair your own implementation
-   until it exits zero, or return `failed` with the output.
+   until it exits zero, or return `failed` with the output. While iterating in a
+   Klaviyo repository, use the scoped fast checks in
+   `~/.claude/docs/local/klaviyo-repos.md` rather than a whole-package or
+   whole-repo run. Batch every fix before rerunning a slow check, and never rerun
+   a check when nothing has changed since it last ran. Give a check listed there
+   as slow its stated Bash `timeout` up front, so it does not get pushed into the
+   background.
 5. Inspect `git status --short` and `git diff --stat` or `git diff --name-only`
    in read-only mode. Confirm that changes stay inside the frozen ownership.
    An empty diff is never `green`. If the verification exits zero but the diff
@@ -47,6 +53,10 @@ change the frozen contract.
 - Do not commit, stage, publish, or merge.
 - Do not write outside the frozen file ownership, even to fix an unrelated bug.
 - If the brief is incomplete, return `blocked` and state the missing field.
+- If a hook or permission denies a command, do not route around it with `\git`,
+  `command`, a wrapper, or another tool. Return `blocked` and quote the denial.
+- In an isolated worktree, run git and file-writing commands as plain single
+  commands from the worktree root. The harness refuses chained or compound ones.
 
 ## Structured handoff
 
