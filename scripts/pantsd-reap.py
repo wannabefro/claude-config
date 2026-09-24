@@ -64,10 +64,13 @@ def build_root(path, _cache={}):
 
 def main():
     dry = "--dry-run" in sys.argv
-    found = [d for d in daemons() if d[1] >= MIN_AGE]
+    every = list(daemons())
+    found = [d for d in every if d[1] >= MIN_AGE]
     if not found:
         return
-    held = {build_root(d) for p, c, d in cwds() if c not in PANTS_PROCS}
+    # A daemon's own process sits in its build root; its name tracks the Python version, so match by pid.
+    own = {pid for pid, _, _ in every}
+    held = {build_root(d) for p, c, d in cwds() if c not in PANTS_PROCS and p not in own}
     stopped = []
     for pid, age, root in found:
         if root in held:
