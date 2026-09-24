@@ -23,7 +23,9 @@ to `600000`:
 
 `codex-bin.sh` refuses a planted `codex`; its exit 3 means the CLI is unusable.
 Read the output, not just the exit code — Codex exits 0 with
-`Your workspace is out of credits` in the body. An empty, refused, unavailable,
+`Your workspace is out of credits` in the body. On an out-of-credits or login
+failure, rerun once with `CODEX_API_KEY="$OPENAI_API_KEY"` prefixed; the key
+comes from `~/.zshenv`. Never print it. An empty, refused, unavailable,
 or timed-out run is a missing review. Do not call a second model or describe
 the plan as approved. Record the Codex result or the gap, then hand off the
 plan path.

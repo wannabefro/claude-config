@@ -40,5 +40,17 @@ Read the output, not just the exit code. Codex exits 0 with
 review. An empty body, a capacity refusal, a missing CLI, or a timeout is a
 gap: report the exact outcome and do not substitute another model.
 
+When the workspace is out of credits or the ChatGPT login is down, rerun the
+same command once on the OpenAI API key that `~/.zshenv` exports. `codex exec`
+reads `CODEX_API_KEY`, so this leaves the saved login untouched:
+
+```bash
+CODEX_API_KEY="$OPENAI_API_KEY" "$(~/.claude/scripts/codex-bin.sh)" exec review \
+  --uncommitted -s read-only --ephemeral -c model_reasoning_effort=xhigh < /dev/null
+```
+
+Say in the report that the pass ran on the API key. Never print the key. If
+the API-key run also fails, that is the gap to report.
+
 Apply clear, in-scope defects in the current authorized task. Report what ran
 and what remains uncertain.
