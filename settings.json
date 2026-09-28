@@ -111,6 +111,8 @@
       "Bash(mv *)",
       "Bash(chmod *)",
       "Bash(git push *)",
+      "Bash(git push --no-verify --force-with-lease *)",
+      "Bash(git -C * push --no-verify --force-with-lease *)",
       "Bash(cd *)",
       "Bash(xcodebuild *)",
       "Bash(idb *)",
@@ -492,6 +494,10 @@
   "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
   "autoMode": {
+    "allow": [
+      "$defaults",
+      "Force pushes that use --force-with-lease (with or without an explicit expected sha), including gh stack push, to the user's own feature branches in the repository being worked in are allowed. These are branches whose names start with sm/, rewritten when a PR stack is rebased or fixed up. This does not cover bare --force, +refspec pushes, the default branch, or release, deploy and gh-pages branches."
+    ],
     "environment": [
       "$defaults",
       "Organization: Klaviyo. Primary use: software development \u2014 frontend and backend application work, i18n/localization, and infrastructure deployment.",
@@ -499,10 +505,6 @@
       "Trusted internal domains: local-klaviyo.com (local dev server), www.klaviyo.com (the app dashboard and staffside, reached for manual verification and browser automation).",
       "Key internal services: Buildkite for CI, Chronosphere for metrics, logs and traces, Sentry for error monitoring.",
       "Additional context: `-cp` and `-sp` dev-server flags point the local Conductor or Staffside build at the PRODUCTION klaviyo-graph. Reads against it are routine; treat a mutation through that path as a production write, not local dev."
-    ],
-    "allow": [
-      "$defaults",
-      "Force pushes that use --force-with-lease (with or without an explicit expected sha), including gh stack push, to the user's own feature branches in the repository being worked in are allowed. These are branches whose names start with sm/, rewritten when a PR stack is rebased or fixed up. This does not cover bare --force, +refspec pushes, the default branch, or release, deploy and gh-pages branches."
     ]
   },
   "feedbackSurveyState": {
