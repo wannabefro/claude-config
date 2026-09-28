@@ -18,8 +18,8 @@ as arguments or it waits for input that never comes. Where a repository rejects
 still work. Never trust the output of `gh stack rebase` or `gh stack sync` — assert every
 layer with `git merge-base --is-ancestor <parent-tip> <child>` and reparent by hand when it
 fails. Push with `gh stack push`, which force-pushes every layer with `--force-with-lease --atomic`.
-The auto-mode classifier can deny a hand-rolled force push, especially with `--no-verify`, and does
-so inconsistently; do not retry or reshape a denied push — hand the user the exact command.
+`autoMode.allow` lets the classifier pass `--force-with-lease` pushes to the user's `sm/` branches.
+If one is still denied, do not retry or reshape it — hand the user the exact command.
 
 # Quality
 
