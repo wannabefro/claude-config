@@ -9,7 +9,12 @@ reference, not a mandatory workflow for ordinary work.
 
 ## Phase routing
 
-1. Write a short brief and collect references.
+1. Write a short brief and collect references. Without direction the model
+   falls back on house styles, and "avoid a generic look" only swaps one for
+   another. Name the patterns to avoid instead, starting with: cream or
+   off-white backgrounds, italic accent words in headlines, numbered
+   "01/02/03" section labels, monospace labels, and pill-shaped buttons.
+   Add whatever the first result used in their place.
 2. Use Claude Opus xhigh for design direction. If Open Design uses Codex,
    use Codex `gpt-5.6-sol` xhigh for direction and critique.
 3. Freeze `DESIGN.md`, `design-contract.md`, and

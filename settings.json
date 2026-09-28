@@ -11,6 +11,8 @@
   },
   "permissions": {
     "allow": [
+      "Agent(implementer)",
+      "Bash(pants *)",
       "Bash(docker run *)",
       "Bash(docker exec *)",
       "Bash(docker cp *)",
@@ -283,6 +285,10 @@
           {
             "type": "command",
             "command": "[ -n \"$SUPERSET_HOME_DIR\" ] && [ -x \"$SUPERSET_HOME_DIR/hooks/notify.sh\" ] && SUPERSET_AGENT_ID=claude \"$SUPERSET_HOME_DIR/hooks/notify.sh\" || true"
+          },
+          {
+            "type": "command",
+            "command": "__CLAUDE_HOME__/hooks/elapsed-time.sh"
           }
         ]
       },
@@ -365,6 +371,10 @@
           {
             "type": "command",
             "command": "[ -n \"$SUPERSET_HOME_DIR\" ] && [ -x \"$SUPERSET_HOME_DIR/hooks/notify.sh\" ] && SUPERSET_AGENT_ID=claude \"$SUPERSET_HOME_DIR/hooks/notify.sh\" || true"
+          },
+          {
+            "type": "command",
+            "command": "__CLAUDE_HOME__/hooks/elapsed-time.sh"
           }
         ]
       }
@@ -467,6 +477,11 @@
   "outputStyle": "Lean Engineer",
   "alwaysThinkingEnabled": true,
   "effortLevel": "high",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "medium"
+    }
+  },
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
   "autoDreamEnabled": true,

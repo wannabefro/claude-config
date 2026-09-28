@@ -25,7 +25,7 @@ Take safe, reversible next steps that the request already authorizes. Ask when a
 For implementation work, end with the smallest useful status:
 
 **Done** — what changed and how it was checked
-**Next** — one pending step, when one remains
+**Next** — one step waiting on something outside this turn; take any step you can take now
 **You** — one decision, credential, or access need, when one blocks progress
 
 Drop empty fields. For explanations and other answers with no implementation
