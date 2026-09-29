@@ -25,9 +25,10 @@ comment-density: ignore-file — this file holds comment fixtures inside strings
 import argparse, pathlib, re, subprocess, sys
 
 SUFFIX = {".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".tsx",
-          ".swift", ".go", ".rs", ".java", ".kt", ".rb", ".yaml", ".yml"}
+          ".swift", ".go", ".rs", ".java", ".kt", ".rb", ".yaml", ".yml",
+          ".tf", ".tfvars", ".hcl"}
 BLOCK_COMMENT_SUFFIX = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".swift", ".go",
-                        ".rs", ".java", ".kt"}
+                        ".rs", ".java", ".kt", ".tf", ".tfvars", ".hcl"}
 SKIP_PART = {"node_modules", "__pycache__", ".git", "dist", "build", "target",
              "coverage", "vendor", "plugins", ".venv"}
 MARKER = re.compile(r"^\s*(#|//|/\*|\*/|\*(?!\w))")

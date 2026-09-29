@@ -27,7 +27,8 @@ import tempfile
 
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit"}
 SUFFIX = {".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".tsx",
-          ".swift", ".go", ".rs", ".java", ".kt", ".rb", ".yaml", ".yml"}
+          ".swift", ".go", ".rs", ".java", ".kt", ".rb", ".yaml", ".yml",
+          ".tf", ".tfvars", ".hcl"}
 VENDOR_RE = re.compile(
     r"/(\.venv|\.direnv|node_modules|vendor|site-packages|dist|build|target|"
     r"coverage|\.git|plugins/cache|plugins/marketplaces)/"
