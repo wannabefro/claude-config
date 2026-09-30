@@ -149,6 +149,10 @@
       "Bash(unset NODE_OPTIONS)",
       "Bash(unset NODE_OPTIONS *)",
       "Bash(codex exec *)",
+      "Bash(/Users/sam.mctaggart/.local/bin/codex exec *)",
+      "Bash(~/.local/bin/codex exec *)",
+      "Bash(CODEX_API_KEY=* /Users/sam.mctaggart/.local/bin/codex exec *)",
+      "Bash(CODEX_API_KEY=* codex exec *)",
       "Bash(codex --version)",
       "Bash(pbcopy)",
       "Bash(pbpaste)",
@@ -496,7 +500,9 @@
   "autoMode": {
     "allow": [
       "$defaults",
-      "Force pushes that use --force-with-lease (with or without an explicit expected sha), including gh stack push, to the user's own feature branches in the repository being worked in are allowed. These are branches whose names start with sm/, rewritten when a PR stack is rebased or fixed up. This does not cover bare --force, +refspec pushes, the default branch, or release, deploy and gh-pages branches."
+      "Force pushes that use --force-with-lease (with or without an explicit expected sha), including gh stack push, to the user's own feature branches in the repository being worked in are allowed. These are branches whose names start with sm/, rewritten when a PR stack is rebased or fixed up. This does not cover bare --force, +refspec pushes, the default branch, or release, deploy and gh-pages branches.",
+      "Every gh stack subcommand (init, add, submit, view, switch, push, rebase, sync, checkout, unstack) is allowed in the repository being worked in, including when chained after cd. gh stack submit opens or updates the user's own stacked PRs, draft or ready, and is the same as gh pr create, which is allowed. The force-push limits above still apply to gh stack push.",
+      "Running the Codex CLI non-interactively (codex exec, codex exec review) for reviews and plan reviews is allowed, whether invoked as codex, by the absolute path /Users/sam.mctaggart/.local/bin/codex, or through $(~/.claude/scripts/codex-bin.sh). Sending the working tree, diffs and plan files of the repository being worked in to OpenAI through Codex is an approved destination. Setting CODEX_API_KEY=\"$OPENAI_API_KEY\" for that one command is allowed; printing or logging the key is not."
     ],
     "environment": [
       "$defaults",
